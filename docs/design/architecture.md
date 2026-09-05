@@ -3,8 +3,8 @@
 ## How the three repositories connect
 
 ```
-agent-kit (marketplace)                  ds-project-template (copier)
-├── plugins/core, ds, <archetype>  ◄──┐  ├── copier.yml  (questions, presets)
+agent-kit (curated marketplace)          ds-project-template (copier)
+├── superpowers (pinned), project  ◄──┐  ├── copier.yml  (questions, presets)
 ├── profile/  ──► ~/.claude, ~/.codex │  └── template/   (rendered tree)
 └── marketplace manifests             │          │ copier copy / update
                                       │          ▼
@@ -19,38 +19,16 @@ agent-kit (marketplace)                  ds-project-template (copier)
 - The template never copies skills. It renders references to `agent-kit` at a pinned ref.
 - Updating skills means tagging `agent-kit` and bumping the ref. That is one answer change
   (`copier update --data agent_kit_ref=v1.3.0`) or a manual edit.
+- AGENTS.md carries a "Planning and decisions" section that adapts Superpowers: specs and plans in
+  `docs/plans/`, durable decisions as ADRs (ADR-0013).
 - Project-local skills (truly project-specific) live in `.agents/skills/`, which Codex reads
   natively. `.claude/skills` is a symlink to it, kept by Copier's `_preserve_symlinks`.
 
-## Agent kit layout
+## Agent kit
 
-```
-agent-kit/
-├── .claude-plugin/marketplace.json    Claude Code marketplace
-├── .agents/plugins/marketplace.json   Codex marketplace (same entries)
-├── plugins/
-│   ├── core/          plan, implement-feature, create-pr, adr-new, kickoff,
-│   │                  agents-md-audit, taskfile-workflow, template-update
-│   ├── ds/            eda-report, experiment-review, notebook-to-module
-│   ├── forecasting/   backtest-design, forecast-evaluation
-│   ├── genai/         eval-harness, prompt-regression
-│   └── ...            one plugin per archetype, added as needed
-│       each plugin: plugin manifest(s), skills/<name>/SKILL.md, optional agents/
-├── profile/
-│   └── AGENTS.md      personal reply shape and style rules
-├── scripts/           manifest generation and validation
-├── evals/             skill eval suites
-├── docs/adr/
-└── Taskfile.yml       validate, eval, install-profile, release
-```
-
-Marketplace and manifest formats differ slightly between harnesses. One source of truth
-(`plugins/*/plugin.toml` or the Claude manifest) generates the others in `task build`. A spike
-in milestone 1 checks whether Codex already accepts the Claude manifests directly, which it
-documents as legacy-compatible.
-
-Plugin hooks are not used: Codex runs plugin hooks only for manually installed desktop plugins.
-Hooks live in the generated project instead (see ADR-0010).
+agent-kit is a curated marketplace (agent-kit ADR-0003). It re-exports Superpowers at a pinned ref
+and adds the `project` plugin with `adr`, `kickoff` and `template-update`. Its own design and
+layout live in the agent-kit repository.
 
 ## Copier question model
 
@@ -71,7 +49,7 @@ Questions appear in four groups. `when:` hides questions that do not apply.
 
 | Key | Type | Choices (default first) | Effect |
 | --- | --- | --- | --- |
-| `use_case` | choice | forecasting, anomaly_detection, optimization, computer_vision, genai, tabular, analysis | dependency preset, AGENTS.md domain rules, method stub, agent plugin |
+| `use_case` | choice | forecasting, anomaly_detection, optimization, computer_vision, genai, tabular, analysis | dependency preset, AGENTS.md domain rules, method stub, tested domain helpers |
 | `maturity` | choice | poc, production | coverage gate, type strictness, CI depth, default architecture |
 | `architecture` | choice | simple (poc default), layered (production default) | package layout and import contracts |
 | `layout` | choice | single, workspace | single package or uv workspace with `apps/` and `packages/` |
@@ -88,8 +66,9 @@ Questions appear in four groups. `when:` hides questions that do not apply.
 | Key | Type | Default |
 | --- | --- | --- |
 | `agent_harnesses` | multiselect | claude, codex |
-| `agent_plugins` | multiselect | core, ds, and the plugin of the chosen archetype |
 | `agent_kit_ref` | str | latest tag |
+
+Every project enables `superpowers` and `project` (ADR-0013).
 
 ### 4. Optional context
 

@@ -1,6 +1,6 @@
 # ADR-0003: Model questions as archetype presets plus capability options
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0013
 - **Date:** 2026-10-09
 
 ## Context
