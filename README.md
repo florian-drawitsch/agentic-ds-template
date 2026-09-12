@@ -8,15 +8,15 @@ including pharma, automotive, banking and retail.
 
 ## Contents (planned)
 
-| Plugin | Skills |
-| --- | --- |
-| `core` | plan, implement-feature, create-pr, adr-new, kickoff, agents-md-audit, taskfile-workflow, template-update |
-| `ds` | eda-report, experiment-review, notebook-to-module |
-| `forecasting` | backtest-design, forecast-evaluation |
-| `genai` | eval-harness, prompt-regression |
+A curated marketplace for Claude Code and Codex:
 
-`profile/` holds personal reply and style preferences. `task install-profile` installs them at
-user level for both harnesses.
+| Plugin | Source | Purpose |
+| --- | --- | --- |
+| `superpowers` | [obra/superpowers](https://github.com/obra/superpowers), pinned | Brainstorming, planning, test-driven execution, review, finishing branches |
+| `project` | this repository | `adr`, `kickoff`, `template-update` for projects generated from the template |
+
+Only plugins that work in both harnesses are included. `profile/` holds personal writing rules,
+which `task install-profile` installs at user level for both harnesses.
 
 Projects generated from [ds-project-template](../ds-project-template) register this marketplace
 at a pinned ref.
