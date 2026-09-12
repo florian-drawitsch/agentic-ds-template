@@ -1,0 +1,57 @@
+version: '3'
+
+silent: true
+
+env:
+  VIRTUAL_ENV: ''
+
+tasks:
+  build:
+    desc: Regenerate marketplaces and local plugin manifests from catalog.toml
+    cmds:
+      - uv run python scripts/build.py
+
+  lint:
+    desc: Check formatting, lint rules and types
+    cmds:
+      - uv run ruff format --check .
+      - uv run ruff check .
+      - uv run ty check
+
+  format:
+    desc: Format and autofix
+    cmds:
+      - uv run ruff format .
+      - uv run ruff check --fix .
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - uv run pytest {{.CLI_ARGS}}
+
+  validate:
+    desc: Validate the marketplace and plugin manifests with Claude Code
+    preconditions:
+      - sh: command -v claude
+        msg: Claude Code CLI is required for manifest validation
+    cmds:
+      - claude plugin validate .
+      - for: { var: PLUGINS }
+        cmd: claude plugin validate {{.ITEM}}
+    vars:
+      PLUGINS:
+        sh: find plugins -mindepth 1 -maxdepth 1 -type d
+
+  check:
+    desc: 'Merge gate: generated files current, lint, types, tests, manifests'
+    cmds:
+      - uv run python scripts/build.py --check
+      - task: lint
+      - task: test
+      - task: validate
+
+  dev:
+    desc: Register this working copy as the agent-kit marketplace in both CLIs
+    cmds:
+      - claude plugin marketplace add {{.ROOT_DIR}}
+      - codex plugin marketplace add {{.ROOT_DIR}}
