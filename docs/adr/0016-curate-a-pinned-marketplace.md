@@ -1,12 +1,12 @@
-# ADR-0003: Curate a pinned marketplace and adopt Superpowers
+# ADR-0016: Curate a pinned marketplace and adopt Superpowers
 
 - **Status:** Accepted
 - **Date:** 2026-10-09
-- **Supersedes:** ADR-0001
+- **Supersedes:** ADR-0014
 
 ## Context
 
-ADR-0001 planned own plugins for delivery, data science and each project archetype. Research in
+ADR-0014 planned own plugins for delivery, data science and each project archetype. Research in
 October 2026 showed two things:
 
 - Widely used, maintained plugins already cover planning and execution. Superpowers has about one

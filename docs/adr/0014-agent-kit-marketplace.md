@@ -1,6 +1,6 @@
-# ADR-0001: Distribute generic skills through the agent-kit marketplace
+# ADR-0014: Distribute generic skills through the agent-kit marketplace
 
-- **Status:** Superseded by ADR-0003
+- **Status:** Superseded by ADR-0016
 - **Date:** 2026-10-09
 
 ## Context

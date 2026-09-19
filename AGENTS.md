@@ -22,7 +22,7 @@ and ships the own `project` plugin. Design decisions are in `docs/adr/`.
 
 ## Rules
 
-- Every plugin must work in Claude Code and Codex (ADR-0004). Skill text stays harness-neutral;
+- Every plugin must work in Claude Code and Codex (ADR-0017). Skill text stays harness-neutral;
   harness-specific details go into scripts or clearly marked alternatives.
 - Skills reference their own files as `<skill-dir>/...`.
 - Scripts never trap an agent session: hook code paths catch every error and let the agent stop.

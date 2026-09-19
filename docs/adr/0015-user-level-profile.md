@@ -1,4 +1,4 @@
-# ADR-0002: Keep personal preferences in a user-level profile
+# ADR-0015: Keep personal preferences in a user-level profile
 
 - **Status:** Accepted
 - **Date:** 2026-10-09

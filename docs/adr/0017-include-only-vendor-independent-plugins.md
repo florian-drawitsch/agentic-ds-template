@@ -1,4 +1,4 @@
-# ADR-0004: Include only vendor-independent plugins
+# ADR-0017: Include only vendor-independent plugins
 
 - **Status:** Accepted
 - **Date:** 2026-10-09

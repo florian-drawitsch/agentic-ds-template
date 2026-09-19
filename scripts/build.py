@@ -29,7 +29,7 @@ def load_catalog(root: Path) -> dict[str, Any]:
         harnesses = set(plugin["harnesses"])
         if harnesses != HARNESSES:
             raise ValueError(
-                f"Plugin {plugin['name']} must support both harnesses (agent-kit ADR-0004)"
+                f"Plugin {plugin['name']} must support both harnesses (ADR-0017)"
             )
         source = plugin["source"]
         if source["type"] == "local" and not (root / source["path"]).is_dir():
