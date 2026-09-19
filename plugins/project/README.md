@@ -21,4 +21,4 @@ This adds, without touching other settings:
   read-only. Models default to `sonnet` and `opus` for Claude; Codex roles inherit the session
   model unless `--codex-implementer-model` or `--codex-reviewer-model` is given.
 
-Projects generated from ds-project-template get these files at generation time.
+Projects generated from this repository's template get these files at generation time.

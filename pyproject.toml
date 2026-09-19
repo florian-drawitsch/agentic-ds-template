@@ -1,7 +1,7 @@
 [project]
-name = "agent-kit"
+name = "agentic-ds-template"
 version = "0.1.0"
-description = "Curated agent plugins for Claude Code and Codex"
+description = "Copier template and plugin marketplace for agentic data science projects"
 requires-python = ">=3.11"
 
 [dependency-groups]

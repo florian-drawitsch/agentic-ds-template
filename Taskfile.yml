@@ -51,7 +51,7 @@ tasks:
       - task: validate
 
   dev:
-    desc: Register this working copy as the agent-kit marketplace in both CLIs
+    desc: Register this working copy as the marketplace in both CLIs
     cmds:
       - claude plugin marketplace add {{.ROOT_DIR}}
       - codex plugin marketplace add {{.ROOT_DIR}}

@@ -1,7 +1,7 @@
 {
-  "name": "agent-kit",
+  "name": "agentic-ds-template",
   "interface": {
-    "displayName": "Agent Kit"
+    "displayName": "Agentic DS Template"
   },
   "plugins": [
     {

@@ -1,5 +1,5 @@
 {
-  "name": "agent-kit",
+  "name": "agentic-ds-template",
   "description": "Curated agent plugins for data science projects, for Claude Code and Codex",
   "owner": {
     "name": "Florian Drawitsch"

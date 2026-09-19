@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 RUNS_DIRNAME = "agent-runs"
-NESTED_ENV = "AGENT_KIT_NESTED"
+NESTED_ENV = "AGENTIC_NESTED"
 BLOCKING = {"blocking", "major"}
 SCHEMA: dict[str, Any] = {
     "type": "object",

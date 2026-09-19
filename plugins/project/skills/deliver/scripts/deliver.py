@@ -39,7 +39,7 @@ from typing import Any
 VERSION = "0.1.0"
 PROJECT_COPY = Path("scripts/agent/deliver.py")
 RUNS_DIRNAME = "agent-runs"
-NESTED_ENV = "AGENT_KIT_NESTED"
+NESTED_ENV = "AGENTIC_NESTED"
 TOKEN_LINE = "deliver-run:"
 HOOK_MARKER = "scripts/agent/deliver.py"
 HOOK_TIMEOUT = 1800
@@ -540,7 +540,7 @@ def install(
 def cmd_install(args: argparse.Namespace) -> int:
     """Install the guard and roles into the target repository."""
     if not (assets_dir() / "roles").is_dir():
-        raise SystemExit("Run install from the agent-kit plugin copy of deliver.py")
+        raise SystemExit("Run install from the plugin copy of deliver.py, not the project copy")
     target = repo_root(Path(args.target).resolve())
     models = {
         "claude_implementer": args.claude_implementer_model,

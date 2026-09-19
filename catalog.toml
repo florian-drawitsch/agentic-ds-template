@@ -1,9 +1,9 @@
-# Single source for the agent-kit marketplace.
+# Single source for this repository's plugin marketplace.
 # `task build` generates both marketplace files and the manifests of local plugins from it.
 
 [marketplace]
-name = "agent-kit"
-display_name = "Agent Kit"
+name = "agentic-ds-template"
+display_name = "Agentic DS Template"
 description = "Curated agent plugins for data science projects, for Claude Code and Codex"
 version = "0.1.0"
 owner = "Florian Drawitsch"

@@ -28,9 +28,7 @@ def load_catalog(root: Path) -> dict[str, Any]:
     for plugin in catalog["plugins"]:
         harnesses = set(plugin["harnesses"])
         if harnesses != HARNESSES:
-            raise ValueError(
-                f"Plugin {plugin['name']} must support both harnesses (ADR-0017)"
-            )
+            raise ValueError(f"Plugin {plugin['name']} must support both harnesses (ADR-0017)")
         source = plugin["source"]
         if source["type"] == "local" and not (root / source["path"]).is_dir():
             raise ValueError(f"Local plugin path does not exist: {source['path']}")
