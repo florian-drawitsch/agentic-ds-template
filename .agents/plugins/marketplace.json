@@ -1,0 +1,33 @@
+{
+  "name": "agent-kit",
+  "interface": {
+    "displayName": "Agent Kit"
+  },
+  "plugins": [
+    {
+      "name": "superpowers",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/obra/superpowers.git",
+        "ref": "v6.4.2"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "project",
+      "source": {
+        "source": "local",
+        "path": "./plugins/project"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

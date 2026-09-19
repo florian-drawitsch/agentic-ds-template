@@ -1,7 +1,8 @@
-# ds-project-template
+# agentic-ds-template
 
-A [Copier](https://copier.readthedocs.io) template for data science projects that are built
-together with coding agents (Claude Code and Codex).
+A [Copier](https://copier.readthedocs.io) template for data science projects built together with
+coding agents, and the plugin marketplace those projects use. Claude Code and Codex are both
+supported.
 
 Patterns proven in dozens of data science projects with leading companies in various industries,
 including pharma, automotive, banking and retail.
@@ -23,15 +24,26 @@ including pharma, automotive, banking and retail.
   uv and Task.
 - **Agent setup:**
   - a canonical `AGENTS.md`
-  - guardrail hooks shared by both harnesses
-  - one permission list rendered for each harness
-  - skills from [agent-kit](../agent-kit), pinned to a version
+  - guardrail and completion hooks for both harnesses
+  - read-only reviewer and implementer roles
+  - this repository's marketplace, pinned to a release tag
 - **Context and decision docs** that stay project-owned across template updates.
+
+## Plugin marketplace
+
+This repository is also a plugin marketplace for Claude Code and Codex. Generated projects
+register it at a pinned tag, and any other repository can add it as well.
+
+| Plugin | Source | Purpose |
+| --- | --- | --- |
+| `superpowers` | [obra/superpowers](https://github.com/obra/superpowers), pinned | Brainstorming, planning, test-driven execution, review, finishing branches |
+| `project` | `plugins/project` | `deliver`: execute a plan until it is verifiably done, with a completion guard, implementer and reviewer roles and unattended runs. `cross-review`: read-only review by the other vendor's agent |
 
 ## Status
 
-Design phase. Decisions are recorded in [docs/adr](docs/adr/index.md), and the overall design is
-in [docs/design/architecture.md](docs/design/architecture.md).
+Design and marketplace in place, template rendering in progress. Decisions are recorded in
+[docs/adr](docs/adr/index.md), and the overall design is in
+[docs/design/architecture.md](docs/design/architecture.md).
 
 ## License
 

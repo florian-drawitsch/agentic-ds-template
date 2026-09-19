@@ -1,0 +1,36 @@
+[project]
+name = "agent-kit"
+version = "0.1.0"
+description = "Curated agent plugins for Claude Code and Codex"
+requires-python = ">=3.11"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+    "ty>=0.0.84",
+]
+
+[tool.uv]
+package = false
+exclude-newer = "7 days"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF", "D", "PTH", "RET", "TRY", "PT"]
+ignore = ["D100", "D104", "D105", "D107", "TRY003"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+strict_markers = true
