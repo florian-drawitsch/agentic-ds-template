@@ -1,6 +1,6 @@
 # ADR-0001: Split into template, agent kit and showcase repositories
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0018
 - **Date:** 2026-10-09
 
 ## Context

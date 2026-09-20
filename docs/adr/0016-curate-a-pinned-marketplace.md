@@ -1,6 +1,6 @@
 # ADR-0016: Curate a pinned marketplace and adopt Superpowers
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0018
 - **Date:** 2026-10-09
 - **Supersedes:** ADR-0014
 

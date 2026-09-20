@@ -1,6 +1,6 @@
 # ADR-0013: Carry domain guidance in presets and adopt Superpowers conventions
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0018
 - **Date:** 2026-10-09
 - **Amends:** ADR-0003
 
@@ -8,7 +8,7 @@
 
 ADR-0003 let each archetype preset enable a matching agent-kit plugin. agent-kit dropped its data
 science and archetype plugins: they restated knowledge capable models already have. Instead it
-curates Superpowers for planning and execution, plus a small `project` plugin (agent-kit ADR-0003).
+curates Superpowers for planning and execution, plus a small `project` plugin (ADR-0016).
 
 ## Decision
 
@@ -25,7 +25,7 @@ curates Superpowers for planning and execution, plus a small `project` plugin (a
 
 ## Alternatives considered
 
-- Archetype plugins in agent-kit: rejected in agent-kit ADR-0003.
+- Archetype plugins in agent-kit: rejected in ADR-0016.
 
 ## Consequences
 
