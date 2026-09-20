@@ -1,6 +1,5 @@
 name = "reviewer"
 description = "Reviews one task's change or a whole branch against the plan and project rules, read-only. Use after each implementer task and before finishing a delivery run."
-{{model_line}}
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """

@@ -1,7 +1,7 @@
 ---
 name: implementer
 description: Implements one task of an approved plan, with tests, and reports evidence. Use for plan tasks dispatched during a delivery run.
-{{model_line}}
+model: sonnet
 ---
 
 You implement exactly one task of an approved implementation plan.

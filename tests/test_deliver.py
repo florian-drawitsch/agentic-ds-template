@@ -184,8 +184,8 @@ def test_install_is_idempotent_and_keeps_existing_settings(repo: Path) -> None:
     settings.parent.mkdir()
     settings.write_text(json.dumps({"permissions": {"allow": ["Bash(task check)"]}}))
     models = {
-        "claude_implementer": "sonnet",
-        "claude_reviewer": "opus",
+        "claude_implementer": None,
+        "claude_reviewer": "claude-opus-5-5",
         "codex_implementer": None,
         "codex_reviewer": "some-model",
     }
@@ -198,7 +198,8 @@ def test_install_is_idempotent_and_keeps_existing_settings(repo: Path) -> None:
     data = json.loads(settings.read_text())
     assert data["permissions"]["allow"] == ["Bash(task check)"]
     assert len(data["hooks"]["Stop"]) == 1
-    assert "model: opus" in (repo / ".claude/agents/reviewer.md").read_text()
+    assert "model: claude-opus-5-5" in (repo / ".claude/agents/reviewer.md").read_text()
+    assert "model: sonnet" in (repo / ".claude/agents/implementer.md").read_text()
     assert "model =" not in (repo / ".codex/agents/implementer.toml").read_text()
     assert 'model = "some-model"' in (repo / ".codex/agents/reviewer.toml").read_text()
     assert 'sandbox_mode = "read-only"' in (repo / ".codex/agents/reviewer.toml").read_text()

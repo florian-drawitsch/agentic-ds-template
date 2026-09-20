@@ -490,10 +490,20 @@ def add_stop_hook(path: Path, command: str, extra: dict[str, Any]) -> bool:
 
 
 def render_role(template: Path, model: str | None, syntax: str) -> str:
-    """Fill the model line of a role template, or drop it to inherit the session model."""
-    line = f"model: {model}" if syntax == "yaml" else f'model = "{model}"'
+    """Return a role file, with its model replaced when a model is given.
+
+    Claude roles carry a `model:` line; Codex roles inherit the session model unless a
+    `model = "..."` line is added before the reasoning effort.
+    """
     text = template.read_text(encoding="utf-8")
-    return text.replace("{{model_line}}\n", f"{line}\n" if model else "")
+    if model is None:
+        return text
+    if syntax == "yaml":
+        return re.sub(r"^model: .*$", f"model: {model}", text, count=1, flags=re.MULTILINE)
+    line = f'model = "{model}"'
+    if re.search(r'^model = ".*"$', text, flags=re.MULTILINE):
+        return re.sub(r'^model = ".*"$', line, text, count=1, flags=re.MULTILINE)
+    return text.replace("model_reasoning_effort", f"{line}\nmodel_reasoning_effort", 1)
 
 
 def install(
@@ -818,8 +828,8 @@ def parser() -> argparse.ArgumentParser:
     inst.add_argument(
         "--harness", nargs="+", choices=["claude", "codex"], default=["claude", "codex"]
     )
-    inst.add_argument("--claude-implementer-model", default="sonnet")
-    inst.add_argument("--claude-reviewer-model", default="opus")
+    inst.add_argument("--claude-implementer-model", help="default: sonnet, from the role file")
+    inst.add_argument("--claude-reviewer-model", help="default: opus, from the role file")
     inst.add_argument("--codex-implementer-model", help="default: inherit the session model")
     inst.add_argument("--codex-reviewer-model", help="default: inherit the session model")
     inst.add_argument("--force", action="store_true", help="overwrite existing role files")
