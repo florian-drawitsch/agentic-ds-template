@@ -1,34 +1,41 @@
 # Architecture
 
-## How the three repositories connect
+## Repositories
 
-```
-agent-kit (curated marketplace)          ds-project-template (copier)
-├── superpowers (pinned), project  ◄──┐  ├── copier.yml  (questions, presets)
-├── profile/  ──► ~/.claude, ~/.codex │  └── template/   (rendered tree)
-└── marketplace manifests             │          │ copier copy / update
-                                      │          ▼
-                                      │  generated project
-                                      ├── .claude/settings.json   registers marketplace, enables plugins
-                                      ├── .agents/plugins/marketplace.json   same for Codex
-                                      └── .codex/config.toml      enables plugins
-                                                 ▲
-                                      energy-forecasting (showcase, generated, then built with the kit)
+```text
+agentic-ds-template (this repository, ADR-0018)
+├── copier.yml, template/        Copier template; only template/ is rendered
+├── catalog.toml                 marketplace source: superpowers (pinned), project
+├── .claude-plugin/, .agents/plugins/, plugins/project/
+│        │ copier copy / update            ▲ marketplace at a pinned tag
+│        ▼                                  │
+│   generated project ──────────────────────┘
+│   ├── .claude/settings.json            registers the marketplace, enables plugins, hooks
+│   ├── .agents/plugins/marketplace.json same for Codex
+│   └── .codex/config.toml, hooks.json   enables plugins, hooks
+└── energy-forecasting (separate repository: a generated showcase project)
 ```
 
-- The template never copies skills. It renders references to `agent-kit` at a pinned ref.
-- Updating skills means tagging `agent-kit` and bumping the ref. That is one answer change
-  (`copier update --data agent_kit_ref=v1.3.0`) or a manual edit.
-- AGENTS.md carries a "Planning and decisions" section that adapts Superpowers: specs and plans in
-  `docs/plans/`, durable decisions as ADRs (ADR-0013).
+- The template never copies skills. Generated projects reference this repository's marketplace
+  at a pinned tag. Updating skills means tagging a release and bumping the ref: one answer
+  change (`copier update --data marketplace_ref=v1.3.0`) or a manual edit.
+- AGENTS.md carries a "Planning and decisions" section that adapts Superpowers: specs and plans
+  in `docs/plans/`, durable decisions as ADRs (ADR-0013). It also carries the writing style
+  section (ADR-0019).
 - Project-local skills (truly project-specific) live in `.agents/skills/`, which Codex reads
   natively. `.claude/skills` is a symlink to it, kept by Copier's `_preserve_symlinks`.
 
-## Agent kit
+## Marketplace
 
-agent-kit is a curated marketplace (agent-kit ADR-0003). It re-exports Superpowers at a pinned ref
-and adds the `project` plugin with `adr`, `kickoff` and `template-update`. Its own design and
-layout live in the agent-kit repository.
+The marketplace is curated (ADR-0016) and vendor-independent (ADR-0017):
+
+- **`superpowers`:** re-exported at a pinned tag and commit.
+- **`project`:** this repository's own plugin.
+  - `deliver` executes a plan until it is verifiably done. A completion guard sends the session
+    back to work until every plan item is ticked, the check passes and an optional cross-vendor
+    review passed (ADR-0020).
+  - `cross-review` runs the other vendor's agent as a read-only reviewer.
+  - Planned: `adr`, `kickoff`, `template-update`.
 
 ## Copier question model
 
@@ -66,7 +73,7 @@ Questions appear in four groups. `when:` hides questions that do not apply.
 | Key | Type | Default |
 | --- | --- | --- |
 | `agent_harnesses` | multiselect | claude, codex |
-| `agent_kit_ref` | str | latest tag |
+| `marketplace_ref` | str | latest tag |
 
 Every project enables `superpowers` and `project` (ADR-0013).
 
@@ -103,13 +110,15 @@ never changes, so later updates cannot conflict with edits there.
 ├── CLAUDE.md                    @AGENTS.md plus Claude-only notes
 ├── .agents/
 │   ├── skills/                  project-local skills (often empty at start)
-│   └── plugins/marketplace.json references agent-kit at the pinned ref (Codex)
+│   └── plugins/marketplace.json references this repository at the pinned tag (Codex)
 ├── .claude/
 │   ├── settings.json            permissions, hooks, marketplace, enabled plugins
+│   ├── agents/                  implementer.md, reviewer.md (read-only)
 │   └── skills -> ../.agents/skills
 ├── .codex/
 │   ├── config.toml              sandbox, approval policy, enabled plugins
-│   ├── hooks.json               same guard script as Claude
+│   ├── hooks.json               same guard and completion hooks as Claude
+│   ├── agents/                  implementer.toml, reviewer.toml (read-only sandbox)
 │   └── rules/default.rules      keychain-dependent commands
 ├── .worktreeinclude
 ├── .github/workflows/ci.yml     task check, actions pinned by SHA
@@ -127,7 +136,8 @@ never changes, so later updates cannot conflict with edits there.
 │   ├── roadmap.md
 │   └── guides/development.md
 ├── notebooks/
-├── scripts/agent/               status.py (session hydration), guard.py (hook guard)
+├── scripts/agent/               status.py (session hydration), guard.py (tool guard),
+│                                deliver.py (completion guard, installed from the marketplace)
 ├── src/<package>/
 │   ├── domain/        AGENTS.md  pure types and logic, no I/O
 │   ├── application/   AGENTS.md  use cases, pipeline steps
