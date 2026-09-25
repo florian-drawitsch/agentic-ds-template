@@ -1,0 +1,102 @@
+{%- set layered = architecture == "layered" -%}
+{%- set p = package_name -%}
+version: '3'
+
+silent: true
+
+dotenv: ['.env']
+
+includes:
+  docs: ./taskfiles/docs.yml
+{%- if agent_harnesses %}
+  agent: ./taskfiles/agent.yml
+{%- endif %}
+{%- if container %}
+  docker: ./taskfiles/docker.yml
+{%- endif %}
+
+tasks:
+  setup:
+    desc: Install the environment and the git hooks
+    cmds:
+      - uv sync
+      - uv run prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
+{%- if notebooks %}
+      - uv run python -m ipykernel install --sys-prefix --name {{ p }} --display-name {{ project_name }}
+{%- endif %}
+
+  example-data:
+    desc: Write a synthetic example table to data/raw/example.csv
+    cmds:
+      - uv run python -m {{ p }}.{{ 'adapters.example_data' if layered else 'data' }} data/raw/example.csv
+
+  run:
+    desc: Run the pipeline{{ ' (Hydra overrides after --)' if config == 'hydra' else '' }}
+    cmds:
+      - uv run {{ p }} {{ '{{.CLI_ARGS}}' }}
+{%- if config == "hydra" %}
+
+  sweep:
+    desc: Run every combination of comma-separated override values, e.g. `task sweep -- data.target=a,b`
+    cmds:
+      - uv run {{ p }} --multirun {{ '{{.CLI_ARGS}}' }}
+{%- endif %}
+
+  test:
+    desc: Run the test suite
+    cmds:
+      - uv run pytest {{ '{{.CLI_ARGS}}' }}
+
+  lint:
+    desc: Run every git hook on tracked and untracked files without staging them
+    cmds:
+      - uv run python scripts/run_hooks.py
+
+  check:
+    desc: 'Merge gate: lint, types, import contracts and tests'
+    cmds:
+      - task: lint
+      - task: test
+{%- if tracking == "mlflow" %}
+
+  mlflow:
+    desc: Serve the MLflow UI for runs tracked in data/tracking
+    vars:
+      PORT: '{{ '{{.PORT | default "5000"}}' }}'
+    cmds:
+      - uv run mlflow ui --backend-store-uri sqlite:///data/tracking/mlflow.db --port {{ '{{.PORT}}' }}
+{%- endif %}
+{%- if "api" in interfaces %}
+
+  api:
+    desc: Serve the REST API with auto-reload
+    cmds:
+      - uv run uvicorn {{ p }}.{{ 'entrypoints.api' if layered else 'api' }}:app --reload
+{%- endif %}
+{%- if "dashboard" in interfaces %}
+
+  dashboard:
+    desc: Run the dashboard
+    cmds:
+      - uv run streamlit run src/{{ p }}/{{ 'entrypoints/' if layered else '' }}dashboard.py
+{%- endif %}
+
+  update-template:
+    desc: Pull the latest template version; resolve conflicts, then run task check
+    preconditions:
+      - sh: test -z "$(git status --porcelain)"
+        msg: Commit or stash your changes first
+    cmds:
+      - uvx copier update --trust --conflict inline {{ '{{.CLI_ARGS}}' }}
+
+  clean:
+    desc: Preview, confirm, then delete untracked and ignored files except data/ and .env
+    cmds:
+      - git clean -ndx -e /data -e "/.env*"
+      - task: _clean
+
+  _clean:
+    internal: true
+    prompt: This permanently deletes the files listed above. Continue?
+    cmds:
+      - git clean -fdx -e /data -e "/.env*"

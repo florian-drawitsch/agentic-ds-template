@@ -1,0 +1,75 @@
+# Git hooks, run by prek (https://github.com/j178/prek). `task lint` runs them on all files.
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+
+      - id: ty
+        name: ty
+        entry: uv run ty check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: import-linter
+        name: import contracts
+        entry: uv run lint-imports
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: uv-lock
+        name: uv.lock is current
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+{%- if notebooks %}
+
+      - id: nbstripout
+        name: strip notebook outputs
+        entry: uv run nbstripout
+        language: system
+        types: [jupyter]
+{%- endif %}
+{%- if ci == "github" %}
+
+      - id: zizmor
+        name: zizmor (workflow security)
+        entry: uv run zizmor --no-progress
+        language: system
+        files: ^\.github/workflows/
+{%- endif %}
+
+      - id: commitizen
+        name: conventional commit message
+        entry: uv run cz check --allow-abort --commit-msg-file
+        language: system
+        stages: [commit-msg]

@@ -1,0 +1,232 @@
+# Copier configuration for agentic-ds-template.
+# Only template/ is rendered into projects; the marketplace at the repository root is not.
+
+_min_copier_version: "9.5"
+_subdirectory: template
+_templates_suffix: .jinja
+_answers_file: .copier-answers.yml
+_envops:
+  keep_trailing_newline: true
+
+# Project-owned files are rendered once and never touched by `copier update` (ADR-0002).
+# Everything else is template-owned and three-way merged on update.
+_exclude:
+  - "{% if _copier_operation == 'update' %}README.md{% endif %}"
+  - "{% if _copier_operation == 'update' %}src{% endif %}"
+  - "{% if _copier_operation == 'update' %}tests{% endif %}"
+  - "{% if _copier_operation == 'update' %}conf{% endif %}"
+  - "{% if _copier_operation == 'update' %}notebooks{% endif %}"
+  - "{% if _copier_operation == 'update' %}docs/context{% endif %}"
+  - "{% if _copier_operation == 'update' %}docs/method{% endif %}"
+  - "{% if _copier_operation == 'update' %}docs/roadmap.md{% endif %}"
+  - "{% if _copier_operation == 'update' %}docs/adr/0001-record-architecture-decisions.md{% endif %}"
+  - "{% if 'claude' not in agent_harnesses %}.claude{% endif %}"
+  - "{% if 'claude' not in agent_harnesses %}CLAUDE.md{% endif %}"
+  - "{% if 'codex' not in agent_harnesses %}.codex{% endif %}"
+  - "{% if not agent_harnesses %}scripts/agent{% endif %}"
+  - "{% if ci != 'github' %}.github{% endif %}"
+  - "{% if ci != 'github' %}renovate.json{% endif %}"
+  - "{% if not container %}Dockerfile{% endif %}"
+  - "{% if not container %}.dockerignore{% endif %}"
+  - "{% if not container %}taskfiles/docker.yml{% endif %}"
+  - "{% if not notebooks %}notebooks{% endif %}"
+  - "{% if config != 'hydra' %}conf/config.yaml{% endif %}"
+  - "{% if config != 'python' %}conf/config.toml{% endif %}"
+
+_tasks:
+  - command: git init --quiet --initial-branch=main
+    when: "{{ _copier_operation == 'copy' }}"
+  - command: uv lock --quiet
+
+_message_after_copy: |
+  Created {{ project_name }}. Next steps:
+
+    cd {{ _copier_conf.dst_path }}
+    task setup          # environment, hooks{% if notebooks %}, notebook kernel{% endif %}
+    task example-data   # synthetic data so the pipeline runs end to end
+    task check          # lint, architecture contracts and tests
+
+  Then open the project in Claude Code or Codex and trust it, so the hooks and the
+  {{ marketplace_repo }} marketplace load. Fill docs/context/ before the first plan.
+
+# --- Identity ---------------------------------------------------------------------------------
+
+project_name:
+  type: str
+  help: Project name in kebab-case, for example energy-forecasting
+  validator: >-
+    {% if not (project_name | regex_search('^[a-z][a-z0-9-]*[a-z0-9]$')) %}
+    Use lowercase letters, digits and hyphens, starting with a letter
+    {% endif %}
+
+package_name:
+  type: str
+  help: Python import name
+  default: "{{ project_name | replace('-', '_') }}"
+  validator: >-
+    {% if not (package_name | regex_search('^[a-z][a-z0-9_]*$')) %}
+    Use lowercase letters, digits and underscores, starting with a letter
+    {% endif %}
+
+description:
+  type: str
+  help: One-sentence description
+  default: ""
+
+author_name:
+  type: str
+  help: Author name
+  default: Florian Drawitsch
+
+author_email:
+  type: str
+  help: Author email
+  default: florian.drawitsch@gmail.com
+
+github_owner:
+  type: str
+  help: GitHub user or organization that hosts the project and the template
+  validator: "{% if not github_owner %}Required for the marketplace and CI links{% endif %}"
+
+python_version:
+  type: str
+  help: Python version
+  choices: ["3.14", "3.13"]
+  default: "3.14"
+
+# --- Shape ------------------------------------------------------------------------------------
+
+use_case:
+  type: str
+  help: Main use case. Sets dependencies, domain rules for agents and the evaluation protocol
+  choices:
+    Forecasting: forecasting
+    Anomaly detection: anomaly_detection
+    Optimization and pricing: optimization
+    Computer vision: computer_vision
+    GenAI and LLM applications: genai
+    Tabular prediction: tabular
+    Exploratory analysis: analysis
+  default: forecasting
+
+maturity:
+  type: str
+  help: Maturity. Production enables a coverage gate and the layered architecture by default
+  choices:
+    Proof of concept: poc
+    Production: production
+  default: poc
+
+architecture:
+  type: str
+  help: Package architecture
+  choices:
+    Simple (flat modules): simple
+    Layered (domain, application, ports, adapters, entrypoints, bootstrap): layered
+  default: "{{ 'layered' if maturity == 'production' else 'simple' }}"
+
+interfaces:
+  type: str
+  help: Interfaces besides the command line
+  multiselect: true
+  choices:
+    REST API (FastAPI): api
+    Dashboard (Streamlit): dashboard
+  default: []
+
+config:
+  type: str
+  help: Configuration
+  choices:
+    Hydra: hydra
+    Native Python (TOML file and dataclasses): python
+  default: hydra
+
+dataframes:
+  type: str
+  help: Dataframe libraries
+  choices:
+    Polars: polars
+    Polars and pandas: polars_pandas
+  default: polars
+
+tracking:
+  type: str
+  help: Experiment tracking
+  choices:
+    MLflow (local SQLite store): mlflow
+    None: none
+  default: mlflow
+
+notebooks:
+  type: bool
+  help: Add a notebooks folder and a Jupyter kernel?
+  default: true
+
+container:
+  type: bool
+  help: Add a Dockerfile?
+  default: false
+
+ci:
+  type: str
+  help: Continuous integration
+  choices:
+    GitHub Actions: github
+    None: none
+  default: github
+
+# --- Agents -----------------------------------------------------------------------------------
+
+agent_harnesses:
+  type: str
+  help: Coding agents to configure
+  multiselect: true
+  choices:
+    Claude Code: claude
+    Codex: codex
+  default: [claude, codex]
+
+marketplace_repo:
+  type: str
+  help: GitHub repository of this template, which also serves the plugin marketplace
+  default: "{{ github_owner }}/agentic-ds-template"
+  when: "{{ agent_harnesses | length > 0 }}"
+
+marketplace_ref:
+  type: str
+  help: Marketplace release tag to pin
+  default: v0.1.0
+  when: "{{ agent_harnesses | length > 0 }}"
+
+# --- Optional context (leave empty to fill later) ---------------------------------------------
+
+context_problem:
+  type: str
+  help: What problem does the project solve, and for whom?
+  multiline: true
+  default: ""
+
+context_decisions:
+  type: str
+  help: Which decision or process will use the results?
+  multiline: true
+  default: ""
+
+context_data:
+  type: str
+  help: Which data sources are expected?
+  multiline: true
+  default: ""
+
+context_success:
+  type: str
+  help: How is success measured?
+  multiline: true
+  default: ""
+
+context_constraints:
+  type: str
+  help: Constraints such as compliance, personal data, compute or deadlines?
+  multiline: true
+  default: ""

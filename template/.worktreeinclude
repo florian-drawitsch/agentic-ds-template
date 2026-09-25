@@ -1,0 +1,3 @@
+# Git-ignored files copied into new worktrees by Claude Code, Codex and `task agent:deliver`.
+.env
+data/raw/

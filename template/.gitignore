@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.task/
+
+# Documentation build
+docs/_build/
+docs/api/
+
+# Data and tracking are reproducible and never committed
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Notebooks, OS and editors
+.ipynb_checkpoints/
+.DS_Store
+.idea/

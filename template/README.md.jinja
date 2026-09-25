@@ -1,0 +1,36 @@
+# {{ project_name }}
+
+{{ description or "TODO: one-sentence description." }}
+
+## Quickstart
+
+Requirements: [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
+[Task](https://taskfile.dev).
+
+```bash
+task setup          # environment and git hooks
+task example-data   # synthetic data so the pipeline runs end to end
+task run            # run the pipeline
+task check          # lint, types, import contracts and tests
+```
+
+`task --list` shows every task.
+
+## Working with coding agents
+
+The project is set up for Claude Code and Codex. `AGENTS.md` holds the rules for both.
+
+1. Describe the change. The agent brainstorms and writes a plan to `docs/plans/`.
+2. Durable decisions become ADRs in `docs/adr/`.
+3. The `deliver` skill executes the approved plan until every item is done and `task check`
+   passes. Implementer and read-only reviewer roles do the work.
+4. `cross-review` has the other vendor's agent review the result.
+
+For unattended runs in a separate worktree: `task agent:deliver PLAN=docs/plans/<plan>.md`.
+
+## Documentation
+
+`task docs:serve` serves the documentation: context, evaluation protocol, decisions and the
+API reference.
+
+<!-- Generated from agentic-ds-template. Template updates: `task update-template`. -->
