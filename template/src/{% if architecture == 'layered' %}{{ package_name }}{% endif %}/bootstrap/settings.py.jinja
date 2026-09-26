@@ -1,0 +1,77 @@
+"""Typed, immutable settings for the application.
+
+Settings are plain dataclasses, independent of how they are loaded{% if config == 'hydra' %} (Hydra composes them in the
+command line entry point){% endif %}.
+"""
+
+from __future__ import annotations
+
+{% if config == 'python' -%}
+import tomllib
+{% endif -%}
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class DataSettings:
+    """Where the input table lives and which column is the target."""
+
+    path: Path
+    target: str
+{% if tracking == 'mlflow' %}
+
+@dataclass(frozen=True)
+class TrackingSettings:
+    """Where runs are tracked."""
+
+    uri: str
+    experiment: str
+    artifact_dir: Path
+{% endif %}
+
+@dataclass(frozen=True)
+class Settings:
+    """All pipeline settings."""
+
+    data: DataSettings
+    report_dir: Path
+{%- if tracking == 'mlflow' %}
+    tracking: TrackingSettings
+{%- endif %}
+
+
+def settings_from_mapping(values: Mapping[str, Any]) -> Settings:
+    """Build settings from a plain mapping, as loaded from a config file.
+
+    Args:
+        values: Nested mapping with the keys of the configuration file.
+
+    Returns:
+        The validated, immutable settings.
+    """
+    data = values["data"]
+{%- if tracking == 'mlflow' %}
+    tracking = values["tracking"]
+{%- endif %}
+    return Settings(
+        data=DataSettings(path=Path(data["path"]), target=str(data["target"])),
+        report_dir=Path(values["report_dir"]),
+{%- if tracking == 'mlflow' %}
+        tracking=TrackingSettings(
+            uri=str(tracking["uri"]),
+            experiment=str(tracking["experiment"]),
+            artifact_dir=Path(tracking["artifact_dir"]),
+        ),
+{%- endif %}
+    )
+{%- if config == 'python' %}
+
+
+def load_settings(path: Path) -> Settings:
+    """Load settings from a TOML file."""
+    with path.open("rb") as handle:
+        return settings_from_mapping(tomllib.load(handle))
+{%- endif %}

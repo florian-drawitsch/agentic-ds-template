@@ -1,0 +1,29 @@
+import polars as pl
+import pytest
+
+from {{ package_name }}.domain.baseline import MeanBaseline
+from {{ package_name }}.domain.evaluation import mean_absolute_error, split_holdout
+
+
+def test_mean_absolute_error() -> None:
+    assert mean_absolute_error(pl.Series([1.0, 2.0, 4.0]), pl.Series([1.0, 3.0, 2.0])) == 1.0
+
+
+def test_mean_absolute_error_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError, match="equal length"):
+        mean_absolute_error(pl.Series([1.0]), pl.Series([1.0, 2.0]))
+
+
+def test_split_holdout_keeps_time_order() -> None:
+    train, test = split_holdout(pl.DataFrame({"step": range(10)}), fraction=0.3)
+    assert train["step"].to_list() == list(range(7))
+    assert test["step"].to_list() == [7, 8, 9]
+
+
+def test_baseline_predicts_the_training_mean() -> None:
+    assert MeanBaseline().fit(pl.Series([1.0, 2.0, 3.0])).predict(2).to_list() == [2.0, 2.0]
+
+
+def test_baseline_must_be_fitted_first() -> None:
+    with pytest.raises(RuntimeError, match="Fit the model"):
+        MeanBaseline().predict(1)

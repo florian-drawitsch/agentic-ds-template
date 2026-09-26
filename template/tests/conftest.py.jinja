@@ -1,0 +1,13 @@
+from pathlib import Path
+
+import pytest
+
+from {{ package_name }}.{{ 'adapters.example_data' if architecture == 'layered' else 'data' }} import example_table
+
+
+@pytest.fixture
+def example_csv(tmp_path: Path) -> Path:
+    path = tmp_path / "raw" / "example.csv"
+    path.parent.mkdir(parents=True)
+    example_table(rows=50).write_csv(path)
+    return path

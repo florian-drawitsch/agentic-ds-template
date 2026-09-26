@@ -1,0 +1,55 @@
+"""File-based adapters: tables from CSV or Parquet, reports as JSON."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+
+import polars as pl
+
+from {{ package_name }}.domain.evaluation import Report
+
+REPORT_NAME = "latest.json"
+
+
+class FileTableSource:
+    """Read the input table from a CSV or Parquet file."""
+
+    def __init__(self, path: Path) -> None:
+        """Remember the file to read."""
+        self.path = path
+
+    def load(self) -> pl.DataFrame:
+        """Read the table.
+
+        Raises:
+            ValueError: If the file format is not supported.
+        """
+        if self.path.suffix == ".parquet":
+            return pl.read_parquet(self.path)
+        if self.path.suffix == ".csv":
+            return pl.read_csv(self.path)
+        raise ValueError(f"Unsupported table format: {self.path.suffix}")
+
+
+class JsonReportStore:
+    """Store the latest report as JSON in a directory."""
+
+    def __init__(self, directory: Path) -> None:
+        """Remember the report directory."""
+        self.directory = directory
+
+    def save(self, report: Report) -> Path:
+        """Write the report and return its path."""
+        self.directory.mkdir(parents=True, exist_ok=True)
+        path = self.directory / REPORT_NAME
+        path.write_text(json.dumps(asdict(report), indent=2) + "\n", encoding="utf-8")
+        return path
+
+    def latest(self) -> Report | None:
+        """Read the latest report, if one exists."""
+        path = self.directory / REPORT_NAME
+        if not path.is_file():
+            return None
+        return Report(**json.loads(path.read_text(encoding="utf-8")))

@@ -1,0 +1,15 @@
+from pathlib import Path
+
+import pytest
+from streamlit.testing.v1 import AppTest
+
+import {{ package_name }}
+
+DASHBOARD = Path({{ package_name }}.__file__).parent / "{{ 'entrypoints/' if architecture == 'layered' else '' }}dashboard.py"
+
+
+def test_dashboard_renders_without_a_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    app = AppTest.from_file(str(DASHBOARD)).run()
+    assert not app.exception
+    assert "No report yet" in app.info[0].value

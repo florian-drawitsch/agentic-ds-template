@@ -1,0 +1,25 @@
+import polars as pl
+import pytest
+
+from {{ package_name }}.evaluate import mean_absolute_error, split_holdout
+
+
+def test_mean_absolute_error() -> None:
+    assert mean_absolute_error(pl.Series([1.0, 2.0, 4.0]), pl.Series([1.0, 3.0, 2.0])) == 1.0
+
+
+def test_mean_absolute_error_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError, match="equal length"):
+        mean_absolute_error(pl.Series([1.0]), pl.Series([1.0, 2.0]))
+
+
+def test_split_holdout_keeps_time_order() -> None:
+    table = pl.DataFrame({"step": range(10)})
+    train, test = split_holdout(table, fraction=0.3)
+    assert train["step"].to_list() == list(range(7))
+    assert test["step"].to_list() == [7, 8, 9]
+
+
+def test_split_holdout_rejects_empty_parts() -> None:
+    with pytest.raises(ValueError, match="no training or test rows"):
+        split_holdout(pl.DataFrame({"step": range(3)}), fraction=0.01)

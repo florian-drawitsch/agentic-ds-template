@@ -1,0 +1,54 @@
+"""The pipeline: read data, fit the baseline, evaluate on a hold-out, report and track."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
+
+from {{ package_name }}.config import Settings
+from {{ package_name }}.data import read_table
+from {{ package_name }}.evaluate import mean_absolute_error, split_holdout
+from {{ package_name }}.model import MeanBaseline
+from {{ package_name }}.tracking import Tracker
+
+REPORT_NAME = "latest.json"
+
+
+@dataclass(frozen=True)
+class Report:
+    """Evaluation result of one pipeline run."""
+
+    model: str
+    rows_train: int
+    rows_test: int
+    mae: float
+
+
+def write_report(report: Report, directory: Path) -> Path:
+    """Write the report as JSON and return its path."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / REPORT_NAME
+    path.write_text(json.dumps(asdict(report), indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def run(settings: Settings, tracker: Tracker) -> Report:
+    """Run the pipeline once and return its report."""
+    table = read_table(settings.data.path)
+    train, test = split_holdout(table)
+    target = settings.data.target
+    model = MeanBaseline().fit(train[target])
+    report = Report(
+        model="mean_baseline",
+        rows_train=train.height,
+        rows_test=test.height,
+        mae=mean_absolute_error(test[target], model.predict(test.height)),
+    )
+    path = write_report(report, settings.report_dir)
+    tracker.record(
+        params={"model": report.model, "target": target, "data": settings.data.path},
+        metrics={"mae": report.mae},
+        artifacts=[path],
+    )
+    return report

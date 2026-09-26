@@ -1,0 +1,30 @@
+"""Use case: fit the baseline, evaluate it on a hold-out, save and track the report."""
+
+from __future__ import annotations
+
+from {{ package_name }}.domain.baseline import MeanBaseline
+from {{ package_name }}.domain.evaluation import Report, mean_absolute_error, split_holdout
+from {{ package_name }}.ports.reports import ReportStore
+from {{ package_name }}.ports.tables import TableSource
+from {{ package_name }}.ports.tracking import Tracker
+
+
+def evaluate_baseline(
+    source: TableSource, store: ReportStore, tracker: Tracker, target: str
+) -> Report:
+    """Run the baseline evaluation once and return its report."""
+    train, test = split_holdout(source.load())
+    model = MeanBaseline().fit(train[target])
+    report = Report(
+        model="mean_baseline",
+        rows_train=train.height,
+        rows_test=test.height,
+        mae=mean_absolute_error(test[target], model.predict(test.height)),
+    )
+    path = store.save(report)
+    tracker.record(
+        params={"model": report.model, "target": target},
+        metrics={"mae": report.mae},
+        artifacts=[path],
+    )
+    return report

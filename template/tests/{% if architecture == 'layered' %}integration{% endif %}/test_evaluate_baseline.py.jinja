@@ -1,0 +1,64 @@
+from pathlib import Path
+
+from {{ package_name }}.adapters.files import FileTableSource, JsonReportStore
+from {{ package_name }}.adapters.tracking import NullTracker
+from {{ package_name }}.application.evaluate_baseline import evaluate_baseline
+
+
+def test_use_case_saves_and_returns_the_report(example_csv: Path, tmp_path: Path) -> None:
+    store = JsonReportStore(tmp_path / "reports")
+
+    report = evaluate_baseline(FileTableSource(example_csv), store, NullTracker(), "target")
+
+    assert store.latest() == report
+    assert report.rows_train + report.rows_test == 50
+{%- if config == 'python' %}
+
+
+def test_cli_runs_from_a_config_file(example_csv: Path, tmp_path: Path) -> None:
+    from {{ package_name }}.entrypoints.cli import main
+
+    config = tmp_path / "config.toml"
+    lines = [
+        f'report_dir = "{tmp_path / "reports"}"',
+        "[data]",
+        f'path = "{example_csv}"',
+        'target = "target"',
+    ]
+{%- if tracking == 'mlflow' %}
+    lines += [
+        "[tracking]",
+        f'uri = "sqlite:///{tmp_path / "mlflow.db"}"',
+        'experiment = "test"',
+        f'artifact_dir = "{tmp_path / "artifacts"}"',
+    ]
+{%- endif %}
+    config.write_text("\n".join(lines) + "\n")
+    assert main(["--config", str(config)]) == 0
+    assert (tmp_path / "reports" / "latest.json").is_file()
+{%- endif %}
+{%- if config == 'hydra' %}
+
+
+def test_cli_runs_with_overrides(example_csv: Path, tmp_path: Path) -> None:
+    from {{ package_name }}.entrypoints.cli import main
+
+    overrides = [f"data.path='{example_csv}'", f"report_dir='{tmp_path / 'reports'}'"]
+{%- if tracking == 'mlflow' %}
+    overrides += [
+        f"tracking.uri='sqlite:///{tmp_path / 'mlflow.db'}'",
+        f"tracking.artifact_dir='{tmp_path / 'artifacts'}'",
+    ]
+{%- endif %}
+    assert main(overrides) == 0
+    assert (tmp_path / "reports" / "latest.json").is_file()
+
+
+def test_multirun_expands_every_combination() -> None:
+    from {{ package_name }}.entrypoints.cli import expand_sweep
+
+    assert expand_sweep(["data.target=a,b", "report_dir=out"]) == [
+        ["data.target=a", "report_dir=out"],
+        ["data.target=b", "report_dir=out"],
+    ]
+{%- endif %}

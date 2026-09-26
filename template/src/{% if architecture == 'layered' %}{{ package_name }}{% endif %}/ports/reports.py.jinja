@@ -1,0 +1,20 @@
+"""Port for storing run reports."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Protocol
+
+from {{ package_name }}.domain.evaluation import Report
+
+
+class ReportStore(Protocol):
+    """Saves reports and returns the latest one."""
+
+    def save(self, report: Report) -> Path:
+        """Save the report and return where it was written."""
+        ...
+
+    def latest(self) -> Report | None:
+        """Return the latest report, if any."""
+        ...

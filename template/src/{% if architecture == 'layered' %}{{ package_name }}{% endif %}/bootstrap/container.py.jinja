@@ -1,0 +1,38 @@
+"""Composition root: the only place that chooses concrete adapters."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from {{ package_name }}.adapters.files import FileTableSource, JsonReportStore
+from {{ package_name }}.adapters.tracking import {{ 'MlflowTracker' if tracking == 'mlflow' else 'NullTracker' }}
+from {{ package_name }}.bootstrap.settings import Settings
+from {{ package_name }}.ports.reports import ReportStore
+from {{ package_name }}.ports.tables import TableSource
+from {{ package_name }}.ports.tracking import Tracker
+
+
+@dataclass(frozen=True)
+class Components:
+    """The adapters an application run needs."""
+
+    source: TableSource
+    store: ReportStore
+    tracker: Tracker
+    target: str
+
+
+def build(settings: Settings) -> Components:
+    """Wire concrete adapters from the settings."""
+    return Components(
+        source=FileTableSource(settings.data.path),
+        store=JsonReportStore(settings.report_dir),
+{%- if tracking == 'mlflow' %}
+        tracker=MlflowTracker(
+            settings.tracking.uri, settings.tracking.experiment, settings.tracking.artifact_dir
+        ),
+{%- else %}
+        tracker=NullTracker(),
+{%- endif %}
+        target=settings.data.target,
+    )

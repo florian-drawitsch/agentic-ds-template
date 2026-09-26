@@ -1,0 +1,88 @@
+"""Command line entry point: run the baseline evaluation once and print the report."""
+
+from __future__ import annotations
+
+import argparse
+{%- if config == 'hydra' %}
+import itertools
+{%- endif %}
+import json
+{%- if config == 'hydra' %}
+from collections.abc import Sequence
+{%- endif %}
+from dataclasses import asdict
+from pathlib import Path
+{%- if config == 'hydra' %}
+from typing import Any, cast
+{%- else %}
+from typing import Any
+{%- endif %}
+{%- if config == 'hydra' %}
+
+from hydra import compose, initialize_config_dir
+from hydra.core.override_parser.overrides_parser import OverridesParser
+from omegaconf import OmegaConf
+{%- endif %}
+
+from {{ package_name }}.application.evaluate_baseline import evaluate_baseline
+from {{ package_name }}.bootstrap.container import build
+from {{ package_name }}.bootstrap.settings import Settings, {{ 'settings_from_mapping' if config == 'hydra' else 'load_settings' }}
+
+CONFIG_DIR = Path(__file__).resolve().parents[3] / "conf"
+
+
+def run(settings: Settings) -> dict[str, Any]:
+    """Run the use case with adapters wired from the settings."""
+    components = build(settings)
+    report = evaluate_baseline(
+        components.source, components.store, components.tracker, components.target
+    )
+    return asdict(report)
+{%- if config == 'hydra' %}
+
+def compose_settings(overrides: Sequence[str]) -> Settings:
+    """Compose the Hydra configuration with overrides into typed settings."""
+    with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
+        cfg = compose(config_name="config", overrides=list(overrides))
+    return settings_from_mapping(cast("dict[str, Any]", OmegaConf.to_container(cfg, resolve=True)))
+
+
+def expand_sweep(overrides: Sequence[str]) -> list[list[str]]:
+    """Expand comma-separated sweep values into one override list per combination."""
+    choices = []
+    for override in OverridesParser.create().parse_overrides(list(overrides)):
+        key = override.get_key_element()
+        if override.is_sweep_override():
+            choices.append([f"{key}={value}" for value in override.sweep_string_iterator()])
+        else:
+            choices.append([f"{key}={override.get_value_element_as_str()}"])
+    return [list(combination) for combination in itertools.product(*choices)]
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run once per configuration. Accepts Hydra overrides such as `data.target=y`.
+
+    Hydra's compose API is used instead of `@hydra.main`, which fails on Python 3.14 with
+    hydra-core 1.3.7.
+    """
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("overrides", nargs="*", help="Hydra overrides, for example data.target=y")
+    parser.add_argument(
+        "-m", "--multirun", action="store_true", help="run every combination of a,b,c values"
+    )
+    args = parser.parse_args(argv)
+    for overrides in expand_sweep(args.overrides) if args.multirun else [args.overrides]:
+        settings = compose_settings(overrides)
+        print(json.dumps(run(settings)))
+    return 0
+{%- else %}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run with the settings from a TOML file."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=CONFIG_DIR / "config.toml")
+    args = parser.parse_args(argv)
+    print(json.dumps(run(load_settings(args.config))))
+    return 0
+{%- endif %}

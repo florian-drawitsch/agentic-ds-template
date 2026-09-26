@@ -1,0 +1,79 @@
+import json
+from pathlib import Path
+
+from {{ package_name }}.config import DataSettings, Settings{{ ', TrackingSettings' if tracking == 'mlflow' else '' }}
+from {{ package_name }}.pipeline import run
+from {{ package_name }}.tracking import NullTracker
+
+
+def make_settings(example_csv: Path, tmp_path: Path) -> Settings:
+    return Settings(
+        data=DataSettings(path=example_csv, target="target"),
+        report_dir=tmp_path / "reports",
+{%- if tracking == 'mlflow' %}
+        tracking=TrackingSettings(
+            uri=f"sqlite:///{tmp_path / 'mlflow.db'}",
+            experiment="test",
+            artifact_dir=tmp_path / "artifacts",
+        ),
+{%- endif %}
+    )
+
+
+def test_pipeline_writes_a_report(example_csv: Path, tmp_path: Path) -> None:
+    report = run(make_settings(example_csv, tmp_path), NullTracker())
+
+    saved = json.loads((tmp_path / "reports" / "latest.json").read_text())
+    assert saved["mae"] == report.mae
+    assert report.rows_train + report.rows_test == 50
+    assert report.mae > 0
+{%- if config == 'python' %}
+
+
+def test_cli_runs_from_a_config_file(example_csv: Path, tmp_path: Path) -> None:
+    from {{ package_name }}.cli import main
+
+    config = tmp_path / "config.toml"
+    lines = [
+        f'report_dir = "{tmp_path / "reports"}"',
+        "[data]",
+        f'path = "{example_csv}"',
+        'target = "target"',
+    ]
+{%- if tracking == 'mlflow' %}
+    lines += [
+        "[tracking]",
+        f'uri = "sqlite:///{tmp_path / "mlflow.db"}"',
+        'experiment = "test"',
+        f'artifact_dir = "{tmp_path / "artifacts"}"',
+    ]
+{%- endif %}
+    config.write_text("\n".join(lines) + "\n")
+    assert main(["--config", str(config)]) == 0
+    assert (tmp_path / "reports" / "latest.json").is_file()
+{%- endif %}
+{%- if config == 'hydra' %}
+
+
+def test_cli_runs_with_overrides(example_csv: Path, tmp_path: Path) -> None:
+    from {{ package_name }}.cli import main
+
+    overrides = [f"data.path='{example_csv}'", f"report_dir='{tmp_path / 'reports'}'"]
+{%- if tracking == 'mlflow' %}
+    overrides += [
+        f"tracking.uri='sqlite:///{tmp_path / 'mlflow.db'}'",
+        f"tracking.artifact_dir='{tmp_path / 'artifacts'}'",
+    ]
+{%- endif %}
+    assert main(overrides) == 0
+    assert (tmp_path / "reports" / "latest.json").is_file()
+
+
+def test_multirun_expands_every_combination() -> None:
+    from {{ package_name }}.cli import expand_sweep
+
+    assert expand_sweep(["data.target=a,b", "report_dir=out"]) == [
+        ["data.target=a", "report_dir=out"],
+        ["data.target=b", "report_dir=out"],
+    ]
+{%- endif %}

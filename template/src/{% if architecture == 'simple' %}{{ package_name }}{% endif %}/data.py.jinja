@@ -1,0 +1,45 @@
+"""Reading tables and producing the synthetic example data."""
+
+from __future__ import annotations
+
+import random
+import sys
+from pathlib import Path
+
+import polars as pl
+
+
+def read_table(path: Path) -> pl.DataFrame:
+    """Read a CSV or Parquet table.
+
+    Raises:
+        ValueError: If the file format is not supported.
+    """
+    if path.suffix == ".parquet":
+        return pl.read_parquet(path)
+    if path.suffix == ".csv":
+        return pl.read_csv(path)
+    raise ValueError(f"Unsupported table format: {path.suffix}")
+
+
+def example_table(rows: int = 200, seed: int = 0) -> pl.DataFrame:
+    """Return a synthetic table with one feature and a noisy linear target, in time order."""
+    rng = random.Random(seed)
+    x = [rng.uniform(0, 10) for _ in range(rows)]
+    return pl.DataFrame(
+        {"step": list(range(rows)), "x": x, "target": [2.0 * v + 1.0 + rng.gauss(0, 1) for v in x]}
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Write the example table to the path given as the only argument."""
+    args = sys.argv[1:] if argv is None else argv
+    path = Path(args[0] if args else "data/raw/example.csv")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    example_table().write_csv(path)
+    print(f"Wrote {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

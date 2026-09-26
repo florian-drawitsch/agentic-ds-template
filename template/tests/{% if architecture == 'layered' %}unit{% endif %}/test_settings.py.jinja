@@ -1,0 +1,28 @@
+from pathlib import Path
+{%- if config == 'hydra' %}
+from typing import Any, cast
+
+from hydra import compose, initialize_config_dir
+from omegaconf import OmegaConf
+
+from {{ package_name }}.entrypoints.cli import CONFIG_DIR
+from {{ package_name }}.bootstrap.settings import settings_from_mapping
+
+
+def test_hydra_config_composes_into_settings() -> None:
+    with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
+        cfg = compose(config_name="config", overrides=["data.target=y"])
+    settings = settings_from_mapping(cast("dict[str, Any]", OmegaConf.to_container(cfg, resolve=True)))
+    assert settings.data.target == "y"
+    assert settings.data.path == Path("data/raw/example.csv")
+{%- else %}
+
+from {{ package_name }}.entrypoints.cli import CONFIG_DIR
+from {{ package_name }}.bootstrap.settings import load_settings
+
+
+def test_default_config_loads() -> None:
+    settings = load_settings(CONFIG_DIR / "config.toml")
+    assert settings.data.target == "target"
+    assert settings.report_dir == Path("data/reports")
+{%- endif %}

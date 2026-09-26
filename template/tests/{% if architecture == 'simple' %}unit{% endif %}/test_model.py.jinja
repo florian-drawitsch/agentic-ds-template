@@ -1,0 +1,14 @@
+import polars as pl
+import pytest
+
+from {{ package_name }}.model import MeanBaseline
+
+
+def test_baseline_predicts_the_training_mean() -> None:
+    model = MeanBaseline().fit(pl.Series([1.0, 2.0, 3.0]))
+    assert model.predict(2).to_list() == [2.0, 2.0]
+
+
+def test_baseline_must_be_fitted_first() -> None:
+    with pytest.raises(RuntimeError, match="Fit the model"):
+        MeanBaseline().predict(1)
