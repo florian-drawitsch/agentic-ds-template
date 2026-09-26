@@ -1,0 +1,22 @@
+{#- Single source for agent permissions, rendered into Claude Code settings and Codex rules. -#}
+{%- set allow_commands = [
+  ["task"], ["uv", "run", "pytest"], ["uv", "run", "ruff"], ["uv", "run", "ty"],
+  ["uv", "run", "lint-imports"], ["uv", "run", "--script", "scripts/agent"], ["uv", "sync"],
+  ["uv", "add"], ["uv", "remove"], ["uv", "lock"], ["uv", "tree"],
+  ["git", "status"], ["git", "diff"], ["git", "log"], ["git", "show"], ["git", "branch"],
+  ["git", "switch"], ["git", "add"], ["git", "commit"], ["git", "worktree"], ["git", "rev-parse"],
+  ["ls"], ["rg"], ["grep"], ["find"], ["head"], ["tail"], ["wc"], ["jq"],
+] -%}
+{%- set deny_commands = [
+  {"cmd": ["git", "push", "--force"], "why": "Force pushes rewrite shared history."},
+  {"cmd": ["git", "push", "-f"], "why": "Force pushes rewrite shared history."},
+  {"cmd": ["git", "push", "--force-with-lease"], "why": "Force pushes rewrite shared history."},
+  {"cmd": ["git", "commit", "--no-verify"], "why": "Git hooks must not be skipped."},
+  {"cmd": ["pip", "install"], "why": "Use uv add instead of pip."},
+  {"cmd": ["pip3", "install"], "why": "Use uv add instead of pip."},
+  {"cmd": ["uv", "pip", "install"], "why": "Use uv add instead of pip."},
+] -%}
+{%- set keychain_commands = [
+  ["gh", "auth", "status"], ["gh", "pr", "view"], ["gh", "pr", "create"], ["gh", "pr", "list"],
+  ["gh", "pr", "checks"], ["gh", "run", "view"], ["gh", "run", "list"],
+] -%}

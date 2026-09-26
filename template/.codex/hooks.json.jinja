@@ -1,0 +1,20 @@
+{%- set hook = 'uv run --script "$(git rev-parse --show-toplevel)/scripts/agent/' -%}
+{{ {
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": hook ~ 'status.py"'}]}],
+    "PreToolUse": [{
+      "matcher": "Bash|apply_patch|Edit|Write",
+      "hooks": [{"type": "command", "command": hook ~ 'guard.py"', "statusMessage": "Checking project rules"}]
+    }],
+    "PostToolUse": [{
+      "matcher": "apply_patch|Edit|Write",
+      "hooks": [{"type": "command", "command": hook ~ 'format_changed.py"', "statusMessage": "Formatting changed files"}]
+    }],
+    "Stop": [{"hooks": [{
+      "type": "command",
+      "command": hook ~ 'deliver.py" hook',
+      "timeout": 1800,
+      "statusMessage": "Checking the delivery run"
+    }]}]
+  }
+} | tojson(indent=2) }}

@@ -1,0 +1,1 @@
+../../../plugins/project/skills/deliver/scripts/deliver.py

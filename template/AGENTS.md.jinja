@@ -1,0 +1,146 @@
+{%- set use_case_titles = {
+  "forecasting": "Forecasting",
+  "anomaly_detection": "Anomaly detection",
+  "optimization": "Optimization and pricing",
+  "computer_vision": "Computer vision",
+  "genai": "GenAI",
+  "tabular": "Tabular prediction",
+  "analysis": "Analysis",
+} -%}
+# {{ project_name }}
+
+{{ description or "TODO: one-sentence description." }}
+
+## Project
+
+<!-- Project-owned: refine freely. Template updates never change this section. -->
+{{ context_problem.strip() if context_problem else "TODO: the problem, who has it, and the decision the results support." }}
+
+Before changing behavior, read `docs/context/project.md` (goals, stakeholders, constraints),
+`docs/context/data.md` (sources, data contract), `docs/context/glossary.md` and
+`docs/method/evaluation-protocol.md` (how results are judged).
+
+## Commands
+
+- `task setup`: install the environment and git hooks. `task --list` shows all tasks.
+- `task check`: lint, types, import contracts and tests. This is the merge gate.
+- `task test -- <pytest args>`, `task lint`, `task example-data`, `task run`
+  {%- if config == 'hydra' %} (Hydra overrides after `--`){% endif %}.
+{%- if tracking == 'mlflow' %}
+- `task mlflow`: MLflow UI for runs tracked in `data/tracking/`.
+{%- endif %}
+{%- if 'api' in interfaces %}
+- `task api`: serve the REST API.
+{%- endif %}
+{%- if 'dashboard' in interfaces %}
+- `task dashboard`: run the dashboard.
+{%- endif %}
+- `task docs:serve`: live documentation.
+- Dependencies: `uv add <pkg>`, or `uv add --group <dev|test|lint|docs> <pkg>` for tooling.
+  Never use pip. Never edit `uv.lock` by hand.
+- Turn repeated commands into named tasks in `Taskfile.yml`.
+
+## Layout
+{% if architecture == 'layered' %}
+`src/{{ package_name }}/` is layered. Dependencies point inward:
+`entrypoints` → `bootstrap` → `adapters` → `application` → `ports` → `domain`.
+
+- `domain/`: pure types and logic, no I/O
+- `application/`: use cases, depending on ports and domain only
+- `ports/`: protocols for outbound dependencies
+- `adapters/`: implementations of ports (files, tracking, models)
+- `bootstrap/`: settings and wiring, the only place that picks concrete adapters
+- `entrypoints/`: command line{% if 'api' in interfaces %}, API{% endif %}{% if 'dashboard' in interfaces %}, dashboard{% endif %}
+
+Each layer has an AGENTS.md. Read it before adding code there.
+{%- else %}
+`src/{{ package_name }}/` holds flat modules: `data`, `model`, `evaluate`, `pipeline`,
+`tracking`, `config` and the entry points (`cli`{% if 'api' in interfaces %}, `api`{% endif %}{% if 'dashboard' in interfaces %}, `dashboard`{% endif %}).
+Entry points may import everything; nothing imports them.
+{%- endif %}
+
+- Import rules are enforced by import-linter (`[tool.importlinter]` in `pyproject.toml`).
+- Tests: `tests/unit/` for logic, `tests/integration/` for component boundaries.
+- Data: `data/raw/` is immutable input. Outputs go to `interim/`, `processed/`, `models/`
+  and `reports/`. All of `data/` is git-ignored.
+
+## Rules
+
+- Test every meaningful behavior change in the same change, with the smallest test that gives
+  confidence. Test behavior, not implementation. Say why when you add no test.
+- Keep frameworks at the edges:
+  {%- if config == 'hydra' %} Hydra only in entry points,{% endif %}
+  {%- if tracking == 'mlflow' %} MLflow only in tracking code,{% endif %} web frameworks only in their
+  entry point.
+- Notebooks are for exploration. Move reusable logic into the package, with tests.
+- Report only results from tracked runs or saved artifacts. Never state a number you did not
+  produce.
+- Google-style docstrings for public functions and classes.
+
+## {{ use_case_titles[use_case] }} rules
+{% if use_case == 'forecasting' %}
+- Split by time only. Evaluate with rolling-origin backtests over several origins.
+- Every feature must exist at the forecast origin. Mark covariates as past-only or known in
+  advance.
+- Beat a seasonal naive baseline first. Report errors per horizon.
+- Report point and probabilistic metrics (for example MASE and quantile loss) with interval
+  coverage.
+{%- elif use_case == 'anomaly_detection' %}
+- Keep a labeled hold-out that threshold tuning never touches.
+- Evaluate events (detection delay, missed and false events), not only points.
+- Calibrate thresholds on validation data and document the alert budget.
+- Split by time or by asset so no series appears on both sides.
+{%- elif use_case == 'optimization' %}
+- Keep prediction and decision apart: models estimate, an optimizer decides.
+- Check every recommendation against constraints and guardrails before reporting it.
+- Record the objective in an ADR and state the trade-offs it ignores.
+- Validate decisions on held-out periods or by simulation, not only by model fit.
+{%- elif use_case == 'computer_vision' %}
+- Split by subject, device or session, never by image.
+- Version datasets and labels, and record the version with every training run.
+- Check label quality on a sample before trusting metrics.
+- Keep training and inference preprocessing identical. Test exported models for parity.
+{%- elif use_case == 'genai' %}
+- Keep an evaluation set with expected outcomes. Grade every prompt or model change against it.
+- Version prompts like code. Record prompt version, model and parameters with each run.
+- Prefer validated structured outputs over parsing free text.
+- Track cost and latency per request. Send no personal data without an approved basis.
+{%- elif use_case == 'tabular' %}
+- Prevent target leakage: every feature must be known at prediction time.
+- Split by group when rows are related, by time when the target drifts.
+- Compare against a simple baseline and report calibration, not only accuracy.
+- Report uncertainty for small samples.
+{%- else %}
+- Record each question, the data used and the answer.
+- Conclusions cite the exact query or code that produced them.
+- Report uncertainty and sample sizes with every estimate.
+- Prefer simple, explainable methods unless a complex one is clearly justified.
+{%- endif %}
+
+## Planning and decisions
+
+- Save design specs as `docs/plans/YYYY-MM-DD-<topic>-design.md` and plans as
+  `docs/plans/YYYY-MM-DD-<topic>.md`. This replaces the `docs/superpowers/` default.
+- When an approved design settles a durable decision (structure, objective, data or evaluation
+  rules, what results may claim), record an ADR in `docs/adr/` before implementing. Link it
+  from the design.
+- Accepted ADRs outrank code and tests, which outrank plans.
+- Execute approved plans with the `deliver` skill. Finish with `cross-review`.
+
+## Definition of done
+
+- `task check` passes.
+- Changed behavior is tested. Docs and docstrings match the behavior.
+- Conventional Commits (`type(scope): subject`), sized by responsibility. No agent attribution
+  in commits or pull requests.
+
+## Writing style
+
+Applies to everything you write here: replies, docs, docstrings, comments, commit messages.
+
+- Answer first. Details as bullets, one idea each. Numbered steps for procedures.
+- No preamble, no restating the question, no process narration, no recap sections.
+- No em dashes. Plain words over jargon; explain an unavoidable technical term briefly.
+- One idea per sentence. Cut filler and redundant qualifiers.
+- If unsure, say so and say how to find out.
+- Precise, neutral, matter-of-fact tone.

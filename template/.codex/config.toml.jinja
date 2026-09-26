@@ -1,0 +1,19 @@
+# Project-scoped Codex settings. Codex loads them once you trust the project.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+# uv needs the package index and its cache, which lives outside the workspace.
+network_access = true
+writable_roots = ["~/.cache/uv"]
+
+[marketplaces.agentic-ds-template]
+source_type = "git"
+source = "https://github.com/{{ marketplace_repo }}.git"
+ref = "{{ marketplace_ref }}"
+
+[plugins."superpowers@agentic-ds-template"]
+enabled = true
+
+[plugins."project@agentic-ds-template"]
+enabled = true
