@@ -1,6 +1,6 @@
 # ADR-0010: Enforce agent guardrails with hooks and one permission list
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0022
 - **Date:** 2026-10-09
 
 ## Context

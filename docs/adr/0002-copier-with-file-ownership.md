@@ -1,6 +1,6 @@
 # ADR-0002: Use Copier with template-owned and project-owned files
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0022
 - **Date:** 2026-10-09
 
 ## Context

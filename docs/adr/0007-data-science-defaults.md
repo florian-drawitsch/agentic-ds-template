@@ -1,6 +1,6 @@
 # ADR-0007: Default to Hydra, MLflow and Polars, each behind a boundary
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0021
 - **Date:** 2026-10-09
 
 ## Context

@@ -25,3 +25,5 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0018](0018-merge-template-and-marketplace.md) | Merge the template and the marketplace into one repository | 2026-10-09 |
 | [ADR-0019](0019-writing-rules-in-agents-md.md) | Keep writing rules in the project's AGENTS.md | 2026-10-09 |
 | [ADR-0020](0020-deliver-plans-with-a-completion-guard.md) | Deliver plans with a completion guard and cross-vendor review | 2026-10-09 |
+| [ADR-0021](0021-run-hydra-through-its-compose-api.md) | Run Hydra through its compose API | 2026-10-09 |
+| [ADR-0022](0022-exclude-project-owned-files-on-update.md) | Exclude project-owned files on update and vendor plugin files by symlink | 2026-10-09 |
