@@ -29,6 +29,11 @@ tasks:
     cmds:
       - uv run pytest {{.CLI_ARGS}}
 
+  test-e2e:
+    desc: Render a pairwise set of projects and run each one's full merge gate (slow)
+    cmds:
+      - uv run pytest -m slow -p no:cacheprovider {{.CLI_ARGS}}
+
   validate:
     desc: Validate the marketplace and plugin manifests with Claude Code
     preconditions:
