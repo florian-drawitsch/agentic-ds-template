@@ -1,0 +1,25 @@
+"""Sphinx configuration."""
+
+project = "{{ project_name }}"
+author = "{{ author_name }}"
+
+extensions = [
+    "myst_parser",
+    "autoapi.extension",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
+]
+
+source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
+myst_enable_extensions = ["colon_fence"]
+myst_heading_anchors = 3
+exclude_patterns = ["_build", "plans"]
+
+autoapi_dirs = ["../src"]
+autoapi_root = "api"
+autoapi_add_toctree_entry = False
+autoapi_options = ["members", "undoc-members", "show-inheritance", "show-module-summary"]
+napoleon_google_docstring = True
+
+html_theme = "furo"
+html_title = project

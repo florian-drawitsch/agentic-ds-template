@@ -1,0 +1,143 @@
+# Evaluation protocol
+
+Project-owned. How results are judged. Change it only together with an ADR.
+{% if use_case == 'forecasting' %}
+## Design
+
+- **Target and horizon:** TODO (for example daily demand, 1 to 14 days ahead).
+- **Backtest:** rolling origin with at least TODO origins, an expanding training window and a gap
+  equal to the data delay.
+- **Covariates:** list each one as past-only or known in advance, with its source at forecast
+  time.
+
+## Baselines
+
+1. Seasonal naive.
+2. A statistical model (for example ETS or MSTL).
+
+## Metrics
+
+- Point: MASE, scaled by the in-sample seasonal naive error, per horizon and overall.
+- Probabilistic: weighted quantile loss and interval coverage of the 80 % and 95 % intervals.
+- Segments: report per series group, not only in aggregate.
+
+## Acceptance
+
+TODO: the improvement over the best baseline that justifies the model.
+{%- elif use_case == 'anomaly_detection' %}
+## Design
+
+- **Unit of detection:** TODO (point, window or event).
+- **Splits:** by time or by asset; a labeled hold-out untouched by threshold tuning.
+
+## Baselines
+
+1. A robust statistical rule (for example rolling median and MAD).
+2. An isolation forest or similar unsupervised model.
+
+## Metrics
+
+- Event level: recall of labeled events, false events per day, median detection delay.
+- Point level, for reference: precision, recall and PR AUC.
+- Alert budget: alerts per period at the chosen threshold.
+
+## Acceptance
+
+TODO: the alert budget and minimum event recall the users accept.
+{%- elif use_case == 'optimization' %}
+## Design
+
+- **Objective:** TODO, recorded in an ADR.
+- **Decision variables and constraints:** TODO.
+- **Prediction models:** evaluated separately from the decision layer.
+
+## Baselines
+
+1. Current practice or business rule.
+2. The optimizer with naive predictions.
+
+## Metrics
+
+- Model fit on held-out data for every prediction model.
+- Decision quality on held-out periods or by simulation: objective value versus the baselines.
+- Constraint violations: must be zero.
+
+## Acceptance
+
+TODO: the objective improvement and guardrails that make a recommendation usable.
+{%- elif use_case == 'computer_vision' %}
+## Design
+
+- **Task:** TODO (classification, detection or segmentation).
+- **Splits:** by subject, device or session; dataset and label versions recorded per run.
+
+## Baselines
+
+1. A pretrained model with a linear head or default fine-tuning.
+
+## Metrics
+
+- Task metric: TODO (for example macro F1, mAP at IoU 0.5 to 0.95, Dice).
+- Per class and per acquisition condition, not only overall.
+- Inference latency and parity between the training and exported model.
+
+## Acceptance
+
+TODO: the metric threshold per critical class.
+{%- elif use_case == 'genai' %}
+## Design
+
+- **Task:** TODO.
+- **Evaluation set:** TODO cases with expected outcomes, versioned in the repository.
+- **Grading:** exact checks where possible; a rubric-based model grader otherwise, itself spot
+  checked by humans.
+
+## Baselines
+
+1. The simplest prompt on the default model.
+
+## Metrics
+
+- Task success rate on the evaluation set.
+- Failure categories (for example wrong fact, wrong format, refusal).
+- Cost and latency per request (median and 95th percentile).
+
+## Acceptance
+
+TODO: the success rate, cost and latency the use case needs.
+{%- elif use_case == 'tabular' %}
+## Design
+
+- **Target and prediction time:** TODO.
+- **Splits:** grouped by TODO, or by time when the target drifts. A final hold-out used once.
+
+## Baselines
+
+1. Majority class or mean.
+2. A regularized linear model.
+
+## Metrics
+
+- Primary: TODO (for example ROC AUC, log loss, MAE).
+- Calibration: reliability curve and Brier score for probabilities.
+- Uncertainty: cross-validation spread or bootstrap intervals.
+
+## Acceptance
+
+TODO: the improvement over the baselines that justifies the model.
+{%- else %}
+## Design
+
+- **Questions:** TODO, each with the decision it informs.
+- **Data:** the exact tables, filters and time ranges per question.
+
+## Standards
+
+- Every number states its sample size and uncertainty.
+- Every conclusion links to the query or code that produced it.
+- Sensitivity checks for key filters and definitions.
+
+## Acceptance
+
+TODO: what the stakeholders need to decide.
+{%- endif %}

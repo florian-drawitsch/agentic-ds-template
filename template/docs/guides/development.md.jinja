@@ -1,0 +1,50 @@
+# Development guide
+
+## Setup
+
+Install [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
+[Task](https://taskfile.dev), then run `task setup`. `task --list` shows every task.
+
+## Workflow
+
+1. **Branch:** work on a feature branch or worktree, never on `main`.
+2. **Plan:** for multi-step work, the agent brainstorms a design and writes a plan to
+   `docs/plans/`. Durable decisions become ADRs in `docs/adr/`.
+3. **Deliver:** the `deliver` skill executes the approved plan:
+   - implementer and read-only reviewer roles do the work
+   - a completion guard keeps the session going until every plan item is ticked and
+     `task check` passes
+4. **Review:** `cross-review` has the other vendor's agent review the change read-only.
+5. **Commit:** Conventional Commits (`type(scope): subject`), sized by responsibility.
+
+For unattended runs, commit the plan and run `task agent:deliver PLAN=docs/plans/<plan>.md`.
+It works in a new worktree on a `deliver/<plan>` branch.
+
+## Agent setup
+
+Hooks run in both Claude Code and Codex:
+- a session-start status summary
+- a guard that blocks pip, hand edits of `uv.lock`, `.env` access and force pushes
+- formatting of changed Python files
+- the delivery completion guard
+
+Plugins come from the `{{ marketplace_repo }}` marketplace, pinned to `{{ marketplace_ref }}`.
+Trust the project in each harness once so the settings, hooks and plugins load (`/hooks` in
+Codex). `task agent:doctor` checks the installation.
+
+## Quality gate
+
+`task check` runs:
+- every git hook: ruff, ty, import contracts, file hygiene{% if ci == 'github' %}, workflow security{% endif %}
+- the tests{% if maturity == 'production' %}, with a coverage minimum of 80 %{% endif %}
+
+{%- if ci == 'github' %} CI runs the same gate and builds the documentation.{% endif %}
+
+## Template updates
+
+`task update-template` pulls the latest template version with Copier. Project-owned files are
+never touched:
+- `README.md`, `src/`, `tests/`, `conf/`, `notebooks/`
+- `docs/context/`, `docs/method/`, `docs/roadmap.md`
+
+Resolve conflict markers in the other files, then run `task check`.

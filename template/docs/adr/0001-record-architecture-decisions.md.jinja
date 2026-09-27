@@ -1,0 +1,28 @@
+# ADR-0001: Record decisions as ADRs with verification
+
+- **Status:** Accepted
+- **Date:** {{ '%Y-%m-%d' | strftime }}
+
+## Context
+
+Decisions about objectives, data, evaluation and structure are easy to lose or reverse silently,
+especially when coding agents implement much of the work.
+
+## Decision
+
+Record durable decisions as numbered ADRs in `docs/adr/`. Each record states its context,
+decision, alternatives, consequences and verification: the tests or checks that enforce it.
+Accepted ADRs outrank code and tests, which outrank plans.
+
+## Alternatives considered
+
+- Decisions in plans or chat only: they are lost or contradicted later.
+
+## Consequences
+
+- Agents read the ADRs before changing behavior they govern.
+- Superseding a decision needs a new record, not an edit.
+
+## Verification
+
+Review only.
