@@ -1,0 +1,17 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the container image
+    dir: '{{ '{{.ROOT_DIR}}' }}'
+    preconditions:
+      - sh: command -v docker
+        msg: Docker is not installed
+    cmds:
+      - docker build -t {{ project_name }}:latest .
+
+  run:
+    desc: Run the pipeline in the container with the local data directory mounted
+    dir: '{{ '{{.ROOT_DIR}}' }}'
+    cmds:
+      - docker run --rm -v "$PWD/data:/app/data" {{ project_name }}:latest {{ '{{.CLI_ARGS}}' }}
