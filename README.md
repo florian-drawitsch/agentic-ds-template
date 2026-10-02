@@ -29,6 +29,19 @@ including pharma, automotive, banking and retail.
   - this repository's marketplace, pinned to a release tag
 - **Context and decision docs** that stay project-owned across template updates.
 
+## Create a project
+
+Requirements: git, [uv](https://docs.astral.sh/uv/) and [Task](https://taskfile.dev).
+
+```bash
+uvx copier copy --trust gh:<owner>/agentic-ds-template my-project
+cd my-project && task setup && task example-data && task check
+```
+
+`--trust` allows the two post-generation steps: `git init` and `uv lock`. Later template
+versions arrive with `task update-template`. Project-owned files such as `src/`, `tests/` and
+`docs/context/` are never touched by updates.
+
 ## Plugin marketplace
 
 This repository is also a plugin marketplace for Claude Code and Codex. Generated projects
@@ -41,7 +54,7 @@ register it at a pinned tag, and any other repository can add it as well.
 
 ## Status
 
-Design and marketplace in place, template rendering in progress. Decisions are recorded in
+Template, marketplace and delivery workflow are implemented and tested. Decisions are recorded in
 [docs/adr](docs/adr/index.md), and the overall design is in
 [docs/design/architecture.md](docs/design/architecture.md).
 
