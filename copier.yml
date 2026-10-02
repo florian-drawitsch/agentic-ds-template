@@ -11,6 +11,12 @@ _envops:
 # Project-owned files are rendered once and never touched by `copier update` (ADR-0002).
 # Everything else is template-owned and three-way merged on update.
 _exclude:
+  # Copier's defaults, which a custom _exclude list replaces.
+  - "~*"
+  - "*.py[co]"
+  - __pycache__
+  - .git
+  - .DS_Store
   - "{% if _copier_operation == 'update' %}README.md{% endif %}"
   - "{% if _copier_operation == 'update' %}src{% endif %}"
   - "{% if _copier_operation == 'update' %}tests{% endif %}"

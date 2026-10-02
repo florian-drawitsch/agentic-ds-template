@@ -174,3 +174,10 @@ def test_context_answers_seed_project_owned_docs(tmp_path: Path) -> None:
     assert "Retailers lose sales to stock-outs." in (root / "AGENTS.md").read_text()
     assert "Retailers lose sales to stock-outs." in (root / "docs/context/project.md").read_text()
     assert "TODO" in (root / "docs/context/data.md").read_text()
+
+
+def test_no_caches_or_vcs_files_are_rendered(default: Path) -> None:
+    unwanted = [
+        p for p in default.rglob("*") if p.name in {"__pycache__", ".DS_Store"} or p.suffix == ".pyc"
+    ]
+    assert unwanted == []
