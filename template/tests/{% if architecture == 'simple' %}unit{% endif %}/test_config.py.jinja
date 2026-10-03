@@ -12,7 +12,9 @@ from {{ package_name }}.config import settings_from_mapping
 def test_hydra_config_composes_into_settings() -> None:
     with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):
         cfg = compose(config_name="config", overrides=["data.target=y"])
-    settings = settings_from_mapping(cast("dict[str, Any]", OmegaConf.to_container(cfg, resolve=True)))
+    settings = settings_from_mapping(
+        cast("dict[str, Any]", OmegaConf.to_container(cfg, resolve=True))
+    )
     assert settings.data.target == "y"
     assert settings.data.path == Path("data/raw/example.csv")
 {%- else %}

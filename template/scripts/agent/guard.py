@@ -18,7 +18,9 @@ from pathlib import PurePosixPath
 from typing import Any
 
 ENV_FILE = re.compile(r"^\.env(\..+)?$")
-PATCH_PATH = re.compile(r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.MULTILINE)
+PATCH_PATH = re.compile(
+    r"^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$", re.MULTILINE
+)
 SEPARATORS = {"&&", "||", ";", "|", "&"}
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
@@ -57,7 +59,9 @@ def check_command(command: str) -> str | None:
             return "Use `uv add <package>` instead of pip."
         if program == "uv" and rest[:2] == ["pip", "install"]:
             return "Use `uv add <package>` so the dependency is recorded in pyproject.toml."
-        forced = any(w in {"--force", "-f", "--force-with-lease"} or w.startswith("+") for w in rest)
+        forced = any(
+            w in {"--force", "-f", "--force-with-lease"} or w.startswith("+") for w in rest
+        )
         if program == "git" and rest[:1] == ["push"] and forced:
             return "Force pushes are not allowed. Ask the user."
         if program == "git" and rest[:1] == ["commit"] and ({"--no-verify", "-n"} & set(rest)):

@@ -40,6 +40,7 @@ def run(settings: Settings) -> dict[str, Any]:
     return asdict(report)
 {%- if config == 'hydra' %}
 
+
 def compose_settings(overrides: Sequence[str]) -> Settings:
     """Compose the Hydra configuration with overrides into typed settings."""
     with initialize_config_dir(config_dir=str(CONFIG_DIR), version_base=None):

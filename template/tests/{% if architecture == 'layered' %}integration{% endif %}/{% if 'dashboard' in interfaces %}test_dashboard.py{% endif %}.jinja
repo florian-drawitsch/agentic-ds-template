@@ -8,7 +8,9 @@ import {{ package_name }}
 DASHBOARD = Path({{ package_name }}.__file__).parent / "{{ 'entrypoints/' if architecture == 'layered' else '' }}dashboard.py"
 
 
-def test_dashboard_renders_without_a_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dashboard_renders_without_a_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     app = AppTest.from_file(str(DASHBOARD)).run()
     assert not app.exception

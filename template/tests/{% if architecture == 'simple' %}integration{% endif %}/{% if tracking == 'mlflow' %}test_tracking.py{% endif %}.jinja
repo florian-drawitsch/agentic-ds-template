@@ -10,7 +10,9 @@ def test_mlflow_tracker_records_a_run(tmp_path: Path) -> None:
     artifact = tmp_path / "report.json"
     artifact.write_text("{}")
 
-    MlflowTracker(uri, "test", tmp_path / "artifacts").record({"model": "m"}, {"mae": 1.5}, [artifact])
+    MlflowTracker(uri, "test", tmp_path / "artifacts").record(
+        {"model": "m"}, {"mae": 1.5}, [artifact]
+    )
 
     mlflow.set_tracking_uri(uri)
     runs = mlflow.search_runs(experiment_names=["test"], output_format="list")
