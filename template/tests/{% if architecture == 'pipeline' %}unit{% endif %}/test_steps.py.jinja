@@ -1,0 +1,32 @@
+import polars as pl
+import pytest
+
+from {{ package_name }}.pipelines.features import build_features
+from {{ package_name }}.pipelines.inference import predict
+from {{ package_name }}.pipelines.training import evaluate, fit_baseline, split_holdout
+
+
+def test_build_features_keeps_numeric_columns_and_rows_with_a_target() -> None:
+    raw = pl.DataFrame({"x": [1.0, 2.0, 3.0], "label": ["a", "b", "c"], "target": [1.0, None, 3.0]})
+    features = build_features(raw, target="target")
+    assert features.columns == ["x", "target"]
+    assert features["x"].to_list() == [1.0, 3.0]
+
+
+def test_split_holdout_keeps_time_order() -> None:
+    train, test = split_holdout(pl.DataFrame({"step": range(10)}), fraction=0.3)
+    assert train["step"].to_list() == list(range(7))
+    assert test["step"].to_list() == [7, 8, 9]
+
+
+def test_split_holdout_rejects_empty_parts() -> None:
+    with pytest.raises(ValueError, match="no training or test rows"):
+        split_holdout(pl.DataFrame({"step": range(3)}), fraction=0.01)
+
+
+def test_baseline_fit_evaluate_and_predict() -> None:
+    model = fit_baseline(pl.DataFrame({"target": [1.0, 2.0, 3.0]}), target="target")
+    report = evaluate(pl.DataFrame({"target": [2.0, 4.0]}), model, target="target")
+    assert model == {"mean": 2.0}
+    assert report["mae"] == 1.0
+    assert predict(pl.DataFrame({"x": [0, 0]}), model)["prediction"].to_list() == [2.0, 2.0]

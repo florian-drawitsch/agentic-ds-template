@@ -1,6 +1,6 @@
 # ADR-0006: Offer simple and layered architectures
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0023
 - **Date:** 2026-10-09
 
 ## Context

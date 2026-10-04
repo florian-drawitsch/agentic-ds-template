@@ -1,0 +1,107 @@
+import json
+from pathlib import Path
+
+import polars as pl
+
+from {{ package_name }}.cli import run
+from {{ package_name }}.settings import Settings{{ ', TrackingSettings' if tracking == 'mlflow' else '' }}
+
+
+def catalog_for(example_csv: Path, tmp_path: Path) -> dict[str, Path]:
+    return {
+        "raw": example_csv,
+        "features": tmp_path / "features.parquet",
+        "model": tmp_path / "model.json",
+        "report": tmp_path / "report.json",
+        "predictions": tmp_path / "predictions.parquet",
+    }
+
+
+def test_all_pipelines_run_in_order(example_csv: Path, tmp_path: Path) -> None:
+    settings = Settings(
+        catalog=catalog_for(example_csv, tmp_path),
+        params={"target": "target"},
+{%- if tracking == 'mlflow' %}
+        tracking=TrackingSettings(
+            uri=f"sqlite:///{tmp_path / 'mlflow.db'}",
+            experiment="test",
+            artifact_dir=tmp_path / "artifacts",
+        ),
+{%- endif %}
+    )
+
+    report = run(settings, ["features", "training", "inference"])
+
+    assert json.loads((tmp_path / "report.json").read_text()) == report
+    assert pl.read_parquet(tmp_path / "predictions.parquet").height == 50
+    assert report["mae"] > 0
+
+
+def test_inference_alone_reuses_persisted_features_and_model(
+    example_csv: Path, tmp_path: Path
+) -> None:
+    settings = Settings(
+        catalog=catalog_for(example_csv, tmp_path),
+        params={"target": "target"},
+{%- if tracking == 'mlflow' %}
+        tracking=TrackingSettings(
+            uri=f"sqlite:///{tmp_path / 'mlflow.db'}",
+            experiment="test",
+            artifact_dir=tmp_path / "artifacts",
+        ),
+{%- endif %}
+    )
+    run(settings, ["features", "training"])
+    (tmp_path / "predictions.parquet").unlink(missing_ok=True)
+
+    run(settings, ["inference"])
+
+    assert (tmp_path / "predictions.parquet").is_file()
+{%- if config == 'hydra' %}
+
+
+def test_cli_runs_with_overrides(example_csv: Path, tmp_path: Path) -> None:
+    from {{ package_name }}.cli import main
+
+    overrides = [
+        f"catalog.{name}='{path}'" for name, path in catalog_for(example_csv, tmp_path).items()
+    ]
+{%- if tracking == 'mlflow' %}
+    overrides += [
+        f"tracking.uri='sqlite:///{tmp_path / 'mlflow.db'}'",
+        f"tracking.artifact_dir='{tmp_path / 'artifacts'}'",
+    ]
+{%- endif %}
+    assert main(overrides) == 0
+    assert (tmp_path / "report.json").is_file()
+
+
+def test_multirun_expands_every_combination() -> None:
+    from {{ package_name }}.cli import expand_sweep
+
+    assert expand_sweep(["params.target=a,b", "params.seed=1"]) == [
+        ["params.target=a", "params.seed=1"],
+        ["params.target=b", "params.seed=1"],
+    ]
+{%- else %}
+
+
+def test_cli_runs_from_a_config_file(example_csv: Path, tmp_path: Path) -> None:
+    from {{ package_name }}.cli import main
+
+    lines = ["[catalog]"]
+    lines += [f'{name} = "{path}"' for name, path in catalog_for(example_csv, tmp_path).items()]
+    lines += ["[params]", 'target = "target"']
+{%- if tracking == 'mlflow' %}
+    lines += [
+        "[tracking]",
+        f'uri = "sqlite:///{tmp_path / "mlflow.db"}"',
+        'experiment = "test"',
+        f'artifact_dir = "{tmp_path / "artifacts"}"',
+    ]
+{%- endif %}
+    config = tmp_path / "config.toml"
+    config.write_text("\n".join(lines) + "\n")
+    assert main(["--config", str(config), "--pipeline", "features", "--pipeline", "training"]) == 0
+    assert (tmp_path / "report.json").is_file()
+{%- endif %}

@@ -5,7 +5,7 @@ from streamlit.testing.v1 import AppTest
 
 import {{ package_name }}
 
-DASHBOARD = Path({{ package_name }}.__file__).parent / "{{ 'entrypoints/' if architecture == 'layered' else '' }}dashboard.py"
+DASHBOARD = Path({{ package_name }}.__file__).parent / "{{ 'entrypoints/' if architecture == 'hexagonal' else '' }}dashboard.py"
 
 
 def test_dashboard_renders_without_a_report(

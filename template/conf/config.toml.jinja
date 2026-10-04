@@ -1,9 +1,22 @@
-# Pipeline configuration. Pass another file with `task run -- --config <path>`.
+# Configuration. Pass another file with `task run -- --config <path>`.
+{%- if architecture == 'pipeline' %}
+
+[catalog]
+raw = "data/raw/example.csv"
+features = "data/processed/features.parquet"
+model = "data/models/baseline.json"
+report = "data/reports/latest.json"
+predictions = "data/processed/predictions.parquet"
+
+[params]
+target = "target"
+{%- else %}
 report_dir = "data/reports"
 
 [data]
 path = "data/raw/example.csv"
 target = "target"
+{%- endif %}
 {%- if tracking == 'mlflow' %}
 
 [tracking]

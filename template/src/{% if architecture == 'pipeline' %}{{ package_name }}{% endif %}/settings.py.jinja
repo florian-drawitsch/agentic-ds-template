@@ -1,0 +1,59 @@
+"""Typed, immutable settings: the data catalog, step parameters{{ ' and tracking' if tracking == 'mlflow' else '' }}."""
+
+from __future__ import annotations
+
+{% if config == 'python' -%}
+import tomllib
+{% endif -%}
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+{%- if tracking == 'mlflow' %}
+
+
+@dataclass(frozen=True)
+class TrackingSettings:
+    """Where runs are tracked."""
+
+    uri: str
+    experiment: str
+    artifact_dir: Path
+{%- endif %}
+
+
+@dataclass(frozen=True)
+class Settings:
+    """All settings of a run."""
+
+    catalog: Mapping[str, Path]
+    params: Mapping[str, Any]
+{%- if tracking == 'mlflow' %}
+    tracking: TrackingSettings
+{%- endif %}
+
+
+def settings_from_mapping(values: Mapping[str, Any]) -> Settings:
+    """Build settings from a plain mapping, as loaded from a config file."""
+{%- if tracking == 'mlflow' %}
+    tracking = values["tracking"]
+{%- endif %}
+    return Settings(
+        catalog={name: Path(path) for name, path in values["catalog"].items()},
+        params=dict(values["params"]),
+{%- if tracking == 'mlflow' %}
+        tracking=TrackingSettings(
+            uri=str(tracking["uri"]),
+            experiment=str(tracking["experiment"]),
+            artifact_dir=Path(tracking["artifact_dir"]),
+        ),
+{%- endif %}
+    )
+{%- if config == 'python' %}
+
+
+def load_settings(path: Path) -> Settings:
+    """Load settings from a TOML file."""
+    with path.open("rb") as handle:
+        return settings_from_mapping(tomllib.load(handle))
+{%- endif %}

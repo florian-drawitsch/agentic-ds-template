@@ -1,4 +1,4 @@
-{%- set layered = architecture == "layered" -%}
+{%- set hexagonal = architecture == "hexagonal" -%}
 {%- set p = package_name -%}
 version: '3'
 
@@ -28,10 +28,10 @@ tasks:
   example-data:
     desc: Write a synthetic example table to data/raw/example.csv
     cmds:
-      - uv run python -m {{ p }}.{{ 'adapters.example_data' if layered else 'data' }} data/raw/example.csv
+      - uv run python -m {{ p }}.{{ {'simple': 'data', 'pipeline': 'example_data', 'hexagonal': 'adapters.example_data'}[architecture] }} data/raw/example.csv
 
   run:
-    desc: Run the pipeline{{ ' (Hydra overrides after --)' if config == 'hydra' else '' }}
+    desc: Run the {{ 'pipelines (select with --pipeline)' if architecture == 'pipeline' else 'pipeline' }}{{ ', Hydra overrides after --' if config == 'hydra' else '' }}
     cmds:
       - uv run {{ p }} {{ '{{.CLI_ARGS}}' }}
 {%- if config == "hydra" %}
@@ -71,14 +71,14 @@ tasks:
   api:
     desc: Serve the REST API with auto-reload
     cmds:
-      - uv run uvicorn {{ p }}.{{ 'entrypoints.api' if layered else 'api' }}:app --reload
+      - uv run uvicorn {{ p }}.{{ 'entrypoints.api' if hexagonal else 'api' }}:app --reload
 {%- endif %}
 {%- if "dashboard" in interfaces %}
 
   dashboard:
     desc: Run the dashboard
     cmds:
-      - uv run streamlit run src/{{ p }}/{{ 'entrypoints/' if layered else '' }}dashboard.py
+      - uv run streamlit run src/{{ p }}/{{ 'entrypoints/' if hexagonal else '' }}dashboard.py
 {%- endif %}
 
   update-template:

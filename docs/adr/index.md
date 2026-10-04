@@ -10,7 +10,7 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0003](0003-archetype-presets-and-options.md) | Model questions as archetype presets plus capability options | 2026-10-09 |
 | [ADR-0004](0004-minimal-host-prerequisites.md) | Require only git, uv and Task on the host | 2026-10-09 |
 | [ADR-0005](0005-import-linter-for-architecture.md) | Enforce architecture with import-linter | 2026-10-09 |
-| [ADR-0006](0006-simple-and-layered-architectures.md) | Offer simple and layered architectures | 2026-10-09 |
+| [ADR-0006](0006-simple-and-layered-architectures.md) | Offer simple and layered architectures (superseded by ADR-0023) | 2026-10-09 |
 | [ADR-0007](0007-data-science-defaults.md) | Default to Hydra, MLflow and Polars, each behind a boundary | 2026-10-09 |
 | [ADR-0008](0008-sphinx-docs.md) | Build docs with Sphinx, MyST and autoapi | 2026-10-09 |
 | [ADR-0009](0009-agents-md-canonical-and-short.md) | Keep AGENTS.md canonical and short | 2026-10-09 |
@@ -27,3 +27,4 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0020](0020-deliver-plans-with-a-completion-guard.md) | Deliver plans with a completion guard and cross-vendor review | 2026-10-09 |
 | [ADR-0021](0021-run-hydra-through-its-compose-api.md) | Run Hydra through its compose API | 2026-10-09 |
 | [ADR-0022](0022-exclude-project-owned-files-on-update.md) | Exclude project-owned files on update and vendor plugin files by symlink | 2026-10-09 |
+| [ADR-0023](0023-offer-simple-pipeline-and-hexagonal-architectures.md) | Offer simple, pipeline and hexagonal architectures | 2026-10-09 |

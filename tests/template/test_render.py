@@ -40,7 +40,7 @@ def default(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def full(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return render(
         tmp_path_factory.mktemp("full") / "project",
-        architecture="layered",
+        architecture="hexagonal",
         maturity="production",
         interfaces=["api", "dashboard"],
         config="python",
@@ -135,7 +135,7 @@ def test_harness_selection(tmp_path: Path, harnesses: list[str], present: list[s
     assert not any((root / path).exists() for path in absent)
 
 
-def test_layered_architecture(full: Path) -> None:
+def test_hexagonal_architecture(full: Path) -> None:
     package = full / "src/demo_project"
     for layer in ("domain", "application", "ports", "adapters", "bootstrap", "entrypoints"):
         assert (package / layer / "AGENTS.md").is_file()
@@ -181,3 +181,15 @@ def test_no_caches_or_vcs_files_are_rendered(default: Path) -> None:
         p for p in default.rglob("*") if p.name in {"__pycache__", ".DS_Store"} or p.suffix == ".pyc"
     ]
     assert unwanted == []
+
+
+def test_pipeline_architecture(tmp_path: Path) -> None:
+    root = render(tmp_path / "project", maturity="production", config="python")
+    package = root / "src/demo_project"
+    for module in ("catalog.py", "settings.py", "cli.py", "pipelines/framework.py"):
+        assert (package / module).is_file()
+    for pipeline in ("features", "training", "inference"):
+        assert (package / "pipelines" / f"{pipeline}.py").is_file()
+    contracts = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["importlinter"]["contracts"]
+    assert {"independence", "forbidden"} == {c["type"] for c in contracts}
+    assert "[catalog]" in (root / "conf/config.toml").read_text()

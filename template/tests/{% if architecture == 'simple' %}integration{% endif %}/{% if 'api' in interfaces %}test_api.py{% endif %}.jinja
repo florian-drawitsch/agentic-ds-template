@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from {{ package_name }}{{ '.entrypoints' if architecture == 'layered' else '' }} import api
+from {{ package_name }}{{ '.entrypoints' if architecture == 'hexagonal' else '' }} import api
 
 
 def test_health() -> None:

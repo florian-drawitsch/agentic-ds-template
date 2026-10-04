@@ -117,7 +117,7 @@ use_case:
 
 maturity:
   type: str
-  help: Maturity. Production enables a coverage gate and the layered architecture by default
+  help: Maturity. Production enables a coverage gate and the pipeline architecture by default
   choices:
     Proof of concept: poc
     Production: production
@@ -127,9 +127,10 @@ architecture:
   type: str
   help: Package architecture
   choices:
-    Simple (flat modules): simple
-    Layered (domain, application, ports, adapters, entrypoints, bootstrap): layered
-  default: "{{ 'layered' if maturity == 'production' else 'simple' }}"
+    Simple (flat modules, for analysis and proofs of concept): simple
+    Pipeline (feature, training and inference pipelines over a data catalog): pipeline
+    Hexagonal (domain, ports and adapters, for services with several integrations): hexagonal
+  default: "{{ 'pipeline' if maturity == 'production' else 'simple' }}"
 
 interfaces:
   type: str

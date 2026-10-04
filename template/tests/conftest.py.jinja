@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from {{ package_name }}.{{ 'adapters.example_data' if architecture == 'layered' else 'data' }} import example_table
+from {{ package_name }}.{{ {'simple': 'data', 'pipeline': 'example_data', 'hexagonal': 'adapters.example_data'}[architecture] }} import example_table
 
 
 @pytest.fixture

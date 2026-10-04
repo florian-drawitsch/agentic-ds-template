@@ -1,0 +1,20 @@
+from pathlib import Path
+
+import mlflow
+
+from {{ package_name }}.tracking import MlflowTracker
+
+
+def test_mlflow_tracker_records_a_run(tmp_path: Path) -> None:
+    uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+    artifact = tmp_path / "report.json"
+    artifact.write_text("{}")
+
+    MlflowTracker(uri, "test", tmp_path / "artifacts").record(
+        {"model": "m"}, {"mae": 1.5}, [artifact]
+    )
+
+    mlflow.set_tracking_uri(uri)
+    runs = mlflow.search_runs(experiment_names=["test"], output_format="list")
+    assert len(runs) == 1
+    assert runs[0].data.metrics["mae"] == 1.5

@@ -1,0 +1,35 @@
+from pathlib import Path
+
+import polars as pl
+import pytest
+
+from {{ package_name }}.catalog import Catalog
+from {{ package_name }}.pipelines.framework import Pipeline, Step
+
+
+def double(table: pl.DataFrame, factor: int) -> pl.DataFrame:
+    return table.with_columns(pl.col("x") * factor)
+
+
+def test_pipeline_reads_inputs_and_persists_only_cataloged_outputs(tmp_path: Path) -> None:
+    source = tmp_path / "in.csv"
+    pl.DataFrame({"x": [1, 2]}).write_csv(source)
+    catalog = Catalog({"raw": source, "persisted": tmp_path / "out.parquet"})
+    pipeline = Pipeline(
+        "demo",
+        [
+            Step(double, inputs=["raw"], outputs=["intermediate"], parameters=["factor"]),
+            Step(double, inputs=["intermediate"], outputs=["persisted"], parameters=["factor"]),
+        ],
+    )
+
+    produced = pipeline.run(catalog, {"factor": 2})
+
+    assert produced["persisted"]["x"].to_list() == [4, 8]
+    assert pl.read_parquet(tmp_path / "out.parquet")["x"].to_list() == [4, 8]
+    assert not list(tmp_path.glob("intermediate*"))
+
+
+def test_catalog_reports_unknown_datasets() -> None:
+    with pytest.raises(KeyError, match="not in the catalog"):
+        Catalog({}).load("missing")

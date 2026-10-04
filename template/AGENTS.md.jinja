@@ -41,8 +41,8 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 - Turn repeated commands into named tasks in `Taskfile.yml`.
 
 ## Layout
-{% if architecture == 'layered' %}
-`src/{{ package_name }}/` is layered. Dependencies point inward:
+{% if architecture == 'hexagonal' %}
+`src/{{ package_name }}/` follows a hexagonal architecture. Dependencies point inward:
 `entrypoints` → `bootstrap` → `adapters` → `application` → `ports` → `domain`.
 
 - `domain/`: pure types and logic, no I/O
@@ -53,6 +53,11 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 - `entrypoints/`: command line{% if 'api' in interfaces %}, API{% endif %}{% if 'dashboard' in interfaces %}, dashboard{% endif %}
 
 Each layer has an AGENTS.md. Read it before adding code there.
+{%- elif architecture == 'pipeline' %}
+`src/{{ package_name }}/pipelines/` holds the `features`, `training` and `inference` pipelines.
+Each is a list of pure steps with named inputs and outputs. `catalog.py` maps dataset names to
+files (configured in `conf/`), `settings.py` holds typed settings, and `cli.py`{% if 'api' in interfaces %}, `api.py`{% endif %}{% if 'dashboard' in interfaces %}, `dashboard.py`{% endif %} are the entry
+points. Read `pipelines/AGENTS.md` before adding a step or a pipeline.
 {%- else %}
 `src/{{ package_name }}/` holds flat modules: `data`, `model`, `evaluate`, `pipeline`,
 `tracking`, `config` and the entry points (`cli`{% if 'api' in interfaces %}, `api`{% endif %}{% if 'dashboard' in interfaces %}, `dashboard`{% endif %}).

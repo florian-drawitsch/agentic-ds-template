@@ -1,0 +1,62 @@
+"""Experiment tracking behind one small protocol.
+{%- if tracking == 'mlflow' %} Only this module imports MLflow.{% endif %}"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Protocol
+{%- if tracking == 'mlflow' %}
+
+import mlflow
+{%- endif %}
+
+
+class Tracker(Protocol):
+    """Records the parameters, metrics and artifacts of one run."""
+
+    def record(
+        self, params: Mapping[str, object], metrics: Mapping[str, float], artifacts: Sequence[Path]
+    ) -> None:
+        """Record one run."""
+        ...
+
+
+class NullTracker:
+    """A tracker that records nothing, for tests and quick runs."""
+
+    def record(
+        self, params: Mapping[str, object], metrics: Mapping[str, float], artifacts: Sequence[Path]
+    ) -> None:
+        """Ignore the run."""
+{%- if tracking == 'mlflow' %}
+
+
+class MlflowTracker:
+    """Track runs in MLflow."""
+
+    def __init__(self, uri: str, experiment: str, artifact_dir: Path) -> None:
+        """Configure the tracking store and the experiment's artifact location."""
+        self.uri = uri
+        self.experiment = experiment
+        self.artifact_dir = artifact_dir
+
+    def record(
+        self, params: Mapping[str, object], metrics: Mapping[str, float], artifacts: Sequence[Path]
+    ) -> None:
+        """Log one run with its parameters, metrics and artifacts."""
+        mlflow.set_tracking_uri(self.uri)
+        experiment = mlflow.get_experiment_by_name(self.experiment)
+        experiment_id = (
+            experiment.experiment_id
+            if experiment
+            else mlflow.create_experiment(
+                self.experiment, artifact_location=self.artifact_dir.resolve().as_uri()
+            )
+        )
+        with mlflow.start_run(experiment_id=experiment_id):
+            mlflow.log_params({key: str(value) for key, value in params.items()})
+            mlflow.log_metrics(dict(metrics))
+            for artifact in artifacts:
+                mlflow.log_artifact(str(artifact))
+{%- endif %}

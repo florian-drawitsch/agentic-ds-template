@@ -57,8 +57,8 @@ Questions appear in four groups. `when:` hides questions that do not apply.
 | Key | Type | Choices (default first) | Effect |
 | --- | --- | --- | --- |
 | `use_case` | choice | forecasting, anomaly_detection, optimization, computer_vision, genai, tabular, analysis | dependency preset, AGENTS.md domain rules, method stub, tested domain helpers |
-| `maturity` | choice | poc, production | coverage gate, type strictness, CI depth, default architecture |
-| `architecture` | choice | simple (poc default), layered (production default) | package layout and import contracts |
+| `maturity` | choice | poc, production | coverage gate, default architecture |
+| `architecture` | choice | simple (poc default), pipeline (production default), hexagonal | package layout and import contracts (ADR-0023) |
 | `layout` | choice | single, workspace | single package or uv workspace with `apps/` and `packages/` |
 | `interfaces` | multiselect | none selected; api, dashboard | FastAPI app, Streamlit app, their tasks and tests |
 | `config` | choice | hydra, python | Hydra `conf/` or a typed settings module |
@@ -103,7 +103,7 @@ Answers seed `docs/context/project.md` and the project section of AGENTS.md. Aft
 The project section of AGENTS.md is rendered once from the context answers. Its template text
 never changes, so later updates cannot conflict with edits there.
 
-## Rendered project (layered, single package, all options on)
+## Rendered project (hexagonal, all options on)
 
 ```
 <project>/
@@ -146,7 +146,8 @@ never changes, so later updates cannot conflict with edits there.
 └── tests/{unit,integration}/
 ```
 
-With `architecture=simple`, `src/<package>/` holds flat modules (`data.py`, `features.py`,
+With `architecture=pipeline`, `src/<package>/` holds `catalog.py`, `settings.py`, `cli.py` and
+`pipelines/` (`framework`, `features`, `training`, `inference`). With `architecture=simple`, it holds flat modules (`data.py`, `features.py`,
 `models.py`, `evaluate.py`, `cli.py`) and a single import contract: entrypoints import the rest,
 nothing imports entrypoints.
 

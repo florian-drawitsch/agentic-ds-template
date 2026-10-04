@@ -15,7 +15,7 @@ import pytest
 from tests.template.helpers import pairwise, render
 
 PARAMETERS: dict[str, list[Any]] = {
-    "architecture": ["simple", "layered"],
+    "architecture": ["simple", "pipeline", "hexagonal"],
     "config": ["hydra", "python"],
     "tracking": ["mlflow", "none"],
     "dataframes": ["polars", "polars_pandas"],

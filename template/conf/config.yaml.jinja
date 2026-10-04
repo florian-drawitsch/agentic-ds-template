@@ -1,9 +1,20 @@
-# Pipeline configuration, composed by Hydra. Override any value on the command line,
-# for example `task run -- data.target=y`. Sweep with `task sweep -- data.target=a,b`.
+# Configuration, composed by Hydra. Override any value on the command line,
+# for example `task run -- {{ 'params.target=y' if architecture == 'pipeline' else 'data.target=y' }}`. Sweep with `task sweep -- {{ 'params.target=a,b' if architecture == 'pipeline' else 'data.target=a,b' }}`.
+{%- if architecture == 'pipeline' %}
+catalog:
+  raw: data/raw/example.csv
+  features: data/processed/features.parquet
+  model: data/models/baseline.json
+  report: data/reports/latest.json
+  predictions: data/processed/predictions.parquet
+params:
+  target: target
+{%- else %}
 data:
   path: data/raw/example.csv
   target: target
 report_dir: data/reports
+{%- endif %}
 {%- if tracking == 'mlflow' %}
 tracking:
   uri: sqlite:///data/tracking/mlflow.db
