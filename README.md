@@ -13,7 +13,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
 
-A Copier template for agentic development of modern, deployment-ready machine learning and AI applications in Python.
+A Copier template for agentic development of modern, production-ready machine learning and AI applications in Python.
 
 Sets up turn-key Python scaffolding with:
 
