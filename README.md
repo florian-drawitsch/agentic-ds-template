@@ -28,7 +28,7 @@ Sets up turn-key Python scaffolding with:
 2. **Generation:** Create a project from the template:
 
    ```bash
-   uvx copier copy --trust gh:<owner>/agentic-ds-template my-project
+   uvx copier copy --trust gh:florian-drawitsch/agentic-ds-template <my-project>
    ```
 
    `--trust` allows the post-generation tasks (`git init` and `uv lock`) to run.
@@ -89,23 +89,6 @@ Project taskfiles provide commands to manage agent operations:
 - `task agent:status`: Displays repository status and active agent delivery runs.
 - `task agent:deliver`: Runs an approved plan unattended in a fresh git worktree (`PLAN=...`, optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`).
 - `task agent:check`: Verifies that agent hooks and role configurations are present (alias: `doctor`).
-
-### Roles and safety
-
-- Implementer and reviewer roles split coding and verification.
-- Reviewer subagents run with read-only permissions.
-- Git hooks reject direct `pip install` commands, manual `uv.lock` edits, and access to secrets.
-- Architectural import rules keep frameworks at system boundaries.
-
-## Development
-
-```bash
-task setup
-task check
-```
-
-`task setup` installs the locked development environment. `task check` runs the merge gate. Use
-`task test-e2e` for the slower generated-project matrix.
 
 ## License
 
