@@ -193,3 +193,39 @@ def test_pipeline_architecture(tmp_path: Path) -> None:
     contracts = tomllib.loads((root / "pyproject.toml").read_text())["tool"]["importlinter"]["contracts"]
     assert {"independence", "forbidden"} == {c["type"] for c in contracts}
     assert "[catalog]" in (root / "conf/config.toml").read_text()
+
+
+def test_azure_infrastructure(tmp_path: Path) -> None:
+    root = render(
+        tmp_path / "project",
+        interfaces=["api"],
+        infrastructure="azure",
+        azure_components=["job", "api", "storage"],
+    )
+    for path in ("infra/stack.py", "infra/__main__.py", "infra/Pulumi.yaml", "infra/tests/test_stack.py"):
+        assert (root / path).is_file()
+    assert (root / "Dockerfile").is_file()
+    assert (root / ".github/workflows/deploy.yml").is_file()
+    assert (root / "docs/guides/deployment.md").is_file()
+    stack = yaml.safe_load((root / "infra/Pulumi.dev.yaml").read_text())["config"]
+    assert stack["demo-project-infra:job"] is True
+    assert stack["demo-project-infra:mlflow"] is False
+    assert "infra:test" in (root / "Taskfile.yml").read_text()
+    assert "api: bool = True" in (root / "infra/stack.py").read_text()
+
+
+def test_no_infrastructure_by_default(default: Path) -> None:
+    for path in ("infra", "taskfiles/infra.yml", ".github/workflows/deploy.yml", "docs/guides/deployment.md"):
+        assert not (default / path).exists()
+
+
+@pytest.mark.parametrize(
+    ("answers", "message"),
+    [
+        ({"azure_components": ["api"]}, "REST API interface"),
+        ({"azure_components": ["mlflow"], "tracking": "none"}, "MLflow tracking"),
+    ],
+)
+def test_azure_component_validation(tmp_path: Path, answers: dict, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        render(tmp_path / "project", infrastructure="azure", **answers)

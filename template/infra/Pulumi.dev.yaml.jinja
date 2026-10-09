@@ -1,0 +1,7 @@
+# Configuration of the dev stack. Component switches default to the template answers.
+config:
+  azure-native:location: {{ azure_location }}
+  {{ project_name }}-infra:schedule: "0 3 * * *"
+{%- for component in ['job', 'api', 'storage', 'key_vault', 'mlflow'] %}
+  {{ project_name }}-infra:{{ component | replace('_', '') }}: {{ 'true' if component in azure_components else 'false' }}
+{%- endfor %}

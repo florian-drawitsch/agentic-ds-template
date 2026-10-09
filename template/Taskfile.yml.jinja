@@ -14,6 +14,13 @@ includes:
 {%- if container %}
   docker: ./taskfiles/docker.yml
 {%- endif %}
+{%- if infrastructure == 'azure' %}
+  infra:
+    taskfile: ./taskfiles/infra.yml
+    vars:
+      PROJECT: {{ project_name }}
+      LOCATION: {{ azure_location }}
+{%- endif %}
 
 tasks:
   setup:
@@ -53,10 +60,13 @@ tasks:
       - uv run python scripts/run_hooks.py
 
   check:
-    desc: 'Merge gate: lint, types, import contracts and tests'
+    desc: 'Merge gate: lint, types, import contracts and tests{{ ", including infrastructure tests" if infrastructure == "azure" else "" }}'
     cmds:
       - task: lint
       - task: test
+{%- if infrastructure == 'azure' %}
+      - task: infra:test
+{%- endif %}
 {%- if tracking == "mlflow" %}
 
   mlflow:

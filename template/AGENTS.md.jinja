@@ -36,6 +36,10 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 - `task dashboard`: run the dashboard.
 {%- endif %}
 - `task docs:serve`: live documentation.
+{%- if infrastructure == 'azure' %}
+- `task infra:test`: test the Azure infrastructure in `infra/` with Pulumi mocks. `infra:preview`,
+  `infra:up` and `infra:release` change real resources: run them only when asked.
+{%- endif %}
 - Dependencies: `uv add <pkg>`, or `uv add --group <dev|test|lint|docs> <pkg>` for tooling.
   Never use pip. Never edit `uv.lock` by hand.
 - Turn repeated commands into named tasks in `Taskfile.yml`.

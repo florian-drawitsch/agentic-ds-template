@@ -76,12 +76,12 @@ ignore = ["D100", "D104", "D105", "D107", "TRY003"]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D"]
+"**/tests/**" = ["D"]
 "notebooks/**" = ["D", "E402", "B018"]
 "docs/conf.py" = ["D"]
 
 [tool.ty.src]
-exclude = ["notebooks", "scripts/agent/deliver.py"]
+exclude = ["notebooks", "scripts/agent/deliver.py"{% if infrastructure == "azure" %}, "infra"{% endif %}]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

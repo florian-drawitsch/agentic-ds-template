@@ -65,7 +65,9 @@ Questions appear in four groups. `when:` hides questions that do not apply.
 | `dataframes` | choice | polars, polars_pandas | dependency set, conversion helpers at boundaries |
 | `tracking` | choice | mlflow, none | tracking adapter, tasks, data folder |
 | `notebooks` | bool | yes | `notebooks/`, kernel task, nbstripout |
-| `container` | bool | no | Dockerfile, compose file, tasks |
+| `infrastructure` | choice | none, azure | Pulumi project in `infra/`, deploy workflow, deployment guide (ADR-0024) |
+| `azure_components` | multiselect | job, storage, key_vault, plus api when chosen; mlflow optional | which Azure resources the stack creates |
+| `container` | bool | no (forced yes with Azure) | Dockerfile and tasks |
 | `ci` | choice | github, none | workflow running `task check` |
 
 ### 3. Agents

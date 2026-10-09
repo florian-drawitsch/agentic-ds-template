@@ -1,0 +1,72 @@
+# Deployment to Azure
+
+`infra/` defines the Azure resources with Pulumi in Python. `task infra:test` checks the code with
+Pulumi mocks and needs no Azure account.
+
+## What is deployed
+
+Always:
+- a resource group
+- a container registry without admin user
+- a user-assigned managed identity with pull rights on the registry
+- a Log Analytics workspace
+- a Container Apps environment
+
+Optional, switched per stack in `infra/Pulumi.<stack>.yaml`:
+
+| Component | Config key | Default |
+| --- | --- | --- |
+| Scheduled container job that runs the pipeline image | `job` | {{ 'on' if 'job' in azure_components else 'off' }} |
+| Container app serving the REST API | `api` | {{ 'on' if 'api' in azure_components else 'off' }} |
+| Azure Files share mounted as `/app/data` | `storage` | {{ 'on' if 'storage' in azure_components else 'off' }} |
+| Key Vault with RBAC; its URI is passed as `KEY_VAULT_URI` | `keyvault` | {{ 'on' if 'key_vault' in azure_components else 'off' }} |
+| Azure Machine Learning workspace as MLflow tracking server; its URI is passed as `MLFLOW_TRACKING_URI` | `mlflow` | {{ 'on' if 'mlflow' in azure_components else 'off' }} |
+
+The job runs on the cron schedule in `schedule`, default daily at 03:00 UTC.
+
+Until the first release, the job and the API run a public placeholder image.
+
+## One-time setup
+
+1. **Azure CLI and Pulumi CLI:** install both and run `az login`.
+2. **State storage:** run `task infra:bootstrap STATE_ACCOUNT=<globally-unique-name>`.
+3. **`.env`:** add the printed `PULUMI_BACKEND_URL` and a `PULUMI_CONFIG_PASSPHRASE`.
+4. **Stack:** run `task infra:init`, then `task infra:preview` and `task infra:up`.
+5. **Release:** run `task infra:release`. It builds the image in the registry with `az acr build`,
+   so no local Docker is needed, and rolls it out.
+
+The account that runs `infra:up` needs **Contributor** and **Role Based Access Control
+Administrator** on the subscription or resource group, because the stack assigns roles to the
+managed identity.
+
+## Deploying from GitHub Actions
+{%- if ci == 'github' %}
+
+`.github/workflows/deploy.yml` runs on demand (**Actions → Deploy → Run workflow**). It signs in
+with OpenID Connect, so no Azure secret is stored in GitHub.
+
+1. **App registration:** create one with a federated credential for this repository and the
+   GitHub environment named after the stack, for example `dev`.
+2. **Roles:** give the app registration the two roles above.
+3. **Repository secrets and variables:**
+   - secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
+     `PULUMI_CONFIG_PASSPHRASE`
+   - variable: `PULUMI_BACKEND_URL`
+4. **Storage access:** grant the app registration **Storage Blob Data Contributor** on the state
+   storage account.
+{%- else %}
+
+No CI was selected. To deploy from a pipeline, run the same tasks there: `task infra:test`, then
+`task infra:up -- --yes`, then `task infra:release`.
+{%- endif %}
+
+## Before exposing data
+
+The API container app has a public endpoint without authentication. Enable Container Apps
+authentication (Microsoft Entra ID) or restrict ingress before the API serves anything
+confidential.
+
+{%- if 'mlflow' in azure_components %}
+
+To log to the Azure Machine Learning workspace, add `azureml-mlflow` to the project dependencies.
+{%- endif %}

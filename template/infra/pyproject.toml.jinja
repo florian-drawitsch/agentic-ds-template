@@ -1,0 +1,19 @@
+[project]
+name = "{{ project_name }}-infra"
+version = "0.1.0"
+description = "Azure infrastructure for {{ project_name }}, managed with Pulumi"
+requires-python = ">={{ python_version }}"
+dependencies = ["pulumi", "pulumi-azure-native"]
+
+[dependency-groups]
+test = ["pytest"]
+
+[tool.uv]
+package = false
+default-groups = "all"
+exclude-newer = "7 days"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

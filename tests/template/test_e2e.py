@@ -23,6 +23,7 @@ PARAMETERS: dict[str, list[Any]] = {
     "maturity": ["poc", "production"],
     "agent_harnesses": [["claude", "codex"], ["codex"], []],
     "ci": ["github", "none"],
+    "infrastructure": ["none", "azure"],
 }
 # Computer vision is covered structurally; its PyTorch stack is too heavy for every run.
 LIGHT_USE_CASES = ["forecasting", "anomaly_detection", "optimization", "genai", "tabular", "analysis"]

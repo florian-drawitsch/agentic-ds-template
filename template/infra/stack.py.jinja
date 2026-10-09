@@ -1,0 +1,316 @@
+"""Azure resources for {{ project_name }}.
+
+The stack is built from a typed configuration, so tests run it with Pulumi mocks and no cloud
+account. The resource group, container registry, managed identity, Log Analytics workspace and
+Container Apps environment are always created; everything else is a switch in the stack config.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any
+
+import pulumi
+from pulumi_azure_native import (
+    app,
+    applicationinsights,
+    authorization,
+    containerregistry,
+    keyvault,
+    machinelearningservices,
+    managedidentity,
+    operationalinsights,
+    resources,
+    storage,
+)
+
+PROJECT = "{{ project_name }}"
+PACKAGE = "{{ package_name }}"
+# Runs until the first image of the project is pushed; see docs/guides/deployment.md.
+PLACEHOLDER_IMAGE = "mcr.microsoft.com/k8se/quickstart:latest"
+API_COMMAND = [
+    "uv", "run", "--no-sync", "uvicorn",
+    "{{ package_name }}.{{ 'entrypoints.api' if architecture == 'hexagonal' else 'api' }}:app",
+    "--host", "0.0.0.0", "--port", "8000",
+]  # fmt: skip
+ROLE_ACR_PULL = "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+ROLE_KEY_VAULT_SECRETS_USER = "4633458b-17de-408a-b874-0445c86b69e6"
+ROLE_AZUREML_DATA_SCIENTIST = "f6c7c914-8db3-469d-8ca1-694a8f32e121"
+
+
+@dataclass(frozen=True)
+class StackConfig:
+    """What to deploy and how."""
+
+    stack: str
+    image_tag: str | None = None
+    schedule: str = "0 3 * * *"
+    job: bool = {{ 'job' in azure_components }}
+    api: bool = {{ 'api' in azure_components }}
+    storage: bool = {{ 'storage' in azure_components }}
+    key_vault: bool = {{ 'key_vault' in azure_components }}
+    mlflow: bool = {{ 'mlflow' in azure_components }}
+
+    @staticmethod
+    def from_pulumi(config: pulumi.Config, stack: str) -> StackConfig:
+        """Read the configuration of a stack, falling back to the template defaults."""
+        defaults = StackConfig(stack=stack)
+        return StackConfig(
+            stack=stack,
+            image_tag=config.get("imageTag"),
+            schedule=config.get("schedule") or defaults.schedule,
+            job=_flag(config, "job", defaults.job),
+            api=_flag(config, "api", defaults.api),
+            storage=_flag(config, "storage", defaults.storage),
+            key_vault=_flag(config, "keyvault", defaults.key_vault),
+            mlflow=_flag(config, "mlflow", defaults.mlflow),
+        )
+
+    @property
+    def prefix(self) -> str:
+        """Return the name prefix for resources, for example `my-project-dev`."""
+        return f"{PROJECT}-{self.stack}"
+
+    @property
+    def compact(self) -> str:
+        """Return a short alphanumeric prefix for registries and storage accounts."""
+        return re.sub(r"[^a-z0-9]", "", self.prefix.lower())[:12]
+
+
+def _flag(config: pulumi.Config, key: str, default: bool) -> bool:
+    value = config.get_bool(key)
+    return default if value is None else value
+
+
+def _grant(
+    name: str,
+    scope: pulumi.Input[str],
+    principal_id: pulumi.Input[str],
+    role: str,
+    subscription: Any,
+) -> authorization.RoleAssignment:
+    """Give a managed identity one built-in role on one resource."""
+    return authorization.RoleAssignment(
+        name,
+        scope=scope,
+        principal_id=principal_id,
+        principal_type="ServicePrincipal",
+        role_definition_id=subscription.apply(
+            lambda sub: (
+                f"/subscriptions/{sub}/providers/Microsoft.Authorization/roleDefinitions/{role}"
+            )
+        ),
+    )
+
+
+def build(cfg: StackConfig) -> dict[str, Any]:
+    """Create the resources and return the stack outputs."""
+    client = authorization.get_client_config_output()
+    group = resources.ResourceGroup(f"{cfg.prefix}-rg")
+    identity = managedidentity.UserAssignedIdentity(
+        f"{cfg.prefix}-identity", resource_group_name=group.name
+    )
+    registry = containerregistry.Registry(
+        f"{cfg.compact}acr",
+        resource_group_name=group.name,
+        sku=containerregistry.SkuArgs(name="Basic"),
+        admin_user_enabled=False,
+    )
+    acr_pull = _grant(
+        f"{cfg.prefix}-acr-pull", registry.id, identity.principal_id, ROLE_ACR_PULL,
+        client.subscription_id,
+    )  # fmt: skip
+    logs = operationalinsights.Workspace(
+        f"{cfg.prefix}-logs",
+        resource_group_name=group.name,
+        sku=operationalinsights.WorkspaceSkuArgs(name="PerGB2018"),
+        retention_in_days=30,
+    )
+    log_keys = operationalinsights.get_shared_keys_output(
+        resource_group_name=group.name, workspace_name=logs.name
+    )
+    environment = app.ManagedEnvironment(
+        f"{cfg.prefix}-env",
+        resource_group_name=group.name,
+        app_logs_configuration=app.AppLogsConfigurationArgs(
+            destination="log-analytics",
+            log_analytics_configuration=app.LogAnalyticsConfigurationArgs(
+                customer_id=logs.customer_id, shared_key=log_keys.primary_shared_key
+            ),
+        ),
+    )
+    outputs: dict[str, Any] = {
+        "resource_group": group.name,
+        "registry": registry.login_server,
+        "environment": environment.name,
+        "identity_client_id": identity.client_id,
+        "image": f"{PROJECT}:{cfg.image_tag}" if cfg.image_tag else PLACEHOLDER_IMAGE,
+    }
+    image: pulumi.Input[str] = (
+        registry.login_server.apply(lambda server: f"{server}/{PROJECT}:{cfg.image_tag}")
+        if cfg.image_tag
+        else PLACEHOLDER_IMAGE
+    )
+    env_vars: list[app.EnvironmentVarArgs] = []
+    volumes: list[app.VolumeArgs] = []
+    mounts: list[app.VolumeMountArgs] = []
+
+    account = None
+    if cfg.storage or cfg.mlflow:
+        account = storage.StorageAccount(
+            f"{cfg.compact}st",
+            resource_group_name=group.name,
+            kind="StorageV2",
+            sku=storage.SkuArgs(name="Standard_LRS"),
+            allow_blob_public_access=False,
+            minimum_tls_version="TLS1_2",
+            enable_https_traffic_only=True,
+        )
+    if cfg.storage and account is not None:
+        share = storage.FileShare(
+            f"{cfg.prefix}-data",
+            account_name=account.name,
+            resource_group_name=group.name,
+            share_quota=100,
+        )
+        account_keys = storage.list_storage_account_keys_output(
+            account_name=account.name, resource_group_name=group.name
+        )
+        env_storage = app.ManagedEnvironmentsStorage(
+            f"{cfg.prefix}-env-data",
+            environment_name=environment.name,
+            resource_group_name=group.name,
+            storage_name="data",
+            properties=app.ManagedEnvironmentStoragePropertiesArgs(
+                azure_file=app.AzureFilePropertiesArgs(
+                    account_name=account.name,
+                    account_key=account_keys.keys[0].value,
+                    share_name=share.name,
+                    access_mode="ReadWrite",
+                )
+            ),
+        )
+        volumes.append(
+            app.VolumeArgs(name="data", storage_type="AzureFile", storage_name=env_storage.name)
+        )
+        mounts.append(app.VolumeMountArgs(volume_name="data", mount_path="/app/data"))
+        outputs["data_share"] = share.name
+
+    vault = None
+    if cfg.key_vault or cfg.mlflow:
+        vault = keyvault.Vault(
+            f"{cfg.compact}kv",
+            resource_group_name=group.name,
+            properties=keyvault.VaultPropertiesArgs(
+                tenant_id=client.tenant_id,
+                sku=keyvault.SkuArgs(family="A", name="standard"),
+                enable_rbac_authorization=True,
+            ),
+        )
+        _grant(
+            f"{cfg.prefix}-kv-secrets", vault.id, identity.principal_id,
+            ROLE_KEY_VAULT_SECRETS_USER, client.subscription_id,
+        )  # fmt: skip
+        env_vars.append(
+            app.EnvironmentVarArgs(name="KEY_VAULT_URI", value=vault.properties.vault_uri)
+        )
+        outputs["key_vault_uri"] = vault.properties.vault_uri
+
+    if cfg.mlflow and account is not None and vault is not None:
+        insights = applicationinsights.Component(
+            f"{cfg.prefix}-appi",
+            resource_group_name=group.name,
+            application_type="web",
+            kind="web",
+            workspace_resource_id=logs.id,
+        )
+        workspace = machinelearningservices.Workspace(
+            f"{cfg.prefix}-mlw",
+            resource_group_name=group.name,
+            identity=machinelearningservices.ManagedServiceIdentityArgs(type="SystemAssigned"),
+            sku=machinelearningservices.SkuArgs(name="Basic", tier="Basic"),
+            storage_account=account.id,
+            key_vault=vault.id,
+            application_insights=insights.id,
+            container_registry=registry.id,
+        )
+        _grant(
+            f"{cfg.prefix}-mlw-scientist", workspace.id, identity.principal_id,
+            ROLE_AZUREML_DATA_SCIENTIST, client.subscription_id,
+        )  # fmt: skip
+        env_vars += [
+            app.EnvironmentVarArgs(
+                name="MLFLOW_TRACKING_URI", value=workspace.ml_flow_tracking_uri
+            ),
+            app.EnvironmentVarArgs(name="AZURE_CLIENT_ID", value=identity.client_id),
+        ]
+        outputs["mlflow_tracking_uri"] = workspace.ml_flow_tracking_uri
+
+    identity_args = app.ManagedServiceIdentityArgs(
+        type="UserAssigned", user_assigned_identities=[identity.id]
+    )
+    registries = [app.RegistryCredentialsArgs(server=registry.login_server, identity=identity.id)]
+    after_pull_rights = pulumi.ResourceOptions(depends_on=[acr_pull])
+
+    if cfg.job:
+        job = app.Job(
+            f"{cfg.prefix}-job",
+            resource_group_name=group.name,
+            environment_id=environment.id,
+            identity=identity_args,
+            configuration=app.JobConfigurationArgs(
+                trigger_type="Schedule",
+                replica_timeout=3600,
+                replica_retry_limit=1,
+                schedule_trigger_config=app.JobConfigurationScheduleTriggerConfigArgs(
+                    cron_expression=cfg.schedule, parallelism=1, replica_completion_count=1
+                ),
+                registries=registries,
+            ),
+            template=app.JobTemplateArgs(
+                containers=[
+                    app.ContainerArgs(
+                        name="pipeline",
+                        image=image,
+                        resources=app.ContainerResourcesArgs(cpu=1.0, memory="2Gi"),
+                        env=env_vars,
+                        volume_mounts=mounts,
+                    )
+                ],
+                volumes=volumes,
+            ),
+            opts=after_pull_rights,
+        )
+        outputs["job"] = job.name
+
+    if cfg.api:
+        api = app.ContainerApp(
+            f"{cfg.prefix}-api",
+            resource_group_name=group.name,
+            managed_environment_id=environment.id,
+            identity=identity_args,
+            configuration=app.ConfigurationArgs(
+                ingress=app.IngressArgs(external=True, target_port=8000 if cfg.image_tag else 80),
+                registries=registries,
+            ),
+            template=app.TemplateArgs(
+                containers=[
+                    app.ContainerArgs(
+                        name="api",
+                        image=image,
+                        command=API_COMMAND if cfg.image_tag else None,
+                        resources=app.ContainerResourcesArgs(cpu=0.5, memory="1Gi"),
+                        env=env_vars,
+                        volume_mounts=mounts,
+                    )
+                ],
+                scale=app.ScaleArgs(min_replicas=0, max_replicas=2),
+                volumes=volumes,
+            ),
+            opts=after_pull_rights,
+        )
+        outputs["api_url"] = api.configuration.apply(
+            lambda c: f"https://{c.ingress.fqdn}" if c and c.ingress else ""
+        )
+    return outputs

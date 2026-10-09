@@ -1,0 +1,8 @@
+"""Pulumi entry point: build the stack from its configuration and export the outputs."""
+
+import pulumi
+from stack import StackConfig, build
+
+outputs = build(StackConfig.from_pulumi(pulumi.Config(), pulumi.get_stack()))
+for name, value in outputs.items():
+    pulumi.export(name, value)

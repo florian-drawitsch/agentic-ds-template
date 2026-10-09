@@ -1,0 +1,71 @@
+version: '3'
+
+# Included from the root Taskfile, which passes PROJECT and LOCATION.
+# Pulumi reads its state backend from PULUMI_BACKEND_URL and the secrets passphrase from
+# PULUMI_CONFIG_PASSPHRASE; put both into .env (see docs/guides/deployment.md).
+
+vars:
+  STACK: '{{.STACK | default "dev"}}'
+
+tasks:
+  test:
+    desc: Test the infrastructure code with Pulumi mocks (no cloud access)
+    dir: '{{.ROOT_DIR}}/infra'
+    cmds:
+      - uv run pytest {{.CLI_ARGS}}
+
+  bootstrap:
+    desc: Create the storage for the Pulumi state, once per subscription (STATE_ACCOUNT=<name>)
+    requires:
+      vars: [STATE_ACCOUNT]
+    vars:
+      STATE_GROUP: '{{.STATE_GROUP | default (printf "%s-state" .PROJECT)}}'
+    preconditions:
+      - sh: command -v az
+        msg: Install the Azure CLI and run `az login` first
+    cmds:
+      - az group create --name {{.STATE_GROUP}} --location {{.LOCATION}} --output none
+      - az storage account create --name {{.STATE_ACCOUNT}} --resource-group {{.STATE_GROUP}} --sku Standard_LRS --allow-blob-public-access false --min-tls-version TLS1_2 --output none
+      - az storage container create --name pulumi-state --account-name {{.STATE_ACCOUNT}} --auth-mode login --output none
+      - 'echo "Add to .env: PULUMI_BACKEND_URL=azblob://pulumi-state?storage_account={{.STATE_ACCOUNT}}"'
+
+  init:
+    desc: Create a stack with passphrase-encrypted secrets, e.g. STACK=prod
+    dir: '{{.ROOT_DIR}}/infra'
+    cmds:
+      - pulumi stack init {{.STACK}} --secrets-provider passphrase
+
+  preview:
+    desc: Show what `infra:up` would change
+    dir: '{{.ROOT_DIR}}/infra'
+    preconditions: &backend
+      - sh: test -n "$PULUMI_BACKEND_URL"
+        msg: Set PULUMI_BACKEND_URL in .env (task infra:bootstrap prints it)
+    cmds:
+      - pulumi preview --stack {{.STACK}} {{.CLI_ARGS}}
+
+  up:
+    desc: Create or update the Azure resources of a stack
+    dir: '{{.ROOT_DIR}}/infra'
+    preconditions: *backend
+    cmds:
+      - pulumi up --stack {{.STACK}} {{.CLI_ARGS}}
+
+  release:
+    desc: Build the image in Azure Container Registry and roll it out to the stack
+    preconditions: *backend
+    cmds:
+      - |
+        registry=$(pulumi stack output registry --stack {{.STACK}} --cwd infra)
+        tag=$(git rev-parse --short HEAD)
+        az acr build --registry "${registry%%.*}" --image "{{.PROJECT}}:$tag" .
+        pulumi config set imageTag "$tag" --stack {{.STACK}} --cwd infra
+        pulumi up --yes --stack {{.STACK}} --cwd infra
+
+  destroy:
+    desc: Delete every resource of a stack
+    dir: '{{.ROOT_DIR}}/infra'
+    preconditions: *backend
+    prompt: This deletes all Azure resources of the stack. Continue?
+    cmds:
+      - pulumi destroy --stack {{.STACK}} {{.CLI_ARGS}}

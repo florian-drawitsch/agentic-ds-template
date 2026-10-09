@@ -38,11 +38,17 @@ _exclude:
   - "{% if not notebooks %}notebooks{% endif %}"
   - "{% if config != 'hydra' %}conf/config.yaml{% endif %}"
   - "{% if config != 'python' %}conf/config.toml{% endif %}"
+  - "{% if infrastructure != 'azure' %}infra{% endif %}"
+  - "{% if infrastructure != 'azure' %}taskfiles/infra.yml{% endif %}"
+  - "{% if infrastructure != 'azure' %}docs/guides/deployment.md{% endif %}"
+  - "{% if infrastructure != 'azure' or ci != 'github' %}.github/workflows/deploy.yml{% endif %}"
 
 _tasks:
   - command: git init --quiet --initial-branch=main
     when: "{{ _copier_operation == 'copy' }}"
   - command: uv lock --quiet
+  - command: uv lock --quiet --directory infra
+    when: "{{ infrastructure == 'azure' }}"
 
 _message_after_copy: |
   Created {{ project_name }}. Next steps:
@@ -170,10 +176,44 @@ notebooks:
   help: Add a notebooks folder and a Jupyter kernel?
   default: true
 
+infrastructure:
+  type: str
+  help: Infrastructure as code
+  choices:
+    None: none
+    Azure with Pulumi (Python): azure
+  default: none
+
+azure_location:
+  type: str
+  help: Azure region
+  default: westeurope
+  when: "{{ infrastructure == 'azure' }}"
+
+azure_components:
+  type: str
+  help: Azure components (the resource group, registry, identity and Container Apps environment are always created)
+  multiselect: true
+  when: "{{ infrastructure == 'azure' }}"
+  choices:
+    Scheduled container job that runs the pipeline: job
+    Container app for the REST API: api
+    Azure Files share mounted as the data directory: storage
+    Key Vault for secrets: key_vault
+    Azure Machine Learning workspace as MLflow tracking server: mlflow
+  default: "{{ ['job', 'storage', 'key_vault'] + (['api'] if 'api' in interfaces else []) }}"
+  validator: >-
+    {% if 'api' in azure_components and 'api' not in interfaces %}
+    The API container app needs the REST API interface
+    {% elif 'mlflow' in azure_components and tracking != 'mlflow' %}
+    The MLflow workspace needs MLflow tracking
+    {% endif %}
+
 container:
   type: bool
   help: Add a Dockerfile?
-  default: false
+  default: "{{ infrastructure == 'azure' }}"
+  when: "{{ infrastructure != 'azure' }}"
 
 ci:
   type: str

@@ -1,0 +1,64 @@
+name: Deploy
+
+# Manual deployment to Azure. Signs in with OpenID Connect, so no cloud credentials are stored.
+# One-time setup: docs/guides/deployment.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Pulumi stack to deploy
+        required: true
+        default: dev
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.stack }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Provision and release
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.stack }}
+    env:
+      STACK: ${{ inputs.stack }}
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Sign in to Azure
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Set up Task
+        uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      - name: Install Pulumi
+        uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0
+
+      - name: Test the infrastructure code
+        run: task infra:test
+
+      - name: Provision infrastructure
+        run: task infra:up STACK="$STACK" -- --yes
+
+      - name: Build and release the image
+        run: task infra:release STACK="$STACK"
