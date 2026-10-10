@@ -6,7 +6,7 @@ from typing import Any
 
 import polars as pl
 
-from .framework import Pipeline, Step
+from .graph import Pipeline, node, pipeline
 
 
 def split_holdout(
@@ -47,11 +47,22 @@ def evaluate(test: pl.DataFrame, model: dict[str, float], target: str) -> dict[s
     return {"model": "mean_baseline", "rows_test": test.height, "mae": float(error)}
 
 
-pipeline = Pipeline(
-    "training",
-    [
-        Step(split_holdout, inputs=["features"], outputs=["train", "test"]),
-        Step(fit_baseline, inputs=["train"], outputs=["model"], parameters=["target"]),
-        Step(evaluate, inputs=["test", "model"], outputs=["report"], parameters=["target"]),
-    ],
-)
+def create_pipeline() -> Pipeline:
+    """Return the training pipeline."""
+    return pipeline(
+        [
+            node(split_holdout, inputs="features", outputs=["train", "test"], tags=["training"]),
+            node(
+                fit_baseline,
+                inputs=["train", "params:target"],
+                outputs="model",
+                tags=["training"],
+            ),
+            node(
+                evaluate,
+                inputs=["test", "model", "params:target"],
+                outputs="report",
+                tags=["training"],
+            ),
+        ]
+    )

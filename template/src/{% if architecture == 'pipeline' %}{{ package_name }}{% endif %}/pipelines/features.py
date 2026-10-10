@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import polars as pl
 
-from .framework import Pipeline, Step
+from .graph import Pipeline, node, pipeline
 
 
 def build_features(raw: pl.DataFrame, target: str) -> pl.DataFrame:
@@ -13,6 +13,15 @@ def build_features(raw: pl.DataFrame, target: str) -> pl.DataFrame:
     return raw.select(numeric).drop_nulls(target)
 
 
-pipeline = Pipeline(
-    "features", [Step(build_features, inputs=["raw"], outputs=["features"], parameters=["target"])]
-)
+def create_pipeline() -> Pipeline:
+    """Return the features pipeline."""
+    return pipeline(
+        [
+            node(
+                build_features,
+                inputs=["raw", "params:target"],
+                outputs="features",
+                tags=["features"],
+            )
+        ]
+    )

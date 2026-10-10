@@ -41,6 +41,13 @@ tasks:
     desc: Run the {{ 'pipelines (select with --pipeline)' if architecture == 'pipeline' else 'pipeline' }}{{ ', Hydra overrides after --' if config == 'hydra' else '' }}
     cmds:
       - uv run {{ p }} {{ '{{.CLI_ARGS}}' }}
+{%- if architecture == "pipeline" %}
+
+  pipeline-graph:
+    desc: Print the pipeline graph as a Mermaid diagram, e.g. `task pipeline-graph -- --pipeline training`
+    cmds:
+      - uv run {{ p }} --graph {{ '{{.CLI_ARGS}}' }}
+{%- endif %}
 {%- if config == "hydra" %}
 
   sweep:

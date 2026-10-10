@@ -105,3 +105,10 @@ def test_cli_runs_from_a_config_file(example_csv: Path, tmp_path: Path) -> None:
     assert main(["--config", str(config), "--pipeline", "features", "--pipeline", "training"]) == 0
     assert (tmp_path / "report.json").is_file()
 {%- endif %}
+
+
+def test_cli_prints_the_graph(capsys) -> None:
+    from {{ package_name }}.cli import main
+
+    assert main(["--graph", "--pipeline", "inference"]) == 0
+    assert '["predict"]' in capsys.readouterr().out

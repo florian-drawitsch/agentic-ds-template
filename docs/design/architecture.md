@@ -149,7 +149,8 @@ never changes, so later updates cannot conflict with edits there.
 ```
 
 With `architecture=pipeline`, `src/<package>/` holds `catalog.py`, `settings.py`, `cli.py` and
-`pipelines/` (`framework`, `features`, `training`, `inference`). With `architecture=simple`, it holds flat modules (`data.py`, `features.py`,
+`pipelines/` (`graph`, `features`, `training`, `inference`): graphs of nodes in the style of
+Kedro (ADR-0025). With `architecture=simple`, it holds flat modules (`data.py`, `features.py`,
 `models.py`, `evaluate.py`, `cli.py`) and a single import contract: entrypoints import the rest,
 nothing imports entrypoints.
 

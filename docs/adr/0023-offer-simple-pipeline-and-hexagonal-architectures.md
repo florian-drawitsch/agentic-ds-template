@@ -1,6 +1,6 @@
 # ADR-0023: Offer simple, pipeline and hexagonal architectures
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0025
 - **Date:** 2026-10-09
 - **Supersedes:** ADR-0006
 

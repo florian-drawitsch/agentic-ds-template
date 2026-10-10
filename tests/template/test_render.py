@@ -186,7 +186,7 @@ def test_no_caches_or_vcs_files_are_rendered(default: Path) -> None:
 def test_pipeline_architecture(tmp_path: Path) -> None:
     root = render(tmp_path / "project", maturity="production", config="python")
     package = root / "src/demo_project"
-    for module in ("catalog.py", "settings.py", "cli.py", "pipelines/framework.py"):
+    for module in ("catalog.py", "settings.py", "cli.py", "pipelines/graph.py"):
         assert (package / module).is_file()
     for pipeline in ("features", "training", "inference"):
         assert (package / "pipelines" / f"{pipeline}.py").is_file()

@@ -1,0 +1,78 @@
+from pathlib import Path
+
+import polars as pl
+import pytest
+
+from {{ package_name }}.catalog import Catalog
+from {{ package_name }}.pipelines import PIPELINES
+from {{ package_name }}.pipelines.graph import node, pipeline, run
+
+
+def double(table: pl.DataFrame, factor: int) -> pl.DataFrame:
+    return table.with_columns(pl.col("x") * factor)
+
+
+def split(table: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+    return table.head(1), table.tail(1)
+
+
+def test_nodes_run_in_dependency_order_regardless_of_listing(tmp_path: Path) -> None:
+    source = tmp_path / "in.csv"
+    pl.DataFrame({"x": [1, 2]}).write_csv(source)
+    catalog = Catalog({"raw": source, "result": tmp_path / "out.parquet"})
+    graph = pipeline(
+        [
+            node(double, inputs=["intermediate", "params:factor"], outputs="result", name="second"),
+            node(double, inputs=["raw", "params:factor"], outputs="intermediate", name="first"),
+        ]
+    )
+
+    produced = run(graph, catalog, {"factor": 2})
+
+    assert [n.name for n in graph.order()] == ["first", "second"]
+    assert produced["result"]["x"].to_list() == [4, 8]
+    assert pl.read_parquet(tmp_path / "out.parquet")["x"].to_list() == [4, 8]
+    assert not list(tmp_path.glob("intermediate*"))
+
+
+def test_multiple_outputs_are_mapped_by_position() -> None:
+    graph = pipeline([node(split, inputs="raw", outputs=["first", "last"])])
+    catalog = Catalog({})
+    catalog.save("raw", pl.DataFrame({"x": [1, 2, 3]}))
+    produced = run(graph, catalog, {})
+    assert produced["first"]["x"].to_list() == [1]
+    assert produced["last"]["x"].to_list() == [3]
+
+
+def test_cycles_are_rejected() -> None:
+    with pytest.raises(ValueError, match="cycle"):
+        pipeline(
+            [
+                node(double, inputs=["b", "params:f"], outputs="a", name="one"),
+                node(double, inputs=["a", "params:f"], outputs="b", name="two"),
+            ]
+        )
+
+
+def test_a_dataset_has_one_producer() -> None:
+    with pytest.raises(ValueError, match="produced by"):
+        pipeline(
+            [
+                node(double, inputs=["raw", "params:f"], outputs="a", name="one"),
+                node(double, inputs=["raw", "params:f"], outputs="a", name="two"),
+            ]
+        )
+
+
+def test_registered_pipelines_compose_into_one_graph() -> None:
+    default = PIPELINES["__default__"]
+    assert default.inputs == {"raw"}
+    assert {"features", "model", "report", "predictions"} <= default.outputs
+    assert {n.name for n in default.only_tagged("inference").nodes} == {"predict"}
+
+
+def test_graph_renders_as_mermaid() -> None:
+    diagram = PIPELINES["training"].to_mermaid()
+    assert diagram.startswith("flowchart LR")
+    assert '["fit_baseline"]' in diagram
+    assert '(["model"])' in diagram

@@ -29,3 +29,4 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0022](0022-exclude-project-owned-files-on-update.md) | Exclude project-owned files on update and vendor plugin files by symlink | 2026-10-09 |
 | [ADR-0023](0023-offer-simple-pipeline-and-hexagonal-architectures.md) | Offer simple, pipeline and hexagonal architectures | 2026-10-09 |
 | [ADR-0024](0024-provision-azure-with-pulumi.md) | Provision Azure with Pulumi in Python | 2026-10-09 |
+| [ADR-0025](0025-model-pipelines-as-graphs-of-nodes.md) | Model pipelines as graphs of nodes | 2026-10-09 |

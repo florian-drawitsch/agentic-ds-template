@@ -170,7 +170,7 @@ forbidden_modules = [{% for m in entrypoints %}"{{ p }}.{{ m }}"{% if not loop.l
 [[tool.importlinter.contracts]]
 name = "Steps stay pure: no catalog, settings or tracking"
 type = "forbidden"
-source_modules = [{% for m in steps + ["pipelines.framework"] %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+source_modules = [{% for m in steps + ["pipelines.graph"] %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
 forbidden_modules = ["{{ p }}.catalog", "{{ p }}.settings", "{{ p }}.tracking"]
 
 [[tool.importlinter.contracts]]

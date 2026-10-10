@@ -8,6 +8,8 @@ import itertools
 {%- endif %}
 import json
 from collections.abc import Sequence
+from functools import reduce
+from operator import add
 from pathlib import Path
 {%- if config == 'python' %}
 from typing import Any
@@ -22,6 +24,8 @@ from omegaconf import OmegaConf
 
 from {{ package_name }}.catalog import Catalog
 from {{ package_name }}.pipelines import PIPELINES
+from {{ package_name }}.pipelines.graph import Pipeline
+from {{ package_name }}.pipelines.graph import run as run_graph
 from {{ package_name }}.settings import Settings, {{ 'settings_from_mapping' if config == 'hydra' else 'load_settings' }}
 from {{ package_name }}.tracking import {{ 'MlflowTracker' if tracking == 'mlflow' else 'NullTracker' }}, Tracker
 
@@ -39,12 +43,14 @@ def tracker_for(settings: Settings) -> Tracker:
 {%- endif %}
 
 
+def select(names: Sequence[str]) -> Pipeline:
+    """Combine the named pipelines into one graph; nodes run in dependency order."""
+    return reduce(add, (PIPELINES[name] for name in names))
+
+
 def run(settings: Settings, pipelines: Sequence[str]) -> dict[str, Any]:
-    """Run the pipelines in order, track the run and return the evaluation report, if any."""
-    catalog = Catalog(settings.catalog)
-    produced: dict[str, Any] = {}
-    for name in pipelines:
-        produced |= PIPELINES[name].run(catalog, settings.params)
+    """Run the selected pipelines as one graph, track the run and return the report, if any."""
+    produced = run_graph(select(pipelines), Catalog(settings.catalog), settings.params)
     report = produced.get("report", {})
     tracker_for(settings).record(
         params=dict(settings.params) | {"pipelines": ",".join(pipelines)},
@@ -89,7 +95,10 @@ def main(argv: list[str] | None = None) -> int:
         "--pipeline",
         action="append",
         choices=list(PIPELINES),
-        help="pipeline to run; repeat to run several (default: all, in order)",
+        help="pipeline to run; repeat to combine several (default: __default__, all of them)",
+    )
+    parser.add_argument(
+        "--graph", action="store_true", help="print the selected graph as Mermaid and exit"
     )
 {%- if config == 'hydra' %}
     parser.add_argument("overrides", nargs="*", help="Hydra overrides, for example params.target=y")
@@ -97,12 +106,19 @@ def main(argv: list[str] | None = None) -> int:
         "-m", "--multirun", action="store_true", help="run every combination of a,b,c values"
     )
     args = parser.parse_args(argv)
-    pipelines = args.pipeline or list(PIPELINES)
+    pipelines = args.pipeline or ["__default__"]
+    if args.graph:
+        print(select(pipelines).to_mermaid())
+        return 0
     for overrides in expand_sweep(args.overrides) if args.multirun else [args.overrides]:
         print(json.dumps(run(compose_settings(overrides), pipelines)))
 {%- else %}
     parser.add_argument("--config", type=Path, default=CONFIG_DIR / "config.toml")
     args = parser.parse_args(argv)
-    print(json.dumps(run(load_settings(args.config), args.pipeline or list(PIPELINES))))
+    pipelines = args.pipeline or ["__default__"]
+    if args.graph:
+        print(select(pipelines).to_mermaid())
+        return 0
+    print(json.dumps(run(load_settings(args.config), pipelines)))
 {%- endif %}
     return 0
