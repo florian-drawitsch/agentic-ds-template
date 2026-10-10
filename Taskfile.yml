@@ -6,6 +6,11 @@ env:
   VIRTUAL_ENV: ''
 
 tasks:
+  setup:
+    desc: Install the locked development environment
+    cmds:
+      - uv sync --locked
+
   build:
     desc: Regenerate marketplaces and local plugin manifests from catalog.toml
     cmds:

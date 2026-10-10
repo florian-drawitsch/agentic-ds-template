@@ -1,99 +1,111 @@
 # agentic-ds-template
 
-**Data science projects, scaffolded for coding agents.**
+![Claude Code](https://img.shields.io/badge/Claude_Code-000000?style=flat-square&logo=anthropic&logoColor=white)
+![Codex](https://img.shields.io/badge/Codex-412991?style=flat-square&logo=openai&logoColor=white)
+![uv](https://img.shields.io/badge/uv-262626?style=flat-square&logo=python&logoColor=white)
+![Task](https://img.shields.io/badge/Task-29BEB0?style=flat-square)
+![ty](https://img.shields.io/badge/ty-333333?style=flat-square)
+![prek](https://img.shields.io/badge/prek-333333?style=flat-square)
+![Pulumi](https://img.shields.io/badge/Pulumi-8A3391?style=flat-square&logo=pulumi&logoColor=white)
+![Ruff](https://img.shields.io/badge/Ruff-E5A00D?style=flat-square)
+![MLflow](https://img.shields.io/badge/MLflow-0194E2?style=flat-square&logo=mlflow&logoColor=white)
+![Polars](https://img.shields.io/badge/Polars-0033A0?style=flat-square)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
 
-Configurable project scaffolding is combined with a shared operating model for Claude Code, Codex
-and human developers. A use case and a preferred stack are chosen once. The generated project
-stays maintainable and evolves with the template, while project-owned code and context are never
-overwritten.
+A Copier template for agentic development of modern, deployment-ready machine learning and AI applications in Python.
 
-![License: MIT](https://img.shields.io/badge/license-MIT-blue)
-![Python 3.13 | 3.14](https://img.shields.io/badge/python-3.13%20%7C%203.14-blue)
-![Copier](https://img.shields.io/badge/copier-%E2%89%A59.5-blue)
-![Agents: Claude Code | Codex](https://img.shields.io/badge/agents-Claude%20Code%20%7C%20Codex-blue)
+Sets up turn-key Python scaffolding with:
 
-Patterns proven in dozens of data science projects with leading companies in various industries,
-including pharma, automotive, banking and retail.
-
-## Why agentic-ds-template
-
-- **One operating model for agents and people.** Claude Code and Codex read the same `AGENTS.md`,
-  hooks and permission rules. The conventions a developer follows are followed by both agents.
-- **Presets for seven use cases.** Forecasting, anomaly detection, optimization, computer vision,
-  GenAI, tabular prediction and analysis each come with dependencies, domain rules for agents and
-  an evaluation protocol.
-- **Plans are delivered to the end.** A completion guard keeps the agent working until every plan
-  item is ticked and `task check` passes. The work is split between implementer and read-only
-  reviewer roles.
-- **A second vendor reviews the result.** A finished change can be reviewed read-only by the other
-  vendor's agent. Findings follow a fixed schema and are bound to the exact state that was
-  reviewed.
-- **Guardrails as code.** Hooks block pip installs, hand edits of `uv.lock`, `.env` access and
-  force pushes. Import contracts keep frameworks such as Hydra, MLflow and FastAPI at the edges of
-  the architecture.
-- **Template updates without conflicts in project code.** Improvements to tooling, hooks and
-  agent rules arrive with `task update-template`. Source code, tests and context documents are
-  rendered once and left untouched.
-- **A small, current toolchain.** uv, Task, prek, ruff, ty, import-linter, Sphinx and MLflow are
-  preconfigured. Only git, uv and Task are required on the host, and new package releases are
-  held back for seven days.
-- **Tested across combinations.** Every pair of options is rendered and run through the generated
-  project's full gate in a pairwise end-to-end suite.
+- configurable architecture: hexagonal, pipeline-graph or plain
+- best-practice and test-driven agentic setup: Claude Code and Codex integration via local plugins, evaluated skills, hooks, and autonomous execution loops
+- modern tooling: uv, task, prek, ruff, ty
+- infrastructure as code: Pulumi on Azure, CI/CD via GitHub Actions
 
 ## Quickstart
 
-1. **Prerequisites:** [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
-   [Task](https://taskfile.dev) are required.
-2. **Generation:** a project is created from the template:
+1. **Prerequisites:** Install [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and [Task](https://taskfile.dev).
+2. **Generation:** Create a project from the template:
 
    ```bash
    uvx copier copy --trust gh:<owner>/agentic-ds-template my-project
    ```
 
-   `--trust` is needed for the two post-generation steps, `git init` and `uv lock`.
-3. **First run:** the environment is installed, example data is written, and the gate is run:
+   `--trust` allows the post-generation tasks (`git init` and `uv lock`) to run.
+3. **Setup and verification:** Install dependencies and run the quality gate:
 
    ```bash
-   cd my-project && task setup && task example-data && task check
+   cd my-project && task setup && task check
    ```
 
-4. **Agents:** once the folder is trusted in Claude Code or Codex, hooks, roles and plugins are
-   loaded. A plan is then delivered with the `deliver` skill.
+4. **Agents:** Open the project in Claude Code or Codex and trust the workspace. Hooks, roles and plugins load automatically. Deliver plans with the `deliver` skill.
 
-Later template versions are pulled in with `task update-template`.
+Pull later template versions with `task update-template`.
 
-## Options
+## Agentic development
 
-| Question | Choices | Default |
+Claude Code and Codex share an operating model defined in `AGENTS.md`.
+
+### Workflow
+
+1. **Brainstorm:** Use the `brainstorm` skill to examine requirements and evaluate design tradeoffs.
+2. **Plan:** Use the `write-plan` skill to generate a test-first implementation plan in `docs/plans/<plan>.md`.
+3. **Execute:** Run the `deliver` skill in the agent session, or deliver unattended in an isolated worktree (defaults to Claude Code with `sonnet`):
+
+   ```bash
+   task agent:deliver PLAN=docs/plans/<plan>.md
+   ```
+
+   Customize the model, reasoning effort, or harness with arguments:
+
+   ```bash
+   task agent:deliver PLAN=docs/plans/<plan>.md MODEL=claude-5-5-haiku EFFORT=high
+   ```
+
+4. **Review:** Run the `cross-review` skill to have the multiple agents review changes read-only.
+5. **Finish:** Use the `wrap-feature` skill to perform final validation, clean up branches, or prepare a pull request.
+6. **Document:** Record lasting architecture decisions in `docs/adr/`.
+
+### Agent skills
+
+Agents access workflow skills from the `project` plugin and `superpowers`:
+
+| Skill | Source | Purpose |
 | --- | --- | --- |
-| Use case | forecasting, anomaly detection, optimization, computer vision, GenAI, tabular, analysis | forecasting |
-| Maturity | proof of concept, production (coverage gate, layered default) | proof of concept |
-| Architecture | simple flat modules, layered (domain to entry points) | by maturity |
-| Interfaces | command line, plus REST API (FastAPI) and dashboard (Streamlit) | command line |
-| Configuration | Hydra, native Python (TOML and dataclasses) | Hydra |
-| Dataframes | Polars, Polars and pandas | Polars |
-| Tracking | MLflow with a local SQLite store, none | MLflow |
-| Extras | notebooks, Dockerfile, GitHub Actions with Renovate | notebooks, CI |
-| Agents | Claude Code, Codex | both |
+| `brainstorm` | `superpowers` (shimmed) | Explore requirements and design options before planning |
+| `write-plan` | `superpowers` (shimmed) | Create structured implementation plans in `docs/plans/` |
+| `deliver` | `project` | Run an autonomous execution loop until all tasks and `task check` pass |
+| `execute-plan` | `superpowers` (shimmed) | Execute plan tasks in batches with review checkpoints |
+| `implement-feature` | `superpowers` (shimmed) | Build features with test-driven development (red-green-refactor) |
+| `debug` | `superpowers` (shimmed) | Find root causes through hypothesis-driven reproduction |
+| `cross-review` | `project` | Run a headless, read-only review with the alternate agent CLI |
+| `request-review` | `superpowers` (shimmed) | Review changed files against the plan in the current session |
+| `wrap-feature` | `superpowers` (shimmed) | Verify work, clean up branches, or prepare pull requests |
 
-Optional free-text answers about the problem, decisions, data, success criteria and constraints
-are written into the project's context documents and `AGENTS.md`.
+### Agent tasks
 
-## Plugin marketplace
+Project taskfiles provide commands to manage agent operations:
 
-The repository also serves as a plugin marketplace for Claude Code and Codex. Generated projects
-register it at a pinned tag, and it can be added to any other repository.
+- `task agent:status`: Displays repository status and active agent delivery runs.
+- `task agent:deliver`: Runs an approved plan unattended in a fresh git worktree (`PLAN=...`, optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`).
+- `task agent:check`: Verifies that agent hooks and role configurations are present (alias: `doctor`).
 
-| Plugin | Source | Purpose |
-| --- | --- | --- |
-| `superpowers` | [obra/superpowers](https://github.com/obra/superpowers), pinned | Brainstorming, planning, test-driven execution, review and branch finishing |
-| `project` | `plugins/project` | `deliver` executes a plan until it is verifiably done, also unattended in a worktree. `cross-review` has the other vendor's agent review a change read-only |
+### Roles and safety
 
-## Documentation
+- Implementer and reviewer roles split coding and verification.
+- Reviewer subagents run with read-only permissions.
+- Git hooks reject direct `pip install` commands, manual `uv.lock` edits, and access to secrets.
+- Architectural import rules keep frameworks at system boundaries.
 
-- Design overview: [docs/design/architecture.md](docs/design/architecture.md)
-- Decision records: [docs/adr](docs/adr/index.md)
-- Plugin setup: [plugins/project/README.md](plugins/project/README.md)
+## Development
+
+```bash
+task setup
+task check
+```
+
+`task setup` installs the locked development environment. `task check` runs the merge gate. Use
+`task test-e2e` for the slower generated-project matrix.
 
 ## License
 

@@ -9,17 +9,20 @@ tasks:
       - uv run --script scripts/agent/deliver.py status
 
   deliver:
-    desc: Deliver a committed plan unattended in a new worktree, e.g. PLAN=docs/plans/x.md HARNESS=codex
+    desc: Deliver a committed plan unattended in a new worktree, e.g. PLAN=docs/plans/x.md MODEL=claude-3-5-haiku EFFORT=low
     dir: '{{.ROOT_DIR}}'
     requires:
       vars: [PLAN]
     vars:
       HARNESS: '{{.HARNESS | default "claude"}}'
+      MODEL_FLAG: '{{if .MODEL}}--model {{.MODEL}}{{end}}'
+      EFFORT_FLAG: '{{if .EFFORT}}--effort {{.EFFORT}}{{end}}'
     cmds:
-      - uv run --script scripts/agent/deliver.py headless --plan {{.PLAN}} --harness {{.HARNESS}} {{.CLI_ARGS}}
+      - uv run --script scripts/agent/deliver.py headless --plan {{.PLAN}} --harness {{.HARNESS}} {{.MODEL_FLAG}} {{.EFFORT_FLAG}} {{.CLI_ARGS}}
 
-  doctor:
+  check:
     desc: Check that the agent hooks and roles are installed
+    aliases: [doctor]
     dir: '{{.ROOT_DIR}}'
     cmds:
       - uv run --script scripts/agent/deliver.py doctor

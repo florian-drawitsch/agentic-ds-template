@@ -18,6 +18,7 @@ outrank code and tests, which outrank plans. The design overview is in
 
 ## Commands
 
+- `task setup`: install the locked development environment
 - `task build`: regenerate marketplaces and manifests from the catalog
 - `task check`: build check, ruff, ty, pytest and manifest validation; the merge gate
 - `task dev`: register this working copy as a local marketplace in both CLIs

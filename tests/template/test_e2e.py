@@ -43,7 +43,7 @@ def run(command: list[str], cwd: Path) -> None:
 @pytest.mark.parametrize("answers", COMBINATIONS, ids=lambda a: "-".join(str(v) for v in a.values()))
 def test_rendered_project_passes_its_gate(tmp_path: Path, answers: dict[str, Any]) -> None:
     root = render(tmp_path / "project", tasks=True, **answers)
-    run(["uv", "sync", "--locked"], root)
+    run(["task", "setup"], root)
     run(["task", "example-data"], root)
     run(["task", "run"], root)
     run(["task", "check"], root)

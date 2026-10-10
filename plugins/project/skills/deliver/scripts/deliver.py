@@ -672,7 +672,13 @@ def claude_sandbox_settings() -> str:
 
 
 def agent_command(
-    harness: str, prompt: str, session: str | None, first: bool, model: str | None, mode: str
+    harness: str,
+    prompt: str,
+    session: str | None,
+    first: bool,
+    model: str | None,
+    mode: str,
+    effort: str | None = None,
 ) -> list[str]:
     """Return the CLI invocation for one headless round.
 
@@ -686,10 +692,12 @@ def agent_command(
         command += ["--settings", claude_sandbox_settings()]
         command += ["--output-format", "stream-json", "--verbose"]
         command += ["--model", model] if model else []
+        command += ["--effort", effort] if effort else []
         return [*command, prompt]
     command = ["codex", "exec"] if first else ["codex", "exec", "resume", str(session)]
     command += ["--json", "-c", 'sandbox_mode="workspace-write"', "-c", 'approval_policy="never"']
     command += ["-m", model] if model else []
+    command += ["-c", f'model_reasoning_effort="{effort}"'] if effort else []
     return [*command, prompt]
 
 
@@ -754,7 +762,13 @@ def cmd_headless(args: argparse.Namespace) -> int:
     prompt = headless_prompt(run, plan)
     if args.dry_run:
         command = agent_command(
-            args.harness, prompt, session, True, args.model, args.claude_permission_mode
+            args.harness,
+            prompt,
+            session,
+            True,
+            args.model,
+            args.claude_permission_mode,
+            args.effort,
         )
         print(" ".join(command))
         return 0
@@ -762,7 +776,13 @@ def cmd_headless(args: argparse.Namespace) -> int:
     first = True
     while True:
         command = agent_command(
-            args.harness, prompt, session, first, args.model, args.claude_permission_mode
+            args.harness,
+            prompt,
+            session,
+            first,
+            args.model,
+            args.claude_permission_mode,
+            args.effort,
         )
         code, thread = run_round(command, workdir, log)
         session = session or thread
@@ -843,6 +863,7 @@ def parser() -> argparse.ArgumentParser:
     add_run_options(head)
     head.add_argument("--harness", choices=["claude", "codex"], required=True)
     head.add_argument("--model")
+    head.add_argument("--effort", choices=["low", "medium", "high"], help="reasoning effort")
     head.add_argument("--in-place", action="store_true", help="use this worktree")
     head.add_argument("--branch", help="branch for the new worktree")
     head.add_argument(

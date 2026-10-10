@@ -17,7 +17,7 @@ Install [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
 4. **Review:** `cross-review` has the other vendor's agent review the change read-only.
 5. **Commit:** Conventional Commits (`type(scope): subject`), sized by responsibility.
 
-For unattended runs, commit the plan and run `task agent:deliver PLAN=docs/plans/<plan>.md`.
+For unattended runs, commit the plan and run `task agent:deliver PLAN=docs/plans/<plan>.md` (optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`).
 It works in a new worktree on a `deliver/<plan>` branch.
 
 ## Agent setup
@@ -30,7 +30,7 @@ Hooks run in both Claude Code and Codex:
 
 Plugins come from the `{{ marketplace_repo }}` marketplace, pinned to `{{ marketplace_ref }}`.
 Trust the project in each harness once so the settings, hooks and plugins load (`/hooks` in
-Codex). `task agent:doctor` checks the installation.
+Codex). `task agent:check` checks the installation.
 
 ## Quality gate
 

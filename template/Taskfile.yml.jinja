@@ -26,7 +26,7 @@ tasks:
   setup:
     desc: Install the environment and the git hooks
     cmds:
-      - uv sync
+      - uv sync --locked
       - uv run prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
 {%- if notebooks %}
       - uv run python -m ipykernel install --sys-prefix --name {{ p }} --display-name {{ project_name }}
