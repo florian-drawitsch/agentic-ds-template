@@ -35,7 +35,8 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 {%- if 'dashboard' in interfaces %}
 - `task dashboard`: run the dashboard.
 {%- endif %}
-- `task docs:serve`: live documentation.
+- `task docs:serve`: live documentation. `task docs:diagrams`: package and class diagrams of the
+  code, generated into `docs/architecture/generated/`.
 {%- if infrastructure == 'azure' %}
 - `task infra:test`: test the Azure infrastructure in `infra/` with Pulumi mocks. `infra:preview`,
   `infra:up` and `infra:release` change real resources: run them only when asked.

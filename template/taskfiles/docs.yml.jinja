@@ -1,0 +1,21 @@
+version: '3'
+
+tasks:
+  serve:
+    desc: Serve the documentation with live reload at http://127.0.0.1:8000
+    dir: '{{ '{{.ROOT_DIR}}' }}'
+    cmds:
+      - uv run sphinx-autobuild docs docs/_build/html
+
+  build:
+    desc: Build the HTML documentation, treating warnings as errors
+    dir: '{{ '{{.ROOT_DIR}}' }}'
+    cmds:
+      - uv run sphinx-build -W --keep-going -b html docs docs/_build/html
+
+  diagrams:
+    desc: Generate package and class diagrams of the code as Mermaid with pyreverse
+    dir: '{{ '{{.ROOT_DIR}}' }}'
+    cmds:
+      - mkdir -p docs/architecture/generated
+      - uv run pyreverse -o mmd -p {{ package_name }} -d docs/architecture/generated src/{{ package_name }}
