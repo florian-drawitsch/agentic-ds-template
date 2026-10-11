@@ -270,12 +270,16 @@ def test_sandboxed_agents_may_write_the_shared_git_dir_and_hook_cache(
     assert f"sandbox_workspace_write.writable_roots={json.dumps(writable)}" in codex
 
 
-def test_progress_shows_tool_calls_of_the_session_and_its_subagents(deliver: ModuleType) -> None:
-    event = {
+def test_progress_renders_messages_tools_results_and_subagents_like_claude_code(
+    deliver: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    subagent = {
         "type": "assistant",
         "parent_tool_use_id": "toolu_1",
         "message": {
             "content": [
+                {"type": "thinking", "thinking": ""},
                 {"type": "text", "text": "Starting task 2"},
                 {"type": "tool_use", "name": "Bash", "input": {"command": "task check"}},
             ]
@@ -293,10 +297,92 @@ def test_progress_shows_tool_calls_of_the_session_and_its_subagents(deliver: Mod
             ]
         },
     }
+    result = {
+        "type": "user",
+        "message": {
+            "content": [
+                {"type": "tool_result", "content": "first line\nsecond\nthird", "is_error": True}
+            ]
+        },
+    }
+    command = {
+        "type": "item.completed",
+        "item": {"type": "command_execution", "exit_code": 0, "aggregated_output": "a\n9 passed"},
+    }
 
-    assert deliver.event_text(event) == (
-        "  [subagent] Starting task 2\n  [subagent] -> Bash task check"
+    assert deliver.render_event(subagent) == [
+        "  │ ✻ Thinking…",
+        "  │ ⏺ Starting task 2",
+        "  │ ⏺ Bash(task check)",
+    ]
+    assert deliver.render_event(dispatch) == ["", "⏺ Agent(implementer: Task 2)"]
+    assert deliver.render_event(result) == ["  ⎿  first line (+2 lines)"]
+    assert deliver.render_event(command) == ["  ⎿  exit 0 · 9 passed"]
+
+
+def test_shell_results_show_the_last_line_and_codex_commands_are_unwrapped(
+    deliver: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    call = {
+        "type": "assistant",
+        "message": {"content": [{"type": "tool_use", "id": "t9", "name": "Bash", "input": {}}]},
+    }
+    output = {
+        "type": "user",
+        "message": {
+            "content": [
+                {"type": "tool_result", "tool_use_id": "t9", "content": "ruff ok\n50 passed"}
+            ]
+        },
+    }
+    started = {
+        "type": "item.started",
+        "item": {
+            "type": "command_execution",
+            "command": "/bin/zsh -lc \"git commit -m 'test: probe'\"",
+        },
+    }
+
+    deliver.render_event(call)
+
+    assert deliver.render_event(output) == ["  ⎿  50 passed (+1 line)"]
+    assert deliver.render_event(started) == ["", "⏺ Shell(git commit -m 'test: probe')"]
+
+
+def test_colors_follow_no_color_and_force_color(
+    deliver: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert deliver.paint("Bash", "green", "bold") == "\033[32;1mBash\033[0m"
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert deliver.paint("Bash", "green", "bold") == "Bash"
+
+
+def test_header_names_the_model_and_effort_and_where_they_come_from(
+    deliver: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(deliver.Path, "home", lambda: tmp_path / "home")
+    monkeypatch.delenv("ANTHROPIC_MODEL", raising=False)
+    monkeypatch.setattr(deliver, "cli_version", lambda harness: "1.2.3")
+    (tmp_path / "home/.codex").mkdir(parents=True)
+    (tmp_path / "home/.codex/config.toml").write_text(
+        'model = "gpt-x"\nmodel_reasoning_effort = "high"\n', encoding="utf-8"
     )
-    assert deliver.event_text(dispatch) == "-> Agent implementer: Task 2"
-    started = {"type": "item.started", "item": {"type": "command_execution", "command": "ls"}}
-    assert deliver.event_text(started) == "-> shell ls"
+    (tmp_path / ".claude/agents").mkdir(parents=True)
+    (tmp_path / ".claude/settings.json").write_text('{"model": "opus"}', encoding="utf-8")
+    (tmp_path / ".claude/agents/implementer.md").write_text("---\nmodel: sonnet\n---\n")
+    (tmp_path / ".claude/agents/reviewer.md").write_text("---\nmodel: opus\n---\n")
+    args = deliver.parser().parse_args(["headless", "--plan", "p.md", "--harness", "codex"])
+
+    codex = deliver.session_settings(args, tmp_path)
+    args.harness, args.effort = "claude", "low"
+    claude = deliver.session_settings(args, tmp_path)
+
+    assert codex["vendor"] == "Codex 1.2.3"
+    assert codex["model"] == "gpt-x  (~/.codex/config.toml)"
+    assert codex["effort"] == "high  (~/.codex/config.toml)"
+    assert claude["model"].startswith("opus  (")
+    assert claude["effort"] == "low  (--effort)"
+    assert claude["mode"] == "subagents · implementer sonnet · reviewer opus"

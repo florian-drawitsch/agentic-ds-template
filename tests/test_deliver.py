@@ -244,12 +244,9 @@ def test_headless_requires_a_committed_plan(repo: Path) -> None:
         deliver.cmd_headless(args)
 
 
-def test_codex_thread_id_and_messages_are_read_from_events() -> None:
-    assert (
-        deliver.event_text(
-            {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}}
-        )
-        == "hi"
-    )
+def test_codex_and_claude_messages_are_shown_from_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    codex_event = {"type": "item.completed", "item": {"type": "agent_message", "text": "hi"}}
+    assert deliver.render_event(codex_event) == ["", "⏺ hi"]
     claude_event = {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}}
-    assert deliver.event_text(claude_event) == "ok"
+    assert deliver.render_event(claude_event) == ["", "⏺ ok"]

@@ -32,6 +32,7 @@ import os
 import random
 import re
 import secrets
+import shlex
 import shutil
 import subprocess
 import sys
@@ -842,14 +843,12 @@ def run_round(command: list[str], cwd: Path, log: Path) -> RoundResult:
             except json.JSONDecodeError:
                 if line.strip():
                     result.errors.append(line.strip())
-                    print(line.rstrip(), flush=True)
+                    say(paint(line.rstrip(), "dim"))
                 continue
             if not isinstance(event, dict):
                 continue
             absorb(result, event)
-            text = event_text(event)
-            if text:
-                print(text, flush=True)
+            say(*render_event(event))
     result.code = process.returncode
     return result
 
@@ -969,48 +968,304 @@ def retry_prompt(prompt: str, limit: Limit) -> str:
     )
 
 
-def tool_summary(name: str, data: dict[str, Any]) -> str:
-    """Return a one-line progress note for a tool call."""
+# --- console output --------------------------------------------------------------------------
+
+STYLES = {
+    "bold": "1",
+    "dim": "2",
+    "italic": "3",
+    "red": "31",
+    "green": "32",
+    "yellow": "33",
+    "cyan": "36",
+}
+
+
+SHELL_TOOLS = {"Bash", "Shell"}  # their results show the last output line, which says the most
+tool_names: dict[str, str] = {}  # tool_use id -> tool name, to style the matching result
+
+
+def color_enabled() -> bool:
+    """Return whether console output may use ANSI colors (NO_COLOR and FORCE_COLOR apply)."""
+    if os.environ.get("NO_COLOR"):
+        return False
+    return bool(os.environ.get("FORCE_COLOR")) or sys.stdout.isatty()
+
+
+def paint(text: str, *styles: str) -> str:
+    """Wrap text in ANSI styles when colors are enabled."""
+    if not styles or not color_enabled():
+        return text
+    return f"\033[{';'.join(STYLES[style] for style in styles)}m{text}\033[0m"
+
+
+def say(*lines: str) -> None:
+    """Print console lines immediately."""
+    for line in lines:
+        print(line, flush=True)
+
+
+def note(text: str, tone: str = "yellow") -> None:
+    """Print a delivery note: yellow for progress, green for success, red for failure."""
+    mark = {"green": "✓", "red": "✗"}.get(tone, "●")
+    say(paint(f"{mark} ", tone, "bold") + text)
+
+
+def clip(text: str, width: int = 110, last: bool = False) -> tuple[str, int]:
+    """Return the first (or last) non-empty line, shortened, and the number of other lines."""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if not lines:
+        return "", 0
+    line = lines[-1] if last else lines[0]
+    return (line if len(line) <= width else line[: width - 1] + "…"), len(lines) - 1
+
+
+def tool_argument(name: str, data: dict[str, Any]) -> str:
+    """Return the argument shown in a tool line, such as the command or the file."""
     agent = data.get("subagent_type")
-    label = f"{name} {agent}:" if isinstance(agent, str) else name
-    for key in ("description", "file_path", "path", "command", "pattern", "url", "query"):
+    if isinstance(agent, str):
+        return f"{agent}: {data.get('description') or ''}".strip()
+    for key in ("command", "file_path", "path", "pattern", "url", "query", "description"):
         value = data.get(key)
         if isinstance(value, str) and value.strip():
-            return f"-> {label} {value.strip().splitlines()[0][:100]}"
-    return f"-> {label}"
+            return clip(value, 100)[0]
+    return ""
 
 
-def event_text(event: dict[str, Any]) -> str | None:
-    """Extract assistant text and tool calls from a Claude or Codex JSON event for progress."""
+def tool_line(name: str, argument: str = "") -> str:
+    """Return a tool call line in the style of the Claude Code CLI."""
+    return paint("⏺ ", "green") + paint(name, "bold") + (f"({argument})" if argument else "")
+
+
+def result_line(text: str, error: bool = False, last: bool = False) -> str:
+    """Return a tool result line: one line of output and how many lines were left out."""
+    line, more = clip(text, last=last)
+    plural = "line" if more == 1 else "lines"
+    summary = (line or "(no output)") + (f" (+{more} {plural})" if more else "")
+    return paint("  ⎿  ", "dim") + paint(summary, "red" if error else "dim")
+
+
+def message_lines(text: str) -> list[str]:
+    """Return an assistant message, its first line marked like the Claude Code CLI."""
+    rows = text.strip().splitlines() or [""]
+    return [paint("⏺ ", "bold") + rows[0], *(f"  {row}" for row in rows[1:])]
+
+
+def thinking_line(text: str) -> str:
+    """Return a dim thinking line; models that hide their reasoning show a placeholder."""
+    line, more = clip(text, 100)
+    shown = f"{line}{' …' if more and not line.endswith('…') else ''}" if line else "Thinking…"
+    return paint(f"✻ {shown}", "dim", "italic")
+
+
+def result_text(content: Any) -> str:
+    """Return the text of a Claude tool result, which is a string or a list of parts."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(part.get("text", "") for part in content if isinstance(part, dict))
+    return ""
+
+
+def render_event(event: dict[str, Any]) -> list[str]:
+    """Return the console lines for one Claude or Codex JSON event."""
+    kind = event.get("type")
     message = event.get("message") or {}
-    if event.get("type") == "assistant" and isinstance(message.get("content"), list):
-        prefix = "  [subagent] " if event.get("parent_tool_use_id") else ""
-        lines = []
+    lines: list[str] = []
+    if kind == "system" and event.get("subtype") == "init":
+        lines.append(
+            paint(
+                f"  ⎿  session {str(event.get('session_id'))[:8]} · model "
+                f"{event.get('model', '?')}",
+                "dim",
+            )
+        )
+    elif kind == "assistant" and isinstance(message.get("content"), list):
+        spaced = not event.get("parent_tool_use_id")  # blank line between main-level steps
         for part in message["content"]:
-            if part.get("type") == "text" and part.get("text"):
-                lines.append(prefix + part["text"])
+            if part.get("type") == "text" and part.get("text", "").strip():
+                lines += [""] * spaced + message_lines(part["text"])
+            elif part.get("type") == "thinking":
+                lines += [""] * spaced + [thinking_line(part.get("thinking", ""))]
             elif part.get("type") == "tool_use":
-                summary = tool_summary(part.get("name", "tool"), part.get("input") or {})
-                lines.append(prefix + summary)
-        return "\n".join(lines) or None
+                name = part.get("name", "tool")
+                tool_names[str(part.get("id"))] = name
+                lines += [""] * spaced + [
+                    tool_line(name, tool_argument(name, part.get("input") or {}))
+                ]
+    elif kind == "user" and isinstance(message.get("content"), list):
+        for part in message["content"]:
+            if isinstance(part, dict) and part.get("type") == "tool_result":
+                error = bool(part.get("is_error"))
+                shell = tool_names.get(str(part.get("tool_use_id"))) in SHELL_TOOLS
+                text = result_text(part.get("content"))
+                lines.append(result_line(text, error=error, last=shell and not error))
+    elif kind == "result" and event.get("is_error"):
+        lines.append(paint(f"✗ {clip(str(event.get('result') or 'error'))[0]}", "red"))
+    elif kind in {"error", "turn.failed"}:
+        error = event.get("error")
+        text = event.get("message") or (error.get("message") if isinstance(error, dict) else error)
+        lines.append(paint(f"✗ {clip(str(text or kind))[0]}", "red"))
+    else:
+        lines += render_codex_item(event)
+    if event.get("parent_tool_use_id"):
+        bar = paint("  │ ", "cyan", "dim")
+        lines = [bar + line for line in lines]
+    return lines
+
+
+def render_codex_item(event: dict[str, Any]) -> list[str]:
+    """Return the console lines for a Codex item event."""
     item = event.get("item") or {}
-    kind = item.get("type")
-    if event.get("type") == "item.completed" and kind == "agent_message":
-        return item.get("text")
+    kind, done = item.get("type"), event.get("type") == "item.completed"
+    if done and kind == "agent_message":
+        return ["", *message_lines(item.get("text") or "")]
+    if done and kind == "reasoning":
+        return ["", thinking_line(item.get("text") or "")]
     if event.get("type") == "item.started" and kind == "command_execution":
-        return tool_summary("shell", {"command": item.get("command")})
-    if event.get("type") == "item.completed" and kind == "file_change":
+        command = str(item.get("command") or "")
+        try:
+            argv = shlex.split(command)
+        except ValueError:
+            argv = []
+        if len(argv) == 3 and argv[0].endswith("sh") and argv[1] in {"-c", "-lc"}:
+            command = argv[2]  # unwrap `/bin/zsh -lc "<command>"`
+        return ["", tool_line("Shell", clip(command, 100)[0])]
+    if done and kind == "command_execution":
+        code = item.get("exit_code")
+        output = str(item.get("aggregated_output") or "")
+        line, _ = clip(output, last=True)
+        return [result_line(f"exit {code}" + (f" · {line}" if line else ""), error=code != 0)]
+    if done and kind == "file_change":
         paths = ", ".join(change.get("path", "?") for change in item.get("changes") or [])
-        return f"-> edit {paths}"
+        return ["", tool_line("Edit", clip(paths, 100)[0])]
     if event.get("type") == "item.started" and kind == "mcp_tool_call":
-        return f"-> {item.get('server', 'mcp')}.{item.get('tool', 'tool')}"
-    return None
+        return ["", tool_line(f"{item.get('server', 'mcp')}.{item.get('tool', 'tool')}")]
+    return []
+
+
+# --- run header ------------------------------------------------------------------------------
+
+
+def home_relative(path: Path) -> str:
+    """Return the path with the home directory shortened to ~."""
+    try:
+        return "~/" + path.relative_to(Path.home()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def read_toml(path: Path) -> dict[str, Any]:
+    """Return a TOML file as a dict, or an empty dict when it is missing or invalid."""
+    import tomllib
+
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def first_setting(key: str, sources: list[Path], loader: Any) -> tuple[str | None, str]:
+    """Return the first value of key in the sources and where it came from."""
+    for path in sources:
+        value = loader(path).get(key)
+        if isinstance(value, str) and value:
+            return value, home_relative(path)
+    return None, ""
+
+
+def json_file(path: Path) -> dict[str, Any]:
+    """Return a JSON object file as a dict, or an empty dict."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def session_settings(args: argparse.Namespace, root: Path) -> dict[str, str]:
+    """Return the vendor, model and effort a headless run will use, with their sources."""
+    home = Path.home()
+    if args.harness == "claude":
+        sources = [
+            root / ".claude/settings.local.json",
+            root / ".claude/settings.json",
+            home / ".claude/settings.json",
+        ]
+        model, origin = first_setting("model", sources, json_file)
+        if os.environ.get("ANTHROPIC_MODEL"):
+            model, origin = os.environ["ANTHROPIC_MODEL"], "ANTHROPIC_MODEL"
+        effort, effort_origin = None, ""
+        roles = {
+            name: role_model_claude(root / f".claude/agents/{name}.md")
+            for name in ("implementer", "reviewer")
+        }
+    else:
+        sources = [root / ".codex/config.toml", home / ".codex/config.toml"]
+        model, origin = first_setting("model", sources, read_toml)
+        effort, effort_origin = first_setting("model_reasoning_effort", sources, read_toml)
+        roles = {
+            name: role_model_codex(root / f".codex/agents/{name}.toml")
+            for name in ("implementer", "reviewer")
+        }
+    if args.model:
+        model, origin = args.model, "--model"
+    if args.effort:
+        effort, effort_origin = args.effort, "--effort"
+    return {
+        "vendor": f"{'Claude Code' if args.harness == 'claude' else 'Codex'} "
+        f"{cli_version(args.harness)}",
+        "model": f"{model or 'CLI default'}" + (f"  ({origin})" if origin else ""),
+        "effort": f"{effort or 'CLI default'}" + (f"  ({effort_origin})" if effort_origin else ""),
+        "mode": args.mode
+        if args.mode == "single"
+        else (f"subagents · implementer {roles['implementer']} · reviewer {roles['reviewer']}"),
+    }
+
+
+def role_model_claude(path: Path) -> str:
+    """Return the model in a Claude role file's frontmatter."""
+    try:
+        match = re.search(r"^model:\s*(\S+)", path.read_text(encoding="utf-8"), re.MULTILINE)
+    except OSError:
+        return "?"
+    return match.group(1) if match else "session model"
+
+
+def role_model_codex(path: Path) -> str:
+    """Return the model and effort of a Codex role file."""
+    data = read_toml(path)
+    model = data.get("model") or "session model"
+    effort = data.get("model_reasoning_effort")
+    return f"{model}, {effort}" if effort else str(model)
+
+
+def cli_version(harness: str) -> str:
+    """Return the installed version of the vendor CLI."""
+    try:
+        output = subprocess.run(
+            [harness, "--version"], capture_output=True, text=True, timeout=15, check=False
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return "(not found)"
+    match = re.search(r"\d+\.\d+\.\d+", output)
+    return match.group(0) if match else output.strip()[:40]
+
+
+def print_header(args: argparse.Namespace, root: Path, plan: str) -> None:
+    """Print what the run will use before it starts."""
+    say(paint("● deliver ", "yellow", "bold") + paint(plan, "bold"))
+    rows = session_settings(args, root)
+    rows["limits"] = f"waits up to {args.max_wait:g} h for usage limits"
+    for label, value in rows.items():
+        say(f"  {paint(f'{label:<8}', 'dim')} {value}")
 
 
 def cmd_headless(args: argparse.Namespace) -> int:
     """Deliver a plan unattended, resuming the session until the guard releases it."""
     source_root = repo_root(Path.cwd()).resolve()
     plan = (source_root / args.plan).resolve().relative_to(source_root).as_posix()
+    print_header(args, source_root, plan)
     if not args.in_place:
         tracked = subprocess.run(
             ["git", "diff", "--quiet", "HEAD", "--", plan], cwd=source_root, check=False
@@ -1019,13 +1274,13 @@ def cmd_headless(args: argparse.Namespace) -> int:
         if not listed or tracked.returncode != 0:
             raise SystemExit(f"Commit {plan} first: the new worktree starts from HEAD")
     workdir = source_root if args.in_place else create_worktree(source_root, plan, args.branch)
-    print(f"Working in {workdir}")
+    say(f"  {paint('worktree', 'dim')} {workdir}", "")
     session = str(uuid.uuid4()) if args.harness == "claude" else None
     args.plan = plan
     args.session_id = session
     setup = args.setup if args.setup is not None else default_setup(workdir)
     if setup and not args.dry_run:
-        print(f"Preparing the worktree: {setup}")
+        note(f"Preparing the worktree: {setup}")
         if subprocess.run(setup, shell=True, cwd=workdir, check=False).returncode != 0:
             raise SystemExit(f"Setup command failed: {setup}")
     run = create_run(workdir, args)
@@ -1043,7 +1298,7 @@ def cmd_headless(args: argparse.Namespace) -> int:
             args.effort,
             writable,
         )
-        print(" ".join(command))
+        say(" ".join(command))
         return 0
 
     first, budget, backoff = True, args.max_wait * 3600, Backoff()
@@ -1077,17 +1332,16 @@ def cmd_headless(args: argparse.Namespace) -> int:
                     )
                     run.resume_at = None
                     run.save(workdir)
-                    print(run.note, file=sys.stderr)
+                    note(run.note, "red")
                     return 1
                 run.waits += 1
                 run.waited_seconds += delay
                 run.resume_at = resume.isoformat(timespec="seconds")
                 run.save(workdir)
                 local = resume.astimezone()
-                print(
+                note(
                     f"{limit.kind.capitalize()} limit: {limit.detail}. Waiting until "
-                    f"{local:%Y-%m-%d %H:%M %Z} ({delay / 60:.0f} min), then resuming.",
-                    flush=True,
+                    f"{local:%Y-%m-%d %H:%M %Z} ({delay / 60:.0f} min), then resuming."
                 )
                 wait_until(resume)
                 run = find_run(workdir, run.token)
@@ -1101,25 +1355,31 @@ def cmd_headless(args: argparse.Namespace) -> int:
                 run.status = "stopped"
                 run.note = f"The {args.harness} CLI exited with code {result.code}; see {log}."
                 run.save(workdir)
-                print(run.note, file=sys.stderr)
+                note(run.note, "red")
                 return 1
             if run.status != ACTIVE:
-                print(f"Run {run.token} ended inside the session: {run.status}. {run.note or ''}")
+                tone = "green" if run.status == "completed" else "red"
+                note(
+                    f"Run {run.token} ended inside the session: {run.status}. {run.note or ''}",
+                    tone,
+                )
                 return 0 if run.status == "completed" else 1
             run.session_id = session
             verdict = evaluate(workdir, run)
             run.note = verdict.message if verdict.action == "release" else run.note
             run.save(workdir)
             if verdict.action == "release":
-                print(verdict.message)
+                note(verdict.message, "green" if run.status == "completed" else "red")
                 return 0 if run.status == "completed" else 1
+            note(verdict.message.splitlines()[0])
             prompt, first = verdict.message, False
     except KeyboardInterrupt:
         run = find_run(workdir, run.token)
         run.status, run.resume_at = "stopped", None
         run.note = f"Interrupted by the user. Plan progress is kept in {workdir}."
         run.save(workdir)
-        print(f"\n{run.note}", file=sys.stderr)
+        say("")
+        note(run.note, "red")
         return 130
 
 
