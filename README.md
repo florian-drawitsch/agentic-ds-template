@@ -88,7 +88,7 @@ Agents access workflow skills from the `project` plugin and `superpowers`:
 Project taskfiles provide commands to manage agent operations:
 
 - `task agent:status`: Displays repository status and active agent delivery runs.
-- `task agent:deliver`: Runs an approved plan unattended in a fresh git worktree (`PLAN=...`, optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`).
+- `task agent:deliver`: Runs an approved plan unattended in a fresh git worktree (`PLAN=...`, optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`, `MAX_WAIT=<hours>` to cap waiting for usage limits).
 - `task agent:check`: Verifies that agent hooks and role configurations are present (alias: `doctor`).
 
 ## License
