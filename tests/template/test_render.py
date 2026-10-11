@@ -123,6 +123,14 @@ def test_vendored_plugin_files_match_the_plugin(default: Path) -> None:
     assert reviewer == (plugin / "assets/roles/codex/reviewer.toml").read_text()
 
 
+
+def test_sphinx_applies_the_mermaid_house_style(default: Path) -> None:
+    checker = load_script(ROOT / "plugins/project/skills/mermaid/scripts/check_mermaid.py", "check_mermaid")
+    conf: dict[str, object] = {}
+    exec((default / "docs/conf.py").read_text(), conf)
+    assert conf["mermaid_init_config"] == {"startOnLoad": False, "themeCSS": " ".join(checker.STANDARD_CSS)}
+    assert conf["myst_fence_as_directive"] == ["mermaid"]
+
 @pytest.mark.parametrize(
     ("harnesses", "present", "absent"),
     [
