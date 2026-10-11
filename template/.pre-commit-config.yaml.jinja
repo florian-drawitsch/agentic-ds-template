@@ -19,6 +19,8 @@ repos:
       - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
+        # Lockfiles are generated and must be committed, whatever their size.
+        exclude: (^|/)(uv\.lock|package-lock\.json)$
       - id: detect-private-key
 
   - repo: local
