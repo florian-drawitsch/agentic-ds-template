@@ -385,7 +385,34 @@ def test_header_names_the_model_and_effort_and_where_they_come_from(
     assert codex["effort"] == "high  (~/.codex/config.toml)"
     assert claude["model"].startswith("opus  (")
     assert claude["effort"] == "low  (--effort)"
-    assert claude["mode"] == "subagents · implementer sonnet · reviewer opus"
+    assert claude["implementer"] == "sonnet · effort low  (session)"
+    assert claude["reviewer"] == "opus · effort low  (session)"
+    assert codex["implementer"] == "session model · effort high  (session)"
+
+
+def test_role_effort_from_the_role_file_and_the_model_each_subagent_runs(
+    deliver: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.delenv("CLAUDE_CODE_EFFORT_LEVEL", raising=False)
+    (tmp_path / ".claude/agents").mkdir(parents=True)
+    (tmp_path / ".claude/agents/implementer.md").write_text(
+        "---\nmodel: sonnet\neffort: low\n---\n"
+    )
+    first = {
+        "type": "assistant",
+        "parent_tool_use_id": "dispatch-7",
+        "message": {"model": "claude-sonnet-5-5", "content": [{"type": "text", "text": "On it"}]},
+    }
+
+    role = deliver.role_settings("claude", tmp_path, "implementer", "high", "--effort")
+
+    assert role == "sonnet · effort low  (.claude/agents/implementer.md)"
+    assert deliver.render_event(first) == [
+        "  │   ⎿  subagent model claude-sonnet-5-5",
+        "  │ ⏺ On it",
+    ]
+    assert deliver.render_event(first) == ["  │ ⏺ On it"]  # shown once per dispatch
 
 
 def test_an_earlier_delivery_of_the_same_plan_is_reported_not_crashed_on(

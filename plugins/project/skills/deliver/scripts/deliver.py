@@ -993,6 +993,7 @@ STYLES = {
 
 SHELL_TOOLS = {"Bash", "Shell"}  # their results show the last output line, which says the most
 tool_names: dict[str, str] = {}  # tool_use id -> tool name, to style the matching result
+announced: set[str] = set()  # subagent dispatches whose model was already shown
 
 
 def color_enabled() -> bool:
@@ -1034,7 +1035,9 @@ def tool_argument(name: str, data: dict[str, Any]) -> str:
     """Return the argument shown in a tool line, such as the command or the file."""
     agent = data.get("subagent_type")
     if isinstance(agent, str):
-        return f"{agent}: {data.get('description') or ''}".strip()
+        overrides = ", ".join(f"{key} {data[key]}" for key in ("model", "effort") if data.get(key))
+        text = f"{agent}: {data.get('description') or ''}".strip()
+        return f"{text} · {overrides}" if overrides else text
     for key in ("command", "file_path", "path", "pattern", "url", "query", "description"):
         value = data.get(key)
         if isinstance(value, str) and value.strip():
@@ -1118,7 +1121,12 @@ def render_event(event: dict[str, Any]) -> list[str]:
         lines.append(paint(f"✗ {clip(str(text or kind))[0]}", "red"))
     else:
         lines += render_codex_item(event)
-    if event.get("parent_tool_use_id"):
+    parent = event.get("parent_tool_use_id")
+    if parent:
+        model = message.get("model") if kind == "assistant" else None
+        if model and parent not in announced:
+            announced.add(parent)
+            lines.insert(0, paint(f"  ⎿  subagent model {model}", "dim"))
         bar = paint("  │ ", "cyan", "dim")
         lines = [bar + line for line in lines]
     return lines
@@ -1206,48 +1214,62 @@ def session_settings(args: argparse.Namespace, root: Path) -> dict[str, str]:
         if os.environ.get("ANTHROPIC_MODEL"):
             model, origin = os.environ["ANTHROPIC_MODEL"], "ANTHROPIC_MODEL"
         effort, effort_origin = None, ""
-        roles = {
-            name: role_model_claude(root / f".claude/agents/{name}.md")
-            for name in ("implementer", "reviewer")
-        }
     else:
         sources = [root / ".codex/config.toml", home / ".codex/config.toml"]
         model, origin = first_setting("model", sources, read_toml)
         effort, effort_origin = first_setting("model_reasoning_effort", sources, read_toml)
-        roles = {
-            name: role_model_codex(root / f".codex/agents/{name}.toml")
-            for name in ("implementer", "reviewer")
-        }
     if args.model:
         model, origin = args.model, "--model"
     if args.effort:
         effort, effort_origin = args.effort, "--effort"
-    return {
+    if args.harness == "claude" and os.environ.get("CLAUDE_CODE_EFFORT_LEVEL"):
+        effort, effort_origin = os.environ["CLAUDE_CODE_EFFORT_LEVEL"], "CLAUDE_CODE_EFFORT_LEVEL"
+    rows = {
         "vendor": f"{'Claude Code' if args.harness == 'claude' else 'Codex'} "
         f"{cli_version(args.harness)}",
         "model": f"{model or 'CLI default'}" + (f"  ({origin})" if origin else ""),
         "effort": f"{effort or 'CLI default'}" + (f"  ({effort_origin})" if effort_origin else ""),
-        "mode": args.mode
-        if args.mode == "single"
-        else (f"subagents · implementer {roles['implementer']} · reviewer {roles['reviewer']}"),
+        "mode": args.mode,
     }
+    if args.mode == "subagents":
+        for name in ("implementer", "reviewer"):
+            rows[name] = role_settings(args.harness, root, name, effort, effort_origin)
+    return rows
 
 
-def role_model_claude(path: Path) -> str:
-    """Return the model in a Claude role file's frontmatter."""
-    try:
-        match = re.search(r"^model:\s*(\S+)", path.read_text(encoding="utf-8"), re.MULTILINE)
-    except OSError:
-        return "?"
-    return match.group(1) if match else "session model"
-
-
-def role_model_codex(path: Path) -> str:
-    """Return the model and effort of a Codex role file."""
-    data = read_toml(path)
-    model = data.get("model") or "session model"
-    effort = data.get("model_reasoning_effort")
-    return f"{model}, {effort}" if effort else str(model)
+def role_settings(
+    harness: str, root: Path, name: str, session_effort: str | None, session_origin: str
+) -> str:
+    """Return the model and effort a subagent role runs with, and where each comes from."""
+    if harness == "claude":
+        path = root / f".claude/agents/{name}.md"
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return "role file missing"
+        found = {
+            key: match.group(1)
+            for key in ("model", "effort")
+            if (match := re.search(rf"^{key}:\s*(\S+)", text, re.MULTILINE))
+        }
+        model = found.get("model")
+        if model in {None, "inherit"}:
+            model = os.environ.get("CLAUDE_CODE_SUBAGENT_MODEL") or "session model"
+        effort = found.get("effort")
+    else:
+        data = read_toml(root / f".codex/agents/{name}.toml")
+        model = str(data.get("model") or "session model")
+        effort = data.get("model_reasoning_effort")
+    if harness == "claude" and session_origin == "CLAUDE_CODE_EFFORT_LEVEL":
+        effort_text = f"effort {session_effort}  (CLAUDE_CODE_EFFORT_LEVEL)"
+    elif effort:
+        source = (
+            f".claude/agents/{name}.md" if harness == "claude" else f".codex/agents/{name}.toml"
+        )
+        effort_text = f"effort {effort}  ({source})"
+    else:
+        effort_text = f"effort {session_effort or 'CLI default'}  (session)"
+    return f"{model} · {effort_text}"
 
 
 def cli_version(harness: str) -> str:
@@ -1267,8 +1289,9 @@ def print_header(args: argparse.Namespace, root: Path, plan: str) -> None:
     say(paint("● deliver ", "yellow", "bold") + paint(plan, "bold"))
     rows = session_settings(args, root)
     rows["limits"] = f"waits up to {args.max_wait:g} h for usage limits"
+    width = max(len(label) for label in rows)
     for label, value in rows.items():
-        say(f"  {paint(f'{label:<8}', 'dim')} {value}")
+        say(f"  {paint(label.ljust(width), 'dim')} {value}")
 
 
 def cmd_headless(args: argparse.Namespace) -> int:
