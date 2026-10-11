@@ -136,6 +136,14 @@ Entry points may import everything; nothing imports them.
 - Accepted ADRs outrank code and tests, which outrank plans.
 - Execute approved plans with the `deliver` skill. Finish with `cross-review`.
 
+## Diagrams
+
+- Draw diagrams in Mermaid only. Load the `mermaid` skill before writing, editing or reviewing
+  any diagram: in chat, plans, design specs, ADRs and docs.
+{%- if agent_harnesses %}
+- `scripts/agent/check_mermaid.py` enforces the style after every agent edit and as a git hook.
+{%- endif %}
+
 ## Definition of done
 
 - `task check` passes.

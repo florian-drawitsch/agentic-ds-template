@@ -117,6 +117,8 @@ def test_marketplace_is_referenced_at_the_pinned_tag(default: Path) -> None:
 def test_vendored_plugin_files_match_the_plugin(default: Path) -> None:
     plugin = ROOT / "plugins/project/skills/deliver"
     assert (default / "scripts/agent/deliver.py").read_bytes() == (plugin / "scripts/deliver.py").read_bytes()
+    mermaid = ROOT / "plugins/project/skills/mermaid/scripts/check_mermaid.py"
+    assert (default / "scripts/agent/check_mermaid.py").read_bytes() == mermaid.read_bytes()
     reviewer = (default / ".codex/agents/reviewer.toml").read_text()
     assert reviewer == (plugin / "assets/roles/codex/reviewer.toml").read_text()
 
@@ -133,6 +135,8 @@ def test_harness_selection(tmp_path: Path, harnesses: list[str], present: list[s
     root = render(tmp_path / "project", agent_harnesses=harnesses)
     assert all((root / path).exists() for path in present)
     assert not any((root / path).exists() for path in absent)
+    hooks = (root / ".pre-commit-config.yaml").read_text()
+    assert ("scripts/agent/check_mermaid.py" in hooks) == bool(harnesses)
 
 
 def test_hexagonal_architecture(full: Path) -> None:

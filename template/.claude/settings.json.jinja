@@ -16,7 +16,10 @@
     }],
     "PostToolUse": [{
       "matcher": "Edit|Write|MultiEdit",
-      "hooks": [{"type": "command", "command": hook ~ 'format_changed.py"'}]
+      "hooks": [
+        {"type": "command", "command": hook ~ 'format_changed.py"'},
+        {"type": "command", "command": hook ~ 'check_mermaid.py" --hook'}
+      ]
     }],
     "Stop": [{"hooks": [{"type": "command", "command": hook ~ 'deliver.py" hook', "timeout": 1800}]}]
   },
