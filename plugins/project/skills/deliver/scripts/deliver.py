@@ -15,8 +15,12 @@ Commands:
     headless  Run a plan unattended, by default in a new git worktree.
 
 A run is delivered when every plan checkbox is ticked, the check command passes and, if
-requested, a cross-vendor review of the current state passed. Run state lives in the git
-directory of the worktree, so it is never committed and each worktree has its own runs.
+requested, a cross-vendor review of the current state passed. Headless runs survive usage and
+rate limits: a round cut off by a limit is not counted, and the run waits until the limit resets
+(or backs off exponentially when no reset time is known), then resumes the same session.
+
+Run state lives in the git directory of the worktree, so it is never committed and each worktree
+has its own runs.
 """
 
 from __future__ import annotations
@@ -25,16 +29,19 @@ import argparse
 import hashlib
 import json
 import os
+import random
 import re
 import secrets
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 VERSION = "0.1.0"
 PROJECT_COPY = Path("scripts/agent/deliver.py")
@@ -54,6 +61,25 @@ DONE_ITEM = re.compile(r"^\s*[-*+] \[[xX]\]\s+")
 FENCE = re.compile(r"^\s*(```|~~~)")
 ACTIVE = "active"
 FINAL_STATES = {"completed", "blocked", "stopped", "stalled", "exhausted"}
+
+# Session and rate limits. Usage limits last until a window resets (hours to days); transient
+# limits (HTTP 429, 529, overload, network) clear in seconds to minutes.
+USAGE_LIMIT = re.compile(
+    r"usage limit|hit your (?:usage )?limit|limit reached|limit exceeded|"
+    r"out of (?:extra )?usage|quota exceeded|insufficient_quota",
+    re.IGNORECASE,
+)
+TRANSIENT_LIMIT = re.compile(
+    r"\b(?:429|529|503)\b|rate.?limit|overloaded|too many requests|temporarily unavailable|"
+    r"connection (?:error|reset|refused)|econnreset|network error",
+    re.IGNORECASE,
+)
+SESSION_IN_USE = re.compile(r"already in use", re.IGNORECASE)
+RESET_MARGIN = 90  # seconds after a known reset, so the window has really rolled over
+USAGE_BACKOFF = (900, 3600)  # first and maximum wait without a reset time, seconds
+TRANSIENT_BACKOFF = (30, 900)
+JITTER = 0.1
+DEFAULT_MAX_WAIT_HOURS = 48.0
 
 
 # --- git helpers -----------------------------------------------------------------------------
@@ -118,6 +144,9 @@ class Run:
     stalls: int = 0
     fingerprint: str | None = None
     note: str | None = None
+    waits: int = 0
+    waited_seconds: float = 0.0
+    resume_at: str | None = None
     created: str = field(default_factory=now)
     updated: str = field(default_factory=now)
 
@@ -341,6 +370,15 @@ def stop_decision(payload: dict[str, Any]) -> dict[str, Any]:
             return {}
         run.session_id = session
 
+    if turn_hit_limit(payload):
+        # Not a real round: let the turn end without counting it. Headless runs wait and
+        # resume; interactive sessions stop until the user continues.
+        run.save(root)
+        print(
+            f"deliver {run.token}: turn ended by a usage or rate limit, not counted.",
+            file=sys.stderr,
+        )
+        return {}
     verdict = evaluate(root, run)
     run.note = verdict.message if verdict.action == "release" else run.note
     run.save(root)
@@ -348,6 +386,26 @@ def stop_decision(payload: dict[str, Any]) -> dict[str, Any]:
         return {"decision": "block", "reason": verdict.message}
     print(verdict.message, file=sys.stderr)
     return {}
+
+
+def turn_hit_limit(payload: dict[str, Any]) -> bool:
+    """Return whether the turn that just ended was cut off by a usage or rate limit.
+
+    Looks only at error entries: the last assistant entry of the transcript when it is an API
+    error, and a short last assistant message. Agent prose about rate limits does not count.
+    """
+    last = (payload.get("last_assistant_message") or "").strip()
+    if last and len(last) < 400 and (USAGE_LIMIT.search(last) or TRANSIENT_LIMIT.search(last)):
+        return True
+    for line in reversed(transcript_text(payload.get("transcript_path"), 200_000).splitlines()):
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("type") != "assistant":
+            continue
+        return bool(entry.get("isApiErrorMessage") or entry.get("error"))
+    return False
 
 
 def cmd_hook(_: argparse.Namespace) -> int:
@@ -434,6 +492,11 @@ def cmd_status(_: argparse.Namespace) -> int:
             f"{run.token}  {run.status:<9}  {run.plan}  done {done}, open {len(open_items)}, "
             f"rounds {run.rounds}/{run.max_rounds}, session {run.session_id or 'unbound'}"
         )
+        if run.status == ACTIVE and run.resume_at:
+            print(f"    waiting for a usage or rate limit until {run.resume_at}")
+        if run.waits:
+            hours = run.waited_seconds / 3600
+            print(f"    limit waits: {run.waits}, {hours:.1f} h in total")
         if run.note:
             print(f"    {run.note}")
     return 0
@@ -701,27 +764,192 @@ def agent_command(
     return [*command, prompt]
 
 
-def run_round(command: list[str], cwd: Path, log: Path) -> tuple[int, str | None]:
-    """Run one agent round, log its JSON events, and return the exit code and thread id."""
-    thread = None
+@dataclass
+class RoundResult:
+    """What one headless round reported: exit code, session, and any limit signals."""
+
+    code: int
+    thread: str | None = None
+    started: bool = False  # the CLI created the session, so later rounds must resume it
+    failed: bool = False  # an error event or error result was reported
+    rejected: bool = False  # a rate-limit event rejected the request
+    resets: list[float] = field(default_factory=list)  # reset times from events, epoch seconds
+    errors: list[str] = field(default_factory=list)  # error texts and non-JSON output
+
+
+def absorb(result: RoundResult, event: dict[str, Any]) -> None:
+    """Record the session and limit signals of one Claude or Codex JSON event."""
+    kind = event.get("type")
+    result.thread = result.thread or event.get("thread_id")
+    if (kind == "system" and event.get("subtype") == "init") or kind == "thread.started":
+        result.started = True
+    if kind == "rate_limit_event":
+        info = event.get("rate_limit_info") or event
+        if info.get("status") == "rejected":
+            result.rejected = True
+        for key in ("resetsAt", "resets_at"):
+            if isinstance(info.get(key), int | float):
+                value = float(info[key])
+                result.resets.append(value / 1000 if value > 1e12 else value)
+        if isinstance(info.get("retry_after_ms"), int | float):
+            result.resets.append(time.time() + info["retry_after_ms"] / 1000)
+    if kind == "result" and event.get("is_error"):
+        result.failed = True
+        result.errors.append(str(event.get("result") or event.get("subtype") or "error"))
+    if kind in {"error", "turn.failed"}:
+        result.failed = True
+        error = event.get("error")
+        message = error.get("message") if isinstance(error, dict) else error
+        result.errors.append(str(event.get("message") or message or kind))
+
+
+def run_round(command: list[str], cwd: Path, log: Path) -> RoundResult:
+    """Run one agent round, log its output, and return what it reported."""
     with (
         log.open("a", encoding="utf-8") as sink,
         subprocess.Popen(
-            command, cwd=cwd, stdout=subprocess.PIPE, text=True, env=os.environ.copy()
+            command,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=os.environ.copy(),
         ) as process,
     ):
         assert process.stdout is not None
+        result = RoundResult(code=0)
         for line in process.stdout:
             sink.write(line)
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
+                if line.strip():
+                    result.errors.append(line.strip())
+                    print(line.rstrip(), flush=True)
                 continue
-            thread = thread or event.get("thread_id")
+            if not isinstance(event, dict):
+                continue
+            absorb(result, event)
             text = event_text(event)
             if text:
                 print(text, flush=True)
-    return process.returncode, thread
+    result.code = process.returncode
+    return result
+
+
+# --- usage and rate limits -------------------------------------------------------------------
+
+
+@dataclass
+class Limit:
+    """A usage or rate limit that cut a round short."""
+
+    kind: str  # "usage" or "transient"
+    reset_at: datetime | None
+    detail: str
+
+
+def classify_limit(result: RoundResult, now: datetime) -> Limit | None:
+    """Return the limit that cut the round short, or None if the round was not limited."""
+    if not (result.rejected or result.failed or result.code != 0):
+        return None
+    text = "\n".join(result.errors)
+    if result.rejected or USAGE_LIMIT.search(text):
+        kind = "usage"
+    elif TRANSIENT_LIMIT.search(text):
+        kind = "transient"
+    else:
+        return None
+    future = [stamp for stamp in result.resets if stamp > now.timestamp()]
+    reset_at = datetime.fromtimestamp(max(future), UTC) if future else parse_reset(text, now)
+    match = USAGE_LIMIT.search(text) or TRANSIENT_LIMIT.search(text)
+    line = next((line for line in text.splitlines() if match and match.group(0) in line), "")
+    return Limit(kind, reset_at, line.strip()[:200] or f"{kind} limit")
+
+
+UNIT_SECONDS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+
+
+def parse_reset(text: str, now: datetime) -> datetime | None:
+    """Return the reset time a limit message announces, or None.
+
+    Understands an epoch after a pipe (`limit reached|1760000000`), durations
+    (`try again in 2 hours 13 minutes`, `retry after 60 seconds`) and clock times
+    (`resets 3pm (Europe/Berlin)`, `try again at 3:05 PM`).
+    """
+    if match := re.search(r"\|(\d{10,13})\b", text):
+        stamp = int(match.group(1))
+        return datetime.fromtimestamp(stamp / 1000 if stamp > 1e12 else stamp, UTC)
+    duration = re.search(
+        r"(?:try again|retry|resets?)(?: after| in)[:\s]+((?:\d+\s*[a-z]+[\s,]*(?:and\s+)?)+)",
+        text,
+        re.IGNORECASE,
+    )
+    if duration:
+        seconds = 0.0
+        for amount, unit in re.findall(r"(\d+)\s*([a-z]+)", duration.group(1), re.IGNORECASE):
+            unit = unit.lower()
+            if unit.startswith(("ms", "milli")):
+                seconds += int(amount) / 1000
+            elif unit[0] in UNIT_SECONDS:
+                seconds += int(amount) * UNIT_SECONDS[unit[0]]
+        if seconds:
+            return now + timedelta(seconds=seconds)
+    clock = re.search(
+        r"(?:resets?|try again)(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?"
+        r"(?:\s*\(([^)]+)\))?",
+        text,
+        re.IGNORECASE,
+    )
+    if clock:
+        hour = int(clock.group(1)) % 12 + (12 if clock.group(3).lower() == "p" else 0)
+        minute = int(clock.group(2) or 0)
+        try:
+            zone = ZoneInfo(clock.group(4)) if clock.group(4) else now.astimezone().tzinfo
+        except (ZoneInfoNotFoundError, ValueError):
+            zone = now.astimezone().tzinfo
+        local = now.astimezone(zone)
+        reset = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if reset <= local:
+            reset += timedelta(days=1)
+        return reset.astimezone(UTC)
+    return None
+
+
+@dataclass
+class Backoff:
+    """Wait times for limited rounds: until the reset when known, exponential otherwise."""
+
+    rng: random.Random = field(default_factory=random.Random)
+    attempts: int = 0
+
+    def delay(self, limit: Limit, now: datetime) -> float:
+        """Return the seconds to wait before the next attempt."""
+        self.attempts += 1
+        if limit.reset_at is not None:
+            base = max((limit.reset_at - now).total_seconds(), 0.0) + RESET_MARGIN
+        else:
+            first, cap = USAGE_BACKOFF if limit.kind == "usage" else TRANSIENT_BACKOFF
+            base = min(first * 2 ** (self.attempts - 1), cap)
+        return base * (1 + self.rng.uniform(0, JITTER))
+
+    def reset(self) -> None:
+        """Start over after a round that was not limited."""
+        self.attempts = 0
+
+
+def wait_until(moment: datetime) -> None:
+    """Sleep until the moment, in short steps, so a suspended laptop does not oversleep."""
+    while (remaining := (moment - datetime.now(UTC)).total_seconds()) > 0:
+        time.sleep(min(remaining, 60))
+
+
+def retry_prompt(prompt: str, limit: Limit) -> str:
+    """Return the prompt that resumes a session after a limit."""
+    return (
+        f"Your previous turn was cut off by a {limit.kind} limit ({limit.detail}). Check the "
+        f"plan and the working tree, then continue where you left off.\n\n{prompt}"
+    )
 
 
 def event_text(event: dict[str, Any]) -> str | None:
@@ -773,37 +1001,80 @@ def cmd_headless(args: argparse.Namespace) -> int:
         print(" ".join(command))
         return 0
 
-    first = True
-    while True:
-        command = agent_command(
-            args.harness,
-            prompt,
-            session,
-            first,
-            args.model,
-            args.claude_permission_mode,
-            args.effort,
-        )
-        code, thread = run_round(command, workdir, log)
-        session = session or thread
-        if session is None or (code != 0 and first):
-            run.status = "stopped"
-            run.note = f"The {args.harness} CLI exited with code {code}; see {log}."
+    first, budget, backoff = True, args.max_wait * 3600, Backoff()
+    try:
+        while True:
+            command = agent_command(
+                args.harness,
+                prompt,
+                session,
+                first,
+                args.model,
+                args.claude_permission_mode,
+                args.effort,
+            )
+            result = run_round(command, workdir, log)
+            session = session or result.thread
+            if first and (result.started or SESSION_IN_USE.search("\n".join(result.errors))):
+                first = False  # the session exists now; later attempts resume it
+            run = find_run(workdir, run.token)
+            limit = classify_limit(result, datetime.now(UTC))
+            if limit is not None and run.status == ACTIVE:
+                delay = backoff.delay(limit, datetime.now(UTC))
+                resume = datetime.now(UTC) + timedelta(seconds=delay)
+                if run.waited_seconds + delay > budget:
+                    run.status = "exhausted"
+                    run.note = (
+                        f"A {limit.kind} limit needs a wait until {resume:%Y-%m-%d %H:%M} UTC, "
+                        f"beyond --max-wait {args.max_wait:g} h. Plan progress is kept in "
+                        f"{workdir}; continue there later with `--in-place`."
+                    )
+                    run.resume_at = None
+                    run.save(workdir)
+                    print(run.note, file=sys.stderr)
+                    return 1
+                run.waits += 1
+                run.waited_seconds += delay
+                run.resume_at = resume.isoformat(timespec="seconds")
+                run.save(workdir)
+                local = resume.astimezone()
+                print(
+                    f"{limit.kind.capitalize()} limit: {limit.detail}. Waiting until "
+                    f"{local:%Y-%m-%d %H:%M %Z} ({delay / 60:.0f} min), then resuming.",
+                    flush=True,
+                )
+                wait_until(resume)
+                run = find_run(workdir, run.token)
+                run.resume_at = None
+                run.save(workdir)
+                if session is not None and not first:
+                    prompt = retry_prompt(prompt, limit)
+                continue
+            backoff.reset()
+            if session is None or (result.code != 0 and first):
+                run.status = "stopped"
+                run.note = f"The {args.harness} CLI exited with code {result.code}; see {log}."
+                run.save(workdir)
+                print(run.note, file=sys.stderr)
+                return 1
+            if run.status != ACTIVE:
+                print(f"Run {run.token} ended inside the session: {run.status}. {run.note or ''}")
+                return 0 if run.status == "completed" else 1
+            run.session_id = session
+            verdict = evaluate(workdir, run)
+            run.note = verdict.message if verdict.action == "release" else run.note
             run.save(workdir)
-            print(run.note, file=sys.stderr)
-            return 1
+            if verdict.action == "release":
+                print(verdict.message)
+                return 0 if run.status == "completed" else 1
+            prompt, first = verdict.message, False
+    except KeyboardInterrupt:
         run = find_run(workdir, run.token)
-        if run.status != ACTIVE:
-            print(f"Run {run.token} ended inside the session: {run.status}. {run.note or ''}")
-            return 0 if run.status == "completed" else 1
-        run.session_id = session
-        verdict = evaluate(workdir, run)
-        run.note = verdict.message if verdict.action == "release" else run.note
+        run.status, run.resume_at = "stopped", None
+        run.note = f"Interrupted by the user. Plan progress is kept in {workdir}."
         run.save(workdir)
-        if verdict.action == "release":
-            print(verdict.message)
-            return 0 if run.status == "completed" else 1
-        prompt, first = verdict.message, False
+        print(f"\n{run.note}", file=sys.stderr)
+        return 130
 
 
 # --- command line ----------------------------------------------------------------------------
@@ -872,6 +1143,12 @@ def parser() -> argparse.ArgumentParser:
         help="file edits are approved by this mode; shell commands by the sandbox",
     )
     head.add_argument("--setup", help="command run before the agent starts (default: uv sync)")
+    head.add_argument(
+        "--max-wait",
+        type=float,
+        default=DEFAULT_MAX_WAIT_HOURS,
+        help="hours the run may spend waiting for usage and rate limits in total",
+    )
     head.add_argument("--dry-run", action="store_true", help="print the first command only")
     head.set_defaults(func=cmd_headless)
     return root
