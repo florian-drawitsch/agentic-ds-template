@@ -56,7 +56,13 @@ CODEX_HOOK_COMMAND = (
     'uv run --script "$(git rev-parse --show-toplevel)/scripts/agent/deliver.py" hook'
 )
 
-PACKAGE_HOSTS = ["pypi.org", "files.pythonhosted.org", "github.com", "*.githubusercontent.com"]
+PACKAGE_HOSTS = [
+    "pypi.org",
+    "files.pythonhosted.org",
+    "registry.npmjs.org",
+    "github.com",
+    "*.githubusercontent.com",
+]
 OPEN_ITEM = re.compile(r"^\s*[-*+] \[ \]\s+(.*\S)")
 DONE_ITEM = re.compile(r"^\s*[-*+] \[[xX]\]\s+")
 FENCE = re.compile(r"^\s*(```|~~~)")
@@ -729,6 +735,7 @@ def writable_paths(workdir: Path) -> list[str]:
     - The repository's shared git directory: a linked worktree keeps its index, refs and objects
       there, so without it every `git add` and `git commit` fails.
     - prek's cache, which the git hooks behind `task lint` and every commit use.
+    - npm's cache, for `npm ci` and `npm install` in frontend projects.
     """
     try:
         cache = subprocess.run(
@@ -738,7 +745,8 @@ def writable_paths(workdir: Path) -> list[str]:
         cache = str(Path.home() / ".cache" / "uv")
     git_dir = git(workdir, "rev-parse", "--path-format=absolute", "--git-common-dir")
     prek = os.environ.get("PREK_HOME") or str(Path.home() / ".cache" / "prek")
-    return [cache, git_dir, prek]
+    npm = os.environ.get("npm_config_cache") or str(Path.home() / ".npm")  # noqa: SIM112
+    return [cache, git_dir, prek, npm]
 
 
 def claude_sandbox_settings(writable: list[str]) -> str:

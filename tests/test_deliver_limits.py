@@ -253,19 +253,23 @@ def test_headless_run_stops_when_the_wait_exceeds_the_budget(
     assert "--max-wait 24 h" in run.note
 
 
-def test_sandboxed_agents_may_write_the_shared_git_dir_and_hook_cache(
+def test_sandboxed_agents_may_write_the_shared_git_dir_and_package_caches(
     deliver: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     init_repo(tmp_path)
     monkeypatch.setenv("PREK_HOME", str(tmp_path / "prek"))
+    monkeypatch.setenv("npm_config_cache", str(tmp_path / "npm"))
 
     writable = deliver.writable_paths(tmp_path)
 
     assert str((tmp_path / ".git").resolve()) in [str(Path(p).resolve()) for p in writable]
     assert str(tmp_path / "prek") in writable
+    assert str(tmp_path / "npm") in writable
     claude = deliver.agent_command("claude", "go", "s", True, None, "acceptEdits", None, writable)
     settings = json.loads(claude[claude.index("--settings") + 1])
     assert settings["sandbox"]["filesystem"]["allowWrite"] == writable
+    hosts = set(settings["sandbox"]["network"]["allowedDomains"])
+    assert {"pypi.org", "registry.npmjs.org"} <= hosts
     codex = deliver.agent_command("codex", "go", None, True, None, "acceptEdits", None, writable)
     assert f"sandbox_workspace_write.writable_roots={json.dumps(writable)}" in codex
 
