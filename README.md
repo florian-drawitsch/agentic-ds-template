@@ -79,6 +79,7 @@ Agents access workflow skills from the `project` plugin and `superpowers`:
 | `implement-feature` | `superpowers` (shimmed) | Build features with test-driven development (red-green-refactor) |
 | `debug` | `superpowers` (shimmed) | Find root causes through hypothesis-driven reproduction |
 | `cross-review` | `project` | Run a headless, read-only review with the alternate agent CLI |
+| `mermaid` | `project` | Draw diagrams in one Mermaid house style, checked after every edit |
 | `request-review` | `superpowers` (shimmed) | Review changed files against the plan in the current session |
 | `wrap-feature` | `superpowers` (shimmed) | Verify work, clean up branches, or prepare pull requests |
 

@@ -6,6 +6,7 @@ Workflows for projects built with Claude Code and Codex.
 | --- | --- |
 | `deliver` | Execute an approved plan end to end. A completion guard (Stop hook) keeps the session working until every plan item is ticked, the check passes and, optionally, a cross-vendor review passed. Supports single-agent and implementer and reviewer subagent modes, and unattended runs in a worktree |
 | `cross-review` | Have the other vendor's CLI review the change, headless and read-only, with structured findings |
+| `mermaid` | House style for Mermaid diagrams: when to draw, which type, stroke-only palette, required style lines. `scripts/check_mermaid.py` checks Markdown files against it |
 | `brainstorm` | Alias for `superpowers:brainstorming`: explore requirements and design tradeoffs |
 | `write-plan` | Alias for `superpowers:writing-plans`: write an implementation plan in `docs/plans/` |
 | `execute-plan` | Alias for `superpowers:executing-plans`: execute a plan step by step with review checkpoints |
