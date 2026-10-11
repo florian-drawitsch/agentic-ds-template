@@ -6,8 +6,14 @@ repos:
     hooks:
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
+        # Claude Code's sandbox never lets agents write agent and IDE config, so fixers skip it.
+        exclude: ^(\.(claude|codex|agents|vscode|idea)/|\.mcp\.json$)
       - id: end-of-file-fixer
+        # Claude Code's sandbox never lets agents write agent and IDE config, so fixers skip it.
+        exclude: ^(\.(claude|codex|agents|vscode|idea)/|\.mcp\.json$)
       - id: mixed-line-ending
+        # Claude Code's sandbox never lets agents write agent and IDE config, so fixers skip it.
+        exclude: ^(\.(claude|codex|agents|vscode|idea)/|\.mcp\.json$)
       - id: check-yaml
       - id: check-toml
       - id: check-json

@@ -711,12 +711,13 @@ def headless_prompt(run: Run, plan: str) -> str:
     )
 
 
-def claude_sandbox_settings() -> str:
-    """Return session settings that confine Claude's shell commands to the worktree.
+def writable_paths(workdir: Path) -> list[str]:
+    """Return the paths outside the worktree that a sandboxed agent must be able to write.
 
-    Shell commands run in the operating-system sandbox and are approved automatically; they can
-    write to the worktree, the temp directory and uv's cache, and reach package hosts only.
-    File edits are approved by the acceptEdits permission mode.
+    - uv's cache, for `uv sync`, `uv add` and `uv run`.
+    - The repository's shared git directory: a linked worktree keeps its index, refs and objects
+      there, so without it every `git add` and `git commit` fails.
+    - prek's cache, which the git hooks behind `task lint` and every commit use.
     """
     try:
         cache = subprocess.run(
@@ -724,11 +725,23 @@ def claude_sandbox_settings() -> str:
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         cache = str(Path.home() / ".cache" / "uv")
+    git_dir = git(workdir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    prek = os.environ.get("PREK_HOME") or str(Path.home() / ".cache" / "prek")
+    return [cache, git_dir, prek]
+
+
+def claude_sandbox_settings(writable: list[str]) -> str:
+    """Return session settings that confine Claude's shell commands to the worktree.
+
+    Shell commands run in the operating-system sandbox and are approved automatically; they can
+    write to the worktree, the temp directory and the given paths, and reach package hosts only.
+    File edits are approved by the acceptEdits permission mode.
+    """
     sandbox = {
         "enabled": True,
         "autoAllowBashIfSandboxed": True,
         "allowUnsandboxedCommands": False,
-        "filesystem": {"allowWrite": [cache]},
+        "filesystem": {"allowWrite": writable},
         "network": {"allowedDomains": PACKAGE_HOSTS},
     }
     return json.dumps({"sandbox": sandbox})
@@ -742,6 +755,7 @@ def agent_command(
     model: str | None,
     mode: str,
     effort: str | None = None,
+    writable: list[str] | None = None,
 ) -> list[str]:
     """Return the CLI invocation for one headless round.
 
@@ -752,13 +766,16 @@ def agent_command(
     if harness == "claude":
         command = ["claude", "-p", "--permission-mode", mode]
         command += ["--session-id" if first else "--resume", str(session)]
-        command += ["--settings", claude_sandbox_settings()]
+        command += ["--settings", claude_sandbox_settings(writable or [])]
         command += ["--output-format", "stream-json", "--verbose"]
         command += ["--model", model] if model else []
         command += ["--effort", effort] if effort else []
         return [*command, prompt]
     command = ["codex", "exec"] if first else ["codex", "exec", "resume", str(session)]
     command += ["--json", "-c", 'sandbox_mode="workspace-write"', "-c", 'approval_policy="never"']
+    if writable:
+        command += ["-c", f"sandbox_workspace_write.writable_roots={json.dumps(writable)}"]
+    command += ["-c", "sandbox_workspace_write.network_access=true"]
     command += ["-m", model] if model else []
     command += ["-c", f'model_reasoning_effort="{effort}"'] if effort else []
     return [*command, prompt]
@@ -806,7 +823,7 @@ def absorb(result: RoundResult, event: dict[str, Any]) -> None:
 def run_round(command: list[str], cwd: Path, log: Path) -> RoundResult:
     """Run one agent round, log its output, and return what it reported."""
     with (
-        log.open("a", encoding="utf-8") as sink,
+        log.open("a", encoding="utf-8", buffering=1) as sink,
         subprocess.Popen(
             command,
             cwd=cwd,
@@ -952,15 +969,41 @@ def retry_prompt(prompt: str, limit: Limit) -> str:
     )
 
 
+def tool_summary(name: str, data: dict[str, Any]) -> str:
+    """Return a one-line progress note for a tool call."""
+    agent = data.get("subagent_type")
+    label = f"{name} {agent}:" if isinstance(agent, str) else name
+    for key in ("description", "file_path", "path", "command", "pattern", "url", "query"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return f"-> {label} {value.strip().splitlines()[0][:100]}"
+    return f"-> {label}"
+
+
 def event_text(event: dict[str, Any]) -> str | None:
-    """Extract assistant text from a Claude or Codex JSON event for console progress."""
+    """Extract assistant text and tool calls from a Claude or Codex JSON event for progress."""
     message = event.get("message") or {}
     if event.get("type") == "assistant" and isinstance(message.get("content"), list):
-        texts = [part.get("text", "") for part in message["content"] if part.get("type") == "text"]
-        return "\n".join(t for t in texts if t) or None
+        prefix = "  [subagent] " if event.get("parent_tool_use_id") else ""
+        lines = []
+        for part in message["content"]:
+            if part.get("type") == "text" and part.get("text"):
+                lines.append(prefix + part["text"])
+            elif part.get("type") == "tool_use":
+                summary = tool_summary(part.get("name", "tool"), part.get("input") or {})
+                lines.append(prefix + summary)
+        return "\n".join(lines) or None
     item = event.get("item") or {}
-    if event.get("type") == "item.completed" and item.get("type") == "agent_message":
+    kind = item.get("type")
+    if event.get("type") == "item.completed" and kind == "agent_message":
         return item.get("text")
+    if event.get("type") == "item.started" and kind == "command_execution":
+        return tool_summary("shell", {"command": item.get("command")})
+    if event.get("type") == "item.completed" and kind == "file_change":
+        paths = ", ".join(change.get("path", "?") for change in item.get("changes") or [])
+        return f"-> edit {paths}"
+    if event.get("type") == "item.started" and kind == "mcp_tool_call":
+        return f"-> {item.get('server', 'mcp')}.{item.get('tool', 'tool')}"
     return None
 
 
@@ -986,6 +1029,7 @@ def cmd_headless(args: argparse.Namespace) -> int:
         if subprocess.run(setup, shell=True, cwd=workdir, check=False).returncode != 0:
             raise SystemExit(f"Setup command failed: {setup}")
     run = create_run(workdir, args)
+    writable = writable_paths(workdir)
     log = run.directory(workdir) / "headless.jsonl"
     prompt = headless_prompt(run, plan)
     if args.dry_run:
@@ -997,6 +1041,7 @@ def cmd_headless(args: argparse.Namespace) -> int:
             args.model,
             args.claude_permission_mode,
             args.effort,
+            writable,
         )
         print(" ".join(command))
         return 0
@@ -1012,6 +1057,7 @@ def cmd_headless(args: argparse.Namespace) -> int:
                 args.model,
                 args.claude_permission_mode,
                 args.effort,
+                writable,
             )
             result = run_round(command, workdir, log)
             session = session or result.thread

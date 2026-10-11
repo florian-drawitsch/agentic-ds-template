@@ -2,7 +2,8 @@
 {%- set hook = 'uv run --script "${CLAUDE_PROJECT_DIR}/scripts/agent/' -%}
 {%- set allow = [] -%}
 {%- for cmd in allow_commands + keychain_commands %}{% set _ = allow.append("Bash(" ~ (cmd | join(" ")) ~ " *)") %}{% endfor -%}
-{%- set deny = ["Read(./.env)", "Edit(./uv.lock)"] -%}
+{#- uv.lock edits are blocked by guard.py alone: as a permission rule, the deny also blocked uv. -#}
+{%- set deny = ["Read(./.env)"] -%}
 {%- for rule in deny_commands %}{% set _ = deny.append("Bash(" ~ (rule.cmd | join(" ")) ~ " *)") %}{% endfor -%}
 {{ {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",

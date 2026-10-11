@@ -251,3 +251,52 @@ def test_headless_run_stops_when_the_wait_exceeds_the_budget(
     assert code == 1
     assert run.status == "exhausted"
     assert "--max-wait 24 h" in run.note
+
+
+def test_sandboxed_agents_may_write_the_shared_git_dir_and_hook_cache(
+    deliver: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    init_repo(tmp_path)
+    monkeypatch.setenv("PREK_HOME", str(tmp_path / "prek"))
+
+    writable = deliver.writable_paths(tmp_path)
+
+    assert str((tmp_path / ".git").resolve()) in [str(Path(p).resolve()) for p in writable]
+    assert str(tmp_path / "prek") in writable
+    claude = deliver.agent_command("claude", "go", "s", True, None, "acceptEdits", None, writable)
+    settings = json.loads(claude[claude.index("--settings") + 1])
+    assert settings["sandbox"]["filesystem"]["allowWrite"] == writable
+    codex = deliver.agent_command("codex", "go", None, True, None, "acceptEdits", None, writable)
+    assert f"sandbox_workspace_write.writable_roots={json.dumps(writable)}" in codex
+
+
+def test_progress_shows_tool_calls_of_the_session_and_its_subagents(deliver: ModuleType) -> None:
+    event = {
+        "type": "assistant",
+        "parent_tool_use_id": "toolu_1",
+        "message": {
+            "content": [
+                {"type": "text", "text": "Starting task 2"},
+                {"type": "tool_use", "name": "Bash", "input": {"command": "task check"}},
+            ]
+        },
+    }
+    dispatch = {
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "name": "Agent",
+                    "input": {"subagent_type": "implementer", "description": "Task 2"},
+                }
+            ]
+        },
+    }
+
+    assert deliver.event_text(event) == (
+        "  [subagent] Starting task 2\n  [subagent] -> Bash task check"
+    )
+    assert deliver.event_text(dispatch) == "-> Agent implementer: Task 2"
+    started = {"type": "item.started", "item": {"type": "command_execution", "command": "ls"}}
+    assert deliver.event_text(started) == "-> shell ls"
