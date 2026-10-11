@@ -73,6 +73,7 @@ def test_registered_pipelines_compose_into_one_graph() -> None:
 
 def test_graph_renders_as_mermaid() -> None:
     diagram = PIPELINES["training"].to_mermaid()
-    assert diagram.startswith("flowchart LR")
+    assert diagram.startswith("---\nconfig:")
+    assert "\nflowchart LR\n" in diagram
     assert '["fit_baseline"]' in diagram
     assert '(["model"])' in diagram

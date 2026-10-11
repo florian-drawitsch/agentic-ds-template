@@ -10,6 +10,8 @@ from types import ModuleType
 
 import pytest
 
+from tests.helpers import load_script
+
 ROOT = Path(__file__).parents[1]
 SKILL_DIR = ROOT / "plugins/project/skills/mermaid"
 SCRIPT = SKILL_DIR / "scripts/check_mermaid.py"
@@ -140,3 +142,15 @@ def test_hook_never_blocks_the_agent_on_its_own_failure(
 
     monkeypatch.setattr(checker, "changed_markdown_files", broken)
     assert checker.main(["--hook"]) == 0
+
+
+def test_pipeline_graphs_of_the_template_follow_the_house_style(checker: ModuleType) -> None:
+    package = next((ROOT / "template/src").glob("*pipeline*"))
+    graph = load_script(package / "pipelines/graph.py", "pipeline_graph")
+    built = graph.pipeline(
+        [
+            graph.node(lambda raw, alpha: {"features": raw}, ["raw", "params:alpha"], "features"),
+            graph.node(lambda features: {"model": features}, "features", "model", name="fit"),
+        ]
+    )
+    assert messages(checker, built.to_mermaid()) == []

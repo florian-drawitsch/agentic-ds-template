@@ -15,6 +15,24 @@ from graphlib import CycleError, TopologicalSorter
 from typing import Any, Protocol
 
 PARAMS = "params:"
+# The standard frontmatter and style lines of the mermaid skill's house style.
+MERMAID_STYLE = (
+    "---",
+    "config:",
+    "  themeCSS: >-",
+    "    .row-rect-odd path, .row-rect-even path, marker circle { fill: none !important; }",
+    "    .edgePaths path, .flowchart-link, .relation, .transition, .relationshipLine, marker path,"
+    " marker circle { stroke: #868e96 !important; }",
+    "    circle.state-start, circle.state-end { fill: #868e96 !important; stroke: #868e96"
+    " !important; }",
+    "    rect.actor, rect.note, rect[class^=activation], polygon.labelBox { fill: none !important;"
+    " stroke: #868e96 !important; }",
+    "    line[class^=actor-line], line.loopLine, line[class^=messageLine],"
+    " path[class^=messageLine] { stroke: #868e96 !important; }",
+    "    text.actor, text.actor tspan, .messageText, .noteText, .noteText tspan, .labelText,"
+    " .labelText tspan, .loopText, .loopText tspan, text.text { fill: #868e96 !important; }",
+    "---",
+)
 
 
 class DataCatalog(Protocol):
@@ -131,8 +149,13 @@ class Pipeline:
         return Pipeline(tuple(n for n in self.nodes if n.tags & set(tags)))
 
     def to_mermaid(self) -> str:
-        """Render the graph as Mermaid: datasets rounded, parameters framed, nodes as boxes."""
-        lines = ["flowchart LR"]
+        """Render the graph as Mermaid in the house style: datasets rounded, parameters framed."""
+        lines = [
+            *MERMAID_STYLE,
+            "flowchart LR",
+            "    classDef default fill:none,stroke:#868e96,stroke-width:1px,color:#868e96",
+            "    linkStyle default stroke:#868e96",
+        ]
         datasets = sorted({d for n in self.nodes for d in (*n.inputs, *n.outputs)})
         ids = {d: f"d{i}" for i, d in enumerate(datasets)}
         lines += [
