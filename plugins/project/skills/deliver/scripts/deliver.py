@@ -681,6 +681,16 @@ def create_worktree(root: Path, plan: str, branch: str | None) -> Path:
     name = slug(Path(plan).stem)
     branch = branch or f"deliver/{name}"
     path = root.parent / f"{root.name}-{name}"
+    exists = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=root, check=False
+    )
+    if path.exists() or exists.returncode == 0:
+        raise SystemExit(
+            f"An earlier delivery of {plan} exists: worktree {path}, branch {branch}.\n"
+            f"Continue it:  cd {path} && uv run --script {PROJECT_COPY} headless --plan {plan} "
+            "--harness <claude|codex> --in-place\n"
+            f"Or discard it: git worktree remove --force {path} && git branch -D {branch}"
+        )
     git(root, "worktree", "add", "-b", branch, str(path))
     include = root / ".worktreeinclude"
     if include.is_file():

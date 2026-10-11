@@ -386,3 +386,15 @@ def test_header_names_the_model_and_effort_and_where_they_come_from(
     assert claude["model"].startswith("opus  (")
     assert claude["effort"] == "low  (--effort)"
     assert claude["mode"] == "subagents · implementer sonnet · reviewer opus"
+
+
+def test_an_earlier_delivery_of_the_same_plan_is_reported_not_crashed_on(
+    deliver: ModuleType, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    init_repo(repo)
+    deliver.create_worktree(repo, "plan.md", None)
+
+    with pytest.raises(SystemExit, match="Continue it:"):
+        deliver.create_worktree(repo, "plan.md", None)
