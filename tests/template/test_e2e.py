@@ -44,7 +44,8 @@ def run(command: list[str], cwd: Path) -> None:
 def test_rendered_project_passes_its_gate(tmp_path: Path, answers: dict[str, Any]) -> None:
     root = render(tmp_path / "project", tasks=True, **answers)
     run(["task", "setup"], root)
-    run(["task", "example-data"], root)
+    rows = "".join(f"{i},{i % 10},{2 * (i % 10) + 1}\n" for i in range(50))
+    (root / "data" / "01_raw" / "input.csv").write_text("step,x,target\n" + rows)
     run(["task", "run"], root)
     run(["task", "check"], root)
     run(["task", "docs:build"], root)
