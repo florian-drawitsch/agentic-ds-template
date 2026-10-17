@@ -102,7 +102,8 @@ uv run --script scripts/agent/deliver.py headless --plan <plan> --harness codex 
   --cross-review final --reviewer claude
 ```
 
-- It creates a worktree on a `deliver/<plan>` branch next to the repository. Files listed in
+- It creates a worktree in `.worktrees/<plan>` of the main repository on a `deliver/<plan>`
+  branch. `.worktrees/` must be git-ignored; `install` adds it to `.gitignore`. Files listed in
   `.worktreeinclude` are copied into it. The plan must be committed first.
 - It starts the run, launches the agent non-interactively, and resumes the same session with
   the guard's message until the run is released.

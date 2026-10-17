@@ -35,8 +35,9 @@ The `project` plugin ships two skills.
   `sandbox_mode = "read-only"` in Codex.
 
 **Unattended runs:**
-- `deliver.py headless` creates a worktree, runs `uv sync` outside any sandbox, starts the
-  agent non-interactively and resumes the same session until the guard releases it.
+- `deliver.py headless` creates a worktree in the git-ignored `.worktrees/` of the main
+  repository, runs `uv sync` outside any sandbox, starts the agent non-interactively and
+  resumes the same session until the guard releases it.
 - Claude Code runs with `acceptEdits` and its Bash sandbox in auto-allow mode, with writes
   limited to the worktree, the temp directory and uv's cache, and network limited to package
   hosts. Codex runs with `sandbox_mode = "workspace-write"` and approvals off.

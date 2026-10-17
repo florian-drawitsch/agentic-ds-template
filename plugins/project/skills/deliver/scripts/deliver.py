@@ -47,6 +47,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 VERSION = "0.1.0"
 PROJECT_COPY = Path("scripts/agent/deliver.py")
 RUNS_DIRNAME = "agent-runs"
+WORKTREES_DIRNAME = ".worktrees"
 NESTED_ENV = "AGENTIC_NESTED"
 TOKEN_LINE = "deliver-run:"
 HOOK_MARKER = "scripts/agent/deliver.py"
@@ -101,6 +102,19 @@ def git(cwd: Path, *args: str) -> str:
 def repo_root(cwd: Path) -> Path:
     """Return the top-level directory of the worktree that contains cwd."""
     return Path(git(cwd, "rev-parse", "--show-toplevel"))
+
+
+def main_root(cwd: Path) -> Path:
+    """Return the top-level directory of the main worktree, even from a linked worktree."""
+    return Path(git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")).parent
+
+
+def worktrees_ignored(root: Path) -> bool:
+    """Tell whether git ignores the directory that holds the delivery worktrees."""
+    probe = subprocess.run(
+        ["git", "check-ignore", "-q", f"{WORKTREES_DIRNAME}/probe"], cwd=root, check=False
+    )
+    return probe.returncode == 0
 
 
 def runs_dir(root: Path) -> Path:
@@ -587,6 +601,12 @@ def install(
         copy.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, copy)
         changes.append(f"{PROJECT_COPY} (version {VERSION})")
+    if not worktrees_ignored(target):
+        gitignore = target / ".gitignore"
+        text = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
+        separator = "" if not text or text.endswith("\n") else "\n"
+        gitignore.write_text(f"{text}{separator}{WORKTREES_DIRNAME}/\n", encoding="utf-8")
+        changes.append(f".gitignore: {WORKTREES_DIRNAME}/")
 
     roles = assets_dir() / "roles"
     if "claude" in harnesses:
@@ -659,6 +679,8 @@ def doctor(target: Path) -> list[str]:
     ):
         if not (target / path).is_file():
             problems.append(f"{path} is missing")
+    if not worktrees_ignored(target):
+        problems.append(f"{WORKTREES_DIRNAME}/ is not git-ignored; run install")
     if shutil.which("uv") is None:
         problems.append("uv is not on PATH; the hooks run the guard with uv")
     return problems
@@ -683,10 +705,17 @@ def slug(text: str) -> str:
 
 
 def create_worktree(root: Path, plan: str, branch: str | None) -> Path:
-    """Create a worktree on a new branch and copy files listed in .worktreeinclude."""
+    """Create a worktree in .worktrees/ on a new branch and copy files listed in .worktreeinclude.
+
+    Worktrees always go into the main worktree's .worktrees/, also when started from a linked
+    worktree, so they never nest.
+    """
     name = slug(Path(plan).stem)
     branch = branch or f"deliver/{name}"
-    path = root.parent / f"{root.name}-{name}"
+    main = main_root(root)
+    if not worktrees_ignored(main):
+        raise SystemExit(f"Add {WORKTREES_DIRNAME}/ to {main / '.gitignore'} first")
+    path = main / WORKTREES_DIRNAME / name
     exists = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"], cwd=root, check=False
     )
