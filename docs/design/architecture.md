@@ -35,6 +35,8 @@ The marketplace is curated (ADR-0016) and vendor-independent (ADR-0017):
     back to work until every plan item is ticked, the check passes and an optional cross-vendor
     review passed (ADR-0020).
   - `cross-review` runs the other vendor's agent as a read-only reviewer.
+  - `mermaid` defines the diagram house style; its checker runs after every edit and as a git
+    hook in generated projects (ADR-0026).
   - Planned: `adr`, `kickoff`, `template-update`.
 
 ## Copier question model
@@ -100,7 +102,7 @@ Answers seed `docs/context/project.md` and the project section of AGENTS.md. Aft
 | --- | --- | --- |
 | Template | tool configs, Taskfile, CI, hooks, permissions, AGENTS.md rules, nested AGENTS.md, docs scaffolding | re-rendered on update, three-way merged with local edits |
 | Project | `README.md`, `src/`, `tests/`, `conf/`, `notebooks/`, `docs/context/`, `docs/method/`, `docs/roadmap.md`, `docs/adr/0001` | rendered on copy, excluded on update (ADR-0022) |
-| Plugin | `scripts/agent/deliver.py`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022) |
+| Plugin | `scripts/agent/deliver.py`, `scripts/agent/check_mermaid.py`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022) |
 
 The project section of AGENTS.md is rendered once from the context answers. Its template text
 never changes, so later updates cannot conflict with edits there.
@@ -122,12 +124,13 @@ never changes, so later updates cannot conflict with edits there.
 ├── .worktreeinclude
 ├── .github/workflows/ci.yml     task check, actions pinned by SHA
 ├── .pre-commit-config.yaml      prek
+├── .vscode/extensions.json      Mermaid preview
 ├── Taskfile.yml                 root tasks; includes taskfiles/*.yml
 ├── pyproject.toml               deps, ruff, ty, pytest, coverage, import-linter
 ├── conf/                        Hydra configs (config=hydra)
 ├── data/{raw,interim,processed,models,reports,tracking}/
 ├── docs/
-│   ├── conf.py, index.md        Sphinx, MyST, autoapi
+│   ├── conf.py, index.md        Sphinx, MyST, autoapi, Mermaid in the house style
 │   ├── context/                 project.md, data.md, glossary.md (project-owned)
 │   ├── method/                  evaluation-protocol.md for the archetype
 │   ├── adr/                     index.md, 0000-template.md, 0001-record-decisions.md
@@ -137,7 +140,8 @@ never changes, so later updates cannot conflict with edits there.
 ├── notebooks/
 ├── scripts/agent/               status.py (session start), guard.py (tool guard),
 │                                format_changed.py (format on edit),
-│                                deliver.py (completion guard, copied from the plugin)
+│                                deliver.py (completion guard, copied from the plugin),
+│                                check_mermaid.py (diagram style, copied from the plugin)
 ├── src/<package>/
 │   ├── domain/        AGENTS.md  pure types and logic, no I/O
 │   ├── application/   AGENTS.md  use cases, pipeline steps

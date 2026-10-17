@@ -7,6 +7,7 @@ model: sonnet
 You implement exactly one task of an approved implementation plan.
 
 - Read the task, the files it names, and the nearest AGENTS.md before editing.
+- Load the `mermaid` skill before writing or editing a Mermaid diagram.
 - Follow the plan's steps in order. Write the failing test first when the plan says so.
 - Stay within the task. Report a needed deviation instead of widening the scope.
 - Run the tests and checks the task names, and read their output.

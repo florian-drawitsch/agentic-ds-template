@@ -108,6 +108,9 @@ uv run --script scripts/agent/deliver.py headless --plan <plan> --harness codex 
   the guard's message until the run is released.
 - Claude Code runs in `auto` permission mode; Codex runs `workspace-write` with approvals off.
   Both are confined to the new worktree.
+- It survives usage and rate limits. A round cut off by a limit is not counted. The run waits
+  until the announced reset, or backs off exponentially when no reset time is known, then
+  resumes the same session. `--max-wait` (hours, default 48) caps the total wait.
 - The JSON event log is kept in the run directory.
 
 ## Run states
@@ -118,7 +121,7 @@ uv run --script scripts/agent/deliver.py headless --plan <plan> --harness codex 
 | `completed` | all three completion conditions held |
 | `blocked` | a human decision is needed; the reason is in the run note |
 | `stalled` | several rounds ended without any change to the code, the plan or the reviews |
-| `exhausted` | the round limit (`--max-rounds`, default 40) was reached |
+| `exhausted` | the round limit (`--max-rounds`, default 40) was reached, or a usage limit needs a longer wait than `--max-wait` allows |
 | `stopped` | cancelled, or the plan file disappeared |
 
 Run state lives in the git directory of the worktree (`agent-runs/`), never in the commit

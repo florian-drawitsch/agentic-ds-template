@@ -8,10 +8,32 @@ extensions = [
     "autoapi.extension",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
+    "sphinxcontrib.mermaid",
 ]
 
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 myst_enable_extensions = ["colon_fence"]
+# Render ```mermaid fences as diagrams, as GitHub and VS Code do.
+myst_fence_as_directive = ["mermaid"]
+# MyST reads the frontmatter of the mermaid skill's standard diagram as directive options and
+# drops it, so its CSS rules are applied to every diagram through mermaid_init_config instead.
+suppress_warnings = ["myst.directive_option"]
+mermaid_init_config = {
+    "startOnLoad": False,
+    "themeCSS": (
+        ".row-rect-odd path, .row-rect-even path, marker circle { fill: none !important; } "
+        ".edgePaths path, .flowchart-link, .relation, .transition, .relationshipLine, "
+        "marker path, marker circle { stroke: #868e96 !important; } "
+        "circle.state-start, circle.state-end "
+        "{ fill: #868e96 !important; stroke: #868e96 !important; } "
+        "rect.actor, rect.note, rect[class^=activation], polygon.labelBox "
+        "{ fill: none !important; stroke: #868e96 !important; } "
+        "line[class^=actor-line], line.loopLine, line[class^=messageLine], "
+        "path[class^=messageLine] { stroke: #868e96 !important; } "
+        "text.actor, text.actor tspan, .messageText, .noteText, .noteText tspan, .labelText, "
+        ".labelText tspan, .loopText, .loopText tspan, text.text { fill: #868e96 !important; }"
+    ),
+}
 myst_heading_anchors = 3
 exclude_patterns = ["_build", "plans"]
 
@@ -20,6 +42,8 @@ autoapi_root = "api"
 autoapi_add_toctree_entry = False
 autoapi_options = ["members", "undoc-members", "show-inheritance", "show-module-summary"]
 napoleon_google_docstring = True
+# Attributes sections become :ivar: fields, so autoapi does not document dataclass fields twice.
+napoleon_use_ivar = True
 
 html_theme = "furo"
 html_title = project

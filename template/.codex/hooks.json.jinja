@@ -8,7 +8,10 @@
     }],
     "PostToolUse": [{
       "matcher": "apply_patch|Edit|Write",
-      "hooks": [{"type": "command", "command": hook ~ 'format_changed.py"', "statusMessage": "Formatting changed files"}]
+      "hooks": [
+        {"type": "command", "command": hook ~ 'format_changed.py"', "statusMessage": "Formatting changed files"},
+        {"type": "command", "command": hook ~ 'check_mermaid.py" --hook', "statusMessage": "Checking Mermaid style"}
+      ]
     }],
     "Stop": [{"hooks": [{
       "type": "command",

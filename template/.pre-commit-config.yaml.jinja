@@ -6,13 +6,21 @@ repos:
     hooks:
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
+        # Claude Code's sandbox never lets agents write agent and IDE config, so fixers skip it.
+        exclude: ^(\.(claude|codex|agents|vscode|idea)/|\.mcp\.json$)
       - id: end-of-file-fixer
+        # Claude Code's sandbox never lets agents write agent and IDE config, so fixers skip it.
+        exclude: ^(\.(claude|codex|agents|vscode|idea)/|\.mcp\.json$)
       - id: mixed-line-ending
+        # Claude Code's sandbox never lets agents write agent and IDE config, so fixers skip it.
+        exclude: ^(\.(claude|codex|agents|vscode|idea)/|\.mcp\.json$)
       - id: check-yaml
       - id: check-toml
       - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
+        # Lockfiles are generated and must be committed, whatever their size.
+        exclude: (^|/)(uv\.lock|package-lock\.json)$
       - id: detect-private-key
 
   - repo: local
@@ -58,6 +66,14 @@ repos:
         entry: uv run nbstripout
         language: system
         types: [jupyter]
+{%- endif %}
+{%- if agent_harnesses %}
+
+      - id: mermaid-style
+        name: mermaid house style
+        entry: uv run --script scripts/agent/check_mermaid.py
+        language: system
+        types: [markdown]
 {%- endif %}
 {%- if ci == "github" %}
 

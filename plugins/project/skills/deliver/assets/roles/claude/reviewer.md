@@ -14,7 +14,8 @@ Check, in this order:
 1. Spec compliance: the change does what the plan task specifies, nothing missing, nothing extra.
 2. Correctness: logic errors, edge cases, data leakage, error handling.
 3. Tests: the behavior is covered and the tests would fail without the change.
-4. Project rules: accepted ADRs and AGENTS.md rules are respected.
+4. Project rules: accepted ADRs and AGENTS.md rules are respected. Diagrams follow the
+   `mermaid` skill.
 
 Report in this shape:
 

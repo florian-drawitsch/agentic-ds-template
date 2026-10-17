@@ -79,6 +79,7 @@ Agents access workflow skills from the `project` plugin and `superpowers`:
 | `implement-feature` | `superpowers` (shimmed) | Build features with test-driven development (red-green-refactor) |
 | `debug` | `superpowers` (shimmed) | Find root causes through hypothesis-driven reproduction |
 | `cross-review` | `project` | Run a headless, read-only review with the alternate agent CLI |
+| `mermaid` | `project` | Draw diagrams in one Mermaid house style, checked after every edit |
 | `request-review` | `superpowers` (shimmed) | Review changed files against the plan in the current session |
 | `wrap-feature` | `superpowers` (shimmed) | Verify work, clean up branches, or prepare pull requests |
 
@@ -87,7 +88,7 @@ Agents access workflow skills from the `project` plugin and `superpowers`:
 Project taskfiles provide commands to manage agent operations:
 
 - `task agent:status`: Displays repository status and active agent delivery runs.
-- `task agent:deliver`: Runs an approved plan unattended in a fresh git worktree (`PLAN=...`, optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`).
+- `task agent:deliver`: Runs an approved plan unattended in a fresh git worktree (`PLAN=...`, optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`, `MAX_WAIT=<hours>` to cap waiting for usage limits).
 - `task agent:check`: Verifies that agent hooks and role configurations are present (alias: `doctor`).
 
 ## License

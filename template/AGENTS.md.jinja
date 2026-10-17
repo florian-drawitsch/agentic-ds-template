@@ -35,7 +35,8 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 {%- if 'dashboard' in interfaces %}
 - `task dashboard`: run the dashboard.
 {%- endif %}
-- `task docs:serve`: live documentation.
+- `task docs:serve`: live documentation. `task docs:diagrams`: package and class diagrams of the
+  code, generated into `docs/architecture/generated/`.
 {%- if infrastructure == 'azure' %}
 - `task infra:test`: test the Azure infrastructure in `infra/` with Pulumi mocks. `infra:preview`,
   `infra:up` and `infra:release` change real resources: run them only when asked.
@@ -135,6 +136,14 @@ Entry points may import everything; nothing imports them.
   from the design.
 - Accepted ADRs outrank code and tests, which outrank plans.
 - Execute approved plans with the `deliver` skill. Finish with `cross-review`.
+
+## Diagrams
+
+- Draw diagrams in Mermaid only. Load the `mermaid` skill before writing, editing or reviewing
+  any diagram: in chat, plans, design specs, ADRs and docs.
+{%- if agent_harnesses %}
+- `scripts/agent/check_mermaid.py` enforces the style after every agent edit and as a git hook.
+{%- endif %}
 
 ## Definition of done
 

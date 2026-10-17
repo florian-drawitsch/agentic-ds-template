@@ -51,7 +51,15 @@ lint = [
     "zizmor",
 {%- endif %}
 ]
-docs = ["furo", "myst-parser", "sphinx", "sphinx-autoapi", "sphinx-autobuild"]
+docs = [
+    "furo",
+    "myst-parser",
+    "pylint",
+    "sphinx",
+    "sphinx-autoapi",
+    "sphinx-autobuild",
+    "sphinxcontrib-mermaid",
+]
 
 [tool.uv]
 default-groups = "all"
@@ -60,8 +68,8 @@ exclude-newer = "7 days"
 
 [tool.ruff]
 line-length = 100
-# deliver.py is copied from the template's plugin and updated with it; do not reformat it here.
-extend-exclude = ["scripts/agent/deliver.py"]
+# Copied from the template's plugin and updated with it; do not reformat them here.
+extend-exclude = ["scripts/agent/deliver.py", "scripts/agent/check_mermaid.py"]
 force-exclude = true
 target-version = "py{{ python_version | replace('.', '') }}"
 
@@ -81,7 +89,7 @@ convention = "google"
 "docs/conf.py" = ["D"]
 
 [tool.ty.src]
-exclude = ["notebooks", "scripts/agent/deliver.py"{% if infrastructure == "azure" %}, "infra"{% endif %}]
+exclude = ["notebooks", "scripts/agent/deliver.py", "scripts/agent/check_mermaid.py"{% if infrastructure == "azure" %}, "infra"{% endif %}]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

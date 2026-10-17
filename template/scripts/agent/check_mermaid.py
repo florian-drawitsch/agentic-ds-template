@@ -1,0 +1,1 @@
+../../../plugins/project/skills/mermaid/scripts/check_mermaid.py
