@@ -8,10 +8,9 @@ Requirements: [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
 [Task](https://taskfile.dev).
 
 ```bash
-task setup          # environment and git hooks
-task example-data   # synthetic data so the pipeline runs end to end
-task run            # run the pipeline
+task setup          # environment, git hooks and agent plugins
 task check          # lint, types, import contracts and tests
+task run            # run the pipeline on data/01_raw/input.csv
 ```
 
 `task --list` shows every task.

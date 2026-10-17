@@ -7,7 +7,7 @@ from pathlib import Path
 
 import streamlit as st
 
-REPORT_PATH = Path("data/reports/latest.json")
+REPORT_PATH = Path("data/08_reporting/latest.json")
 
 st.title("{{ project_name }}")
 if REPORT_PATH.is_file():
@@ -15,4 +15,4 @@ if REPORT_PATH.is_file():
     st.metric("Mean absolute error", f"{latest['mae']:.3f}")
     st.json(latest)
 else:
-    st.info("No report yet. Run `task example-data` and `task run`.")
+    st.info("No report yet. Run `task run` first.")

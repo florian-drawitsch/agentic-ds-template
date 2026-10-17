@@ -16,7 +16,7 @@ def test_hydra_config_composes_into_settings() -> None:
         cast("dict[str, Any]", OmegaConf.to_container(cfg, resolve=True))
     )
     assert settings.data.target == "y"
-    assert settings.data.path == Path("data/raw/example.csv")
+    assert settings.data.path == Path("data/01_raw/input.csv")
 {%- else %}
 
 from {{ package_name }}.cli import CONFIG_DIR
@@ -26,5 +26,5 @@ from {{ package_name }}.config import load_settings
 def test_default_config_loads() -> None:
     settings = load_settings(CONFIG_DIR / "config.toml")
     assert settings.data.target == "target"
-    assert settings.report_dir == Path("data/reports")
+    assert settings.report_dir == Path("data/08_reporting")
 {%- endif %}

@@ -2,25 +2,25 @@
 {%- if architecture == 'pipeline' %}
 
 [catalog]
-raw = "data/raw/example.csv"
-features = "data/processed/features.parquet"
-model = "data/models/baseline.json"
-report = "data/reports/latest.json"
-predictions = "data/processed/predictions.parquet"
+raw = "data/01_raw/input.csv"
+features = "data/04_feature/features.parquet"
+model = "data/06_models/baseline.json"
+report = "data/08_reporting/latest.json"
+predictions = "data/07_model_output/predictions.parquet"
 
 [params]
 target = "target"
 {%- else %}
-report_dir = "data/reports"
+report_dir = "data/08_reporting"
 
 [data]
-path = "data/raw/example.csv"
+path = "data/01_raw/input.csv"
 target = "target"
 {%- endif %}
 {%- if tracking == 'mlflow' %}
 
 [tracking]
-uri = "sqlite:///data/tracking/mlflow.db"
+uri = "sqlite:///data/09_tracking/mlflow.db"
 experiment = "{{ project_name }}"
-artifact_dir = "data/tracking/artifacts"
+artifact_dir = "data/09_tracking/artifacts"
 {%- endif %}
