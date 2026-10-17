@@ -18,7 +18,7 @@ Install [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
 5. **Commit:** Conventional Commits (`type(scope): subject`), sized by responsibility.
 
 For unattended runs, commit the plan and run `task agent:deliver PLAN=docs/plans/<plan>.md` (optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`).
-It works in a new worktree on a `deliver/<plan>` branch.
+It works in a new git-ignored worktree, `.worktrees/<plan>`, on a `deliver/<plan>` branch.
 
 ## Agent setup
 

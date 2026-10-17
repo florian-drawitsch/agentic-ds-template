@@ -425,7 +425,39 @@ def test_an_earlier_delivery_of_the_same_plan_is_reported_not_crashed_on(
     repo = tmp_path / "repo"
     repo.mkdir()
     init_repo(repo)
+    (repo / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
     deliver.create_worktree(repo, "plan.md", None)
 
     with pytest.raises(SystemExit, match="Continue it:"):
         deliver.create_worktree(repo, "plan.md", None)
+
+
+def test_worktrees_go_into_the_main_repository_and_never_nest(
+    deliver: ModuleType, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    init_repo(repo)
+    (repo / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
+
+    first = deliver.create_worktree(repo, "docs/plans/first.md", None)
+    second = deliver.create_worktree(first, "docs/plans/second.md", None)
+
+    assert first == repo.resolve() / ".worktrees" / "first"
+    assert second == repo.resolve() / ".worktrees" / "second"
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+    )
+    assert ".worktrees" not in status.stdout
+
+
+def test_a_worktree_is_refused_while_the_directory_is_not_ignored(
+    deliver: ModuleType, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    init_repo(repo)
+
+    with pytest.raises(SystemExit, match=r"Add \.worktrees/"):
+        deliver.create_worktree(repo, "plan.md", None)
+    assert not (repo / ".worktrees").exists()

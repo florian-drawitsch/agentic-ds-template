@@ -193,7 +193,8 @@ def test_install_is_idempotent_and_keeps_existing_settings(repo: Path) -> None:
     first = deliver.install(repo, ["claude", "codex"], models, force=False)
     second = deliver.install(repo, ["claude", "codex"], models, force=False)
 
-    assert len(first) == 7
+    assert len(first) == 8
+    assert (repo / ".gitignore").read_text() == ".worktrees/\n"
     assert second == []
     data = json.loads(settings.read_text())
     assert data["permissions"]["allow"] == ["Bash(task check)"]
