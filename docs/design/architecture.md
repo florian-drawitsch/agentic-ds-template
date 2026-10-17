@@ -125,7 +125,7 @@ never changes, so later updates cannot conflict with edits there.
 ├── Taskfile.yml                 root tasks; includes taskfiles/*.yml
 ├── pyproject.toml               deps, ruff, ty, pytest, coverage, import-linter
 ├── conf/                        Hydra configs (config=hydra)
-├── data/{raw,interim,processed,models,reports,tracking}/
+├── data/01_raw … 09_tracking/   numbered data layers, git-ignored except the folders
 ├── docs/
 │   ├── conf.py, index.md        Sphinx, MyST, autoapi
 │   ├── context/                 project.md, data.md, glossary.md (project-owned)

@@ -32,11 +32,6 @@ tasks:
       - uv run python -m ipykernel install --sys-prefix --name {{ p }} --display-name {{ project_name }}
 {%- endif %}
 
-  example-data:
-    desc: Write a synthetic example table to data/raw/example.csv
-    cmds:
-      - uv run python -m {{ p }}.{{ {'simple': 'data', 'pipeline': 'example_data', 'hexagonal': 'adapters.example_data'}[architecture] }} data/raw/example.csv
-
   run:
     desc: Run the {{ 'pipelines (select with --pipeline)' if architecture == 'pipeline' else 'pipeline' }}{{ ', Hydra overrides after --' if config == 'hydra' else '' }}
     cmds:
@@ -77,11 +72,11 @@ tasks:
 {%- if tracking == "mlflow" %}
 
   mlflow:
-    desc: Serve the MLflow UI for runs tracked in data/tracking
+    desc: Serve the MLflow UI for runs tracked in data/09_tracking
     vars:
       PORT: '{{ '{{.PORT | default "5000"}}' }}'
     cmds:
-      - uv run mlflow ui --backend-store-uri sqlite:///data/tracking/mlflow.db --port {{ '{{.PORT}}' }}
+      - uv run mlflow ui --backend-store-uri sqlite:///data/09_tracking/mlflow.db --port {{ '{{.PORT}}' }}
 {%- endif %}
 {%- if "api" in interfaces %}
 

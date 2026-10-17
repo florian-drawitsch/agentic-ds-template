@@ -54,9 +54,10 @@ _message_after_copy: |
   Created {{ project_name }}. Next steps:
 
     cd {{ _copier_conf.dst_path }}
-    task setup          # environment, hooks{% if notebooks %}, notebook kernel{% endif %}
-    task example-data   # synthetic data so the pipeline runs end to end
+    task setup          # environment, hooks{% if notebooks %}, notebook kernel{% endif %}{% if agent_harnesses %}, agent plugins{% endif %}
     task check          # lint, architecture contracts and tests
+
+  Put the input data into data/01_raw/input.csv, then run the pipeline with `task run`.
 
   Then open the project in Claude Code or Codex and trust it, so the hooks and the
   {{ marketplace_repo }} marketplace load. Fill docs/context/ before the first plan.

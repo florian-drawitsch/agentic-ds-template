@@ -1,13 +1,22 @@
+import random
 from pathlib import Path
 
+import polars as pl
 import pytest
 
-from {{ package_name }}.{{ {'simple': 'data', 'pipeline': 'example_data', 'hexagonal': 'adapters.example_data'}[architecture] }} import example_table
+
+def example_table(rows: int = 50, seed: int = 0) -> pl.DataFrame:
+    """Return a synthetic table with one feature and a noisy linear target, in time order."""
+    rng = random.Random(seed)
+    x = [rng.uniform(0, 10) for _ in range(rows)]
+    return pl.DataFrame(
+        {"step": list(range(rows)), "x": x, "target": [2.0 * v + 1.0 + rng.gauss(0, 1) for v in x]}
+    )
 
 
 @pytest.fixture
 def example_csv(tmp_path: Path) -> Path:
-    path = tmp_path / "raw" / "example.csv"
+    path = tmp_path / "01_raw" / "input.csv"
     path.parent.mkdir(parents=True)
-    example_table(rows=50).write_csv(path)
+    example_table().write_csv(path)
     return path

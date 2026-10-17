@@ -149,7 +149,6 @@ source_modules = [
     "{{ p }}.application",
     "{{ p }}.ports",
     "{{ p }}.adapters.files",
-    "{{ p }}.adapters.example_data",
     "{{ p }}.bootstrap",
     "{{ p }}.entrypoints",
 ]
@@ -157,7 +156,7 @@ forbidden_modules = ["mlflow"]
 allow_indirect_imports = true
 {%- endif %}
 {%- elif architecture == "pipeline" %}
-{%- set core = ["catalog", "settings", "pipelines", "tracking", "example_data"] %}
+{%- set core = ["catalog", "settings", "pipelines", "tracking"] %}
 {%- set entrypoints = ["cli"] + (["api"] if "api" in interfaces else []) + (["dashboard"] if "dashboard" in interfaces else []) %}
 {%- set steps = ["pipelines.features", "pipelines.training", "pipelines.inference"] %}
 

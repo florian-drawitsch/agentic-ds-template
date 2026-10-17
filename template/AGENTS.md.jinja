@@ -24,10 +24,10 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 
 - `task setup`: install the environment and git hooks. `task --list` shows all tasks.
 - `task check`: lint, types, import contracts and tests. This is the merge gate.
-- `task test -- <pytest args>`, `task lint`, `task example-data`, `task run`
+- `task test -- <pytest args>`, `task lint`, `task run`
   {%- if config == 'hydra' %} (Hydra overrides after `--`){% endif %}.
 {%- if tracking == 'mlflow' %}
-- `task mlflow`: MLflow UI for runs tracked in `data/tracking/`.
+- `task mlflow`: MLflow UI for runs tracked in `data/09_tracking/`.
 {%- endif %}
 {%- if 'api' in interfaces %}
 - `task api`: serve the REST API.
@@ -70,8 +70,9 @@ Entry points may import everything; nothing imports them.
 
 - Import rules are enforced by import-linter (`[tool.importlinter]` in `pyproject.toml`).
 - Tests: `tests/unit/` for logic, `tests/integration/` for component boundaries.
-- Data: `data/raw/` is immutable input. Outputs go to `interim/`, `processed/`, `models/`
-  and `reports/`. All of `data/` is git-ignored.
+- Data follows the numbered layers in `data/`: `01_raw` (immutable input), `02_intermediate`,
+  `03_primary`, `04_feature`, `05_model_input`, `06_models`, `07_model_output`, `08_reporting`,
+  `09_tracking`. All of `data/` except the folders is git-ignored.
 
 ## Rules
 
