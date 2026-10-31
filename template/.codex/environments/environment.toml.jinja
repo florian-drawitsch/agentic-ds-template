@@ -1,0 +1,45 @@
+# Codex app environment: worktree setup and one-click actions.
+version = 1
+name = "{{ package_name }}"
+
+# Runs when Codex creates or refreshes a worktree. Must be idempotent.
+[setup]
+script = '''
+set -e
+task deliver:setup
+'''
+
+[[actions]]
+name = "Check"
+icon = "build"
+command = "task check"
+
+[[actions]]
+name = "Lint"
+icon = "build"
+command = "task lint"
+
+[[actions]]
+name = "Test"
+icon = "test"
+command = "task test"
+
+[[actions]]
+name = "Serve docs"
+icon = "tool"
+command = "task docs:serve"
+
+[[actions]]
+name = "Deliver"
+icon = "tool"
+command = "task deliver"
+
+[[actions]]
+name = "Resume delivery"
+icon = "tool"
+command = "task deliver:resume"
+
+[[actions]]
+name = "Delivery status"
+icon = "tool"
+command = "task deliver:status -- --all-worktrees"

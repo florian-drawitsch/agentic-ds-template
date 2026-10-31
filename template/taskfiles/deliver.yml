@@ -1,0 +1,51 @@
+version: '3'
+
+# Plan delivery with the `deliver` and `cross-review` skills. `task deliver` runs `default`.
+# The scripts in scripts/agent/ are project copies of the plugin's; `install` refreshes them.
+
+tasks:
+  default:
+    interactive: true
+    desc: Deliver a committed plan as a verified GitHub pull request
+    summary: |
+      Choose a plan, implementation model and effort, frontier reviewer, and review budget.
+      Arrow keys move the selection; Enter accepts it. New branches use feat/<topic>.
+      Use `task deliver -- --preview` to inspect the choices without launching an agent.
+      Explicit flags after `--` remain supported, for example `--plan`, `--harness`, `--model`.
+      This task starts an agent session and authorizes a push and PR after verification.
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - >-
+        uv run --script scripts/agent/deliver.py headless --publish-pr --cross-review final
+        --focused-review --round-cost 2 --round-turns 150 --round-minutes 90 --max-cost 10
+        --review-cost 2 --check "task check" --setup "task deliver:setup" {{.CLI_ARGS}}
+
+  resume:
+    interactive: true
+    desc: Choose a saved delivery run in any worktree and resume its agent session
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/deliver.py resume {{.CLI_ARGS}}
+
+  status:
+    desc: Show the repository state and the delivery runs (`-- --all-worktrees` for every worktree)
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/status.py
+      - uv run --script scripts/agent/deliver.py status {{.CLI_ARGS}}
+
+  setup:
+    desc: Prepare dependencies and git hooks in a delivery worktree
+    dir: '{{.ROOT_DIR}}'
+    env:
+      VIRTUAL_ENV: ''
+    cmds:
+      - uv sync --locked
+      - uv run prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
+
+  doctor:
+    desc: Check that the delivery hooks, roles and project copies are installed
+    aliases: [check]
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/deliver.py doctor

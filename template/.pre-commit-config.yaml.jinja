@@ -2,6 +2,13 @@
 default_install_hook_types: [pre-commit, commit-msg]
 
 repos:
+  # Secret scan. `task deliver` also scans the commits it publishes.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+        args: [--redact]
+
   - repo: builtin
     hooks:
       - id: trailing-whitespace

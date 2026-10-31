@@ -1,0 +1,8 @@
+# Settings for headless `task deliver` runs, read by scripts/agent/deliver.py.
+
+[sandbox]
+# Hosts the agent may reach besides the Python and npm registries.
+# Add a host only when a plan needs it, with the reason in a comment beside it.
+extra_hosts = []
+# Final gate isolation: "env-scrub" (default) or "srt" (needs the optional srt wrapper).
+gate = "env-scrub"

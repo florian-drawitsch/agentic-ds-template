@@ -1,8 +1,9 @@
 {%- from 'includes/permissions.jinja' import deny_commands, keychain_commands with context -%}
 # Codex command rules. Generated from the template's single permission list.
 
-# The gh CLI reads its token from the OS keychain, which the sandbox blocks. These read and
-# pull-request commands run outside the sandbox without a prompt.
+# The gh CLI reads its token from the OS keychain, which the sandbox blocks. These
+# read-only commands run outside the sandbox without a prompt. Commands that change GitHub
+# state still ask.
 {%- for cmd in keychain_commands %}
 prefix_rule(pattern = {{ cmd | tojson }}, decision = "allow")
 {%- endfor %}

@@ -4,8 +4,9 @@ Workflows for projects built with Claude Code and Codex.
 
 | Skill | Purpose |
 | --- | --- |
-| `deliver` | Execute an approved plan end to end. A completion guard (Stop hook) keeps the session working until every plan item is ticked, the check passes and, optionally, a cross-vendor review passed. Supports single-agent and implementer and reviewer subagent modes, and unattended runs in a worktree |
-| `cross-review` | Have the other vendor's CLI review the change, headless and read-only, with structured findings |
+| `deliver` | Execute an approved plan end to end. A completion guard (Stop hook) keeps the session working until every plan item is ticked, the check passes, an optional cross-vendor review passed and, with `--publish-pr`, a PR exists for the verified branch. Unattended runs work in a worktree within cost, turn and time budgets, and can be resumed |
+| `cross-review` | Have the other vendor's CLI review the change, headless and read-only, with structured findings. Required findings are fixed and verified without another review |
+| `github-create-pr` | Validate a PR description against `.github/pull_request_template.md`, then push and create or update the PR idempotently. Never requests human reviewers |
 | `mermaid` | House style for Mermaid diagrams: when to draw, which type, stroke-only palette, required style lines. `scripts/check_mermaid.py` checks Markdown files against it |
 | `brainstorm` | Alias for `superpowers:brainstorming`: explore requirements and design tradeoffs |
 | `write-plan` | Alias for `superpowers:writing-plans`: write an implementation plan in `docs/plans/` |
@@ -23,10 +24,16 @@ uv run --script <plugin>/skills/deliver/scripts/deliver.py install
 
 This adds, without touching other settings:
 
-- `scripts/agent/deliver.py`: the project copy the hooks call
+- `scripts/agent/deliver.py`: the project copy the hooks call, with `cross_review.py`,
+  `create_pr.py` and `prices.toml` beside it, so the project runs without the plugin
 - a Stop hook in `.claude/settings.json` and `.codex/hooks.json`
 - `implementer` and `reviewer` roles in `.claude/agents/` and `.codex/agents/`. The reviewer is
-  read-only. Models default to `sonnet` and `opus` for Claude; Codex roles inherit the session
-  model unless `--codex-implementer-model` or `--codex-reviewer-model` is given.
+  read-only and runs at high effort. Models default to `sonnet` and `opus` for Claude. The Codex
+  reviewer defaults to `gpt-6.1-sol`; the Codex implementer inherits the session model unless
+  `--codex-implementer-model` is given.
+- `.worktrees/` in `.gitignore`
+
+Optional: a `deliver.toml` at the repository root adds network hosts for headless rounds
+(`[sandbox].extra_hosts`).
 
 Projects generated from this repository's template get these files at generation time.

@@ -1,7 +1,7 @@
 {
   "name": "project",
   "version": "0.1.0",
-  "description": "Plan delivery until done, implementer and reviewer roles, cross-vendor review",
+  "description": "Plan delivery to a verified pull request, implementer and reviewer roles, cross-vendor review",
   "author": {
     "name": "Florian Drawitsch"
   },

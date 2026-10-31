@@ -50,20 +50,16 @@ Claude Code and Codex share an operating model defined in `AGENTS.md`.
 
 1. **Brainstorm:** Use the `brainstorm` skill to examine requirements and evaluate design tradeoffs.
 2. **Plan:** Use the `write-plan` skill to generate a test-first implementation plan in `docs/plans/<plan>.md`.
-3. **Execute:** Run the `deliver` skill in the agent session, or deliver unattended in an isolated worktree (defaults to Claude Code with `sonnet`):
+3. **Execute:** Run the `deliver` skill in the agent session, or deliver unattended in an isolated worktree:
 
    ```bash
-   task agent:deliver PLAN=docs/plans/<plan>.md
+   task deliver
    ```
 
-   Customize the model, reasoning effort, or harness with arguments:
+   Terminal menus select the plan, the implementation harness, model and effort, the reviewer and the review budget. `task deliver -- --preview` shows the menus without starting an agent. Explicit flags work too, for example `task deliver -- --plan docs/plans/<plan>.md --harness claude --model sonnet`.
 
-   ```bash
-   task agent:deliver PLAN=docs/plans/<plan>.md MODEL=claude-5-5-haiku EFFORT=high
-   ```
-
-4. **Review:** Run the `cross-review` skill to have the multiple agents review changes read-only.
-5. **Finish:** Use the `wrap-feature` skill to perform final validation, clean up branches, or prepare a pull request.
+4. **Review:** One focused review by the other vendor's agent, read-only. The implementing agent fixes required findings and verifies them without another review.
+5. **Publish:** After `task check` passes, the run pushes a `feat/<topic>` branch and opens or updates a GitHub pull request. It never merges and never requests human reviewers.
 6. **Document:** Record lasting architecture decisions in `docs/adr/`.
 
 ### Agent skills
@@ -74,11 +70,12 @@ Agents access workflow skills from the `project` plugin and `superpowers`:
 | --- | --- | --- |
 | `brainstorm` | `superpowers` (shimmed) | Explore requirements and design options before planning |
 | `write-plan` | `superpowers` (shimmed) | Create structured implementation plans in `docs/plans/` |
-| `deliver` | `project` | Run an autonomous execution loop until all tasks and `task check` pass |
+| `deliver` | `project` | Run an autonomous execution loop until all tasks and `task check` pass, then open a PR |
 | `execute-plan` | `superpowers` (shimmed) | Execute plan tasks in batches with review checkpoints |
 | `implement-feature` | `superpowers` (shimmed) | Build features with test-driven development (red-green-refactor) |
 | `debug` | `superpowers` (shimmed) | Find root causes through hypothesis-driven reproduction |
 | `cross-review` | `project` | Run a headless, read-only review with the alternate agent CLI |
+| `github-create-pr` | `project` | Validate a PR description against the PR template and create or update the PR |
 | `mermaid` | `project` | Draw diagrams in one Mermaid house style, checked after every edit |
 | `request-review` | `superpowers` (shimmed) | Review changed files against the plan in the current session |
 | `wrap-feature` | `superpowers` (shimmed) | Verify work, clean up branches, or prepare pull requests |
@@ -87,9 +84,12 @@ Agents access workflow skills from the `project` plugin and `superpowers`:
 
 Project taskfiles provide commands to manage agent operations:
 
-- `task agent:status`: Displays repository status and active agent delivery runs.
-- `task agent:deliver`: Runs an approved plan unattended in a fresh git worktree (`PLAN=...`, optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`, `MAX_WAIT=<hours>` to cap waiting for usage limits).
-- `task agent:check`: Verifies that agent hooks and role configurations are present (alias: `doctor`).
+- `task deliver`: Runs a committed plan unattended in a fresh git worktree and opens a pull request. Caps cost per round (USD 2) and per run (USD 10); waits out usage limits for up to 48 hours.
+- `task deliver:resume`: Continues a saved run from any worktree, keeping its session and budgets.
+- `task deliver:status`: Displays repository status, delivery runs, token usage and estimated cost (`-- --all-worktrees` for every worktree).
+- `task deliver:doctor`: Verifies hooks, roles, project script copies and project skill links.
+
+The Codex app gets the same tasks as actions in `.codex/environments/`. Project-specific skills live in `.agents/skills/<name>/`, with a symlink in `.claude/skills/<name>` for Claude Code.
 
 ## License
 

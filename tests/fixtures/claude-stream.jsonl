@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"session-fixture","model":"claude-sonnet-5-5"}
+{"type":"result","subtype":"success","is_error":false,"num_turns":1,"total_cost_usd":0.0782322,"modelUsage":{"claude-sonnet-5-5":{"inputTokens":2,"cacheReadInputTokens":10682,"cacheCreationInputTokens":19280,"outputTokens":4,"costUSD":0.0782322}}}

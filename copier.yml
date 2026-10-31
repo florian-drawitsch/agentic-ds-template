@@ -30,6 +30,7 @@ _exclude:
   - "{% if 'claude' not in agent_harnesses %}CLAUDE.md{% endif %}"
   - "{% if 'codex' not in agent_harnesses %}.codex{% endif %}"
   - "{% if not agent_harnesses %}scripts/agent{% endif %}"
+  - "{% if not agent_harnesses %}deliver.toml{% endif %}"
   - "{% if ci != 'github' %}.github{% endif %}"
   - "{% if ci != 'github' %}renovate.json{% endif %}"
   - "{% if not container %}Dockerfile{% endif %}"

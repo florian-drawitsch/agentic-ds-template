@@ -18,7 +18,7 @@
     {
       "name": "project",
       "source": "./plugins/project",
-      "description": "Plan delivery until done, implementer and reviewer roles, cross-vendor review"
+      "description": "Plan delivery to a verified pull request, implementer and reviewer roles, cross-vendor review"
     }
   ]
 }

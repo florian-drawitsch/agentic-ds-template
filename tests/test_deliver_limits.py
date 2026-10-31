@@ -170,7 +170,7 @@ def test_headless_run_waits_out_a_limit_and_resumes_the_session(
     waits: list[datetime] = []
     reset = datetime.now(UTC) + timedelta(minutes=10)
 
-    def fake_round(command: list[str], cwd: Path, log: Path) -> object:
+    def fake_round(command: list[str], cwd: Path, log: Path, timeout: float = 0) -> object:
         commands.append(command)
         if len(commands) == 1:
             result = deliver.RoundResult(code=1, thread="thread-1", started=True)
@@ -207,7 +207,7 @@ def test_headless_run_waits_out_a_limit_and_resumes_the_session(
     assert run.waits == 1
     assert waits[0] >= reset
     assert commands[1][:4] == ["codex", "exec", "resume", "thread-1"]
-    assert "cut off by a usage limit" in commands[1][-1]
+    assert "hit a usage limit" in commands[1][-1]
 
 
 def test_headless_run_stops_when_the_wait_exceeds_the_budget(
@@ -216,7 +216,7 @@ def test_headless_run_stops_when_the_wait_exceeds_the_budget(
     init_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
 
-    def fake_round(command: list[str], cwd: Path, log: Path) -> object:
+    def fake_round(command: list[str], cwd: Path, log: Path, timeout: float = 0) -> object:
         result = deliver.RoundResult(code=1, thread="thread-1", started=True)
         deliver.absorb(
             result,
@@ -378,7 +378,9 @@ def test_header_names_the_model_and_effort_and_where_they_come_from(
     (tmp_path / ".claude/settings.json").write_text('{"model": "opus"}', encoding="utf-8")
     (tmp_path / ".claude/agents/implementer.md").write_text("---\nmodel: sonnet\n---\n")
     (tmp_path / ".claude/agents/reviewer.md").write_text("---\nmodel: opus\n---\n")
-    args = deliver.parser().parse_args(["headless", "--plan", "p.md", "--harness", "codex"])
+    args = deliver.parser().parse_args(
+        ["headless", "--plan", "p.md", "--harness", "codex", "--mode", "subagents"]
+    )
 
     codex = deliver.session_settings(args, tmp_path)
     args.harness, args.effort = "claude", "low"
@@ -425,7 +427,39 @@ def test_an_earlier_delivery_of_the_same_plan_is_reported_not_crashed_on(
     repo = tmp_path / "repo"
     repo.mkdir()
     init_repo(repo)
+    (repo / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
     deliver.create_worktree(repo, "plan.md", None)
 
     with pytest.raises(SystemExit, match="Continue it:"):
         deliver.create_worktree(repo, "plan.md", None)
+
+
+def test_worktrees_go_into_the_main_repository_and_never_nest(
+    deliver: ModuleType, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    init_repo(repo)
+    (repo / ".gitignore").write_text(".worktrees/\n", encoding="utf-8")
+
+    first = deliver.create_worktree(repo, "docs/plans/first.md", None)
+    second = deliver.create_worktree(first, "docs/plans/second.md", None)
+
+    assert first == repo.resolve() / ".worktrees" / "first"
+    assert second == repo.resolve() / ".worktrees" / "second"
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=True
+    )
+    assert ".worktrees" not in status.stdout
+
+
+def test_a_worktree_is_refused_while_the_directory_is_not_ignored(
+    deliver: ModuleType, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    init_repo(repo)
+
+    with pytest.raises(SystemExit, match=r"Add \.worktrees/"):
+        deliver.create_worktree(repo, "plan.md", None)
+    assert not (repo / ".worktrees").exists()

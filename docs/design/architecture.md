@@ -22,8 +22,9 @@ agentic-ds-template (this repository, ADR-0018)
 - AGENTS.md carries a "Planning and decisions" section that adapts Superpowers: specs and plans
   in `docs/plans/`, durable decisions as ADRs (ADR-0013). It also carries the writing style
   section (ADR-0019).
-- Project-local skills are added when a project needs one, in `.agents/skills/` (Codex) and
-  `.claude/skills/` (Claude Code). The template ships none (ADR-0022).
+- Project-local skills are added when a project needs one, in `.agents/skills/<name>/` (Codex),
+  linked from `.claude/skills/<name>` (Claude Code). `task deliver:doctor` reports missing links.
+  The template ships none (ADR-0022, ADR-0027).
 
 ## Marketplace
 
@@ -34,7 +35,10 @@ The marketplace is curated (ADR-0016) and vendor-independent (ADR-0017):
   - `deliver` executes a plan until it is verifiably done. A completion guard sends the session
     back to work until every plan item is ticked, the check passes and an optional cross-vendor
     review passed (ADR-0020).
+    Runs end as a GitHub PR for the verified branch, within cost and turn budgets (ADR-0027).
   - `cross-review` runs the other vendor's agent as a read-only reviewer.
+  - `github-create-pr` validates the PR description against the PR template and creates or
+    updates the PR idempotently; `deliver` uses it for publication.
   - `mermaid` defines the diagram house style; its checker runs after every edit and as a git
     hook in generated projects (ADR-0026).
   - Planned: `adr`, `kickoff`, `template-update`.
@@ -102,7 +106,7 @@ Answers seed `docs/context/project.md` and the project section of AGENTS.md. Aft
 | --- | --- | --- |
 | Template | tool configs, Taskfile, CI, hooks, permissions, AGENTS.md rules, nested AGENTS.md, docs scaffolding | re-rendered on update, three-way merged with local edits |
 | Project | `README.md`, `src/`, `tests/`, `conf/`, `notebooks/`, `docs/context/`, `docs/method/`, `docs/roadmap.md`, `docs/adr/0001` | rendered on copy, excluded on update (ADR-0022) |
-| Plugin | `scripts/agent/deliver.py`, `scripts/agent/check_mermaid.py`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022) |
+| Plugin | `scripts/agent/{deliver,cross_review,create_pr,check_mermaid}.py`, `scripts/agent/prices.toml`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022, ADR-0027) |
 
 The project section of AGENTS.md is rendered once from the context answers. Its template text
 never changes, so later updates cannot conflict with edits there.
@@ -117,11 +121,13 @@ never changes, so later updates cannot conflict with edits there.
 │   ├── settings.json            permissions, hooks, marketplace, enabled plugins, attribution off
 │   └── agents/                  implementer.md, reviewer.md (read-only)
 ├── .codex/
-│   ├── config.toml              sandbox, approval policy, marketplace, enabled plugins
+│   ├── config.toml              sandbox, approval policy, `deliver` profile, marketplace, plugins
 │   ├── hooks.json               same session, guard, format and completion hooks as Claude
 │   ├── agents/                  implementer.toml, reviewer.toml (read-only sandbox)
-│   └── rules/default.rules      keychain commands allowed, rule-breaking commands forbidden
-├── .worktreeinclude
+│   ├── environments/            worktree setup and app actions: check, test, deliver, resume
+│   └── rules/default.rules      read-only gh commands allowed, rule-breaking commands forbidden
+├── .worktreeinclude             git-ignored files for new worktrees, never credentials
+├── deliver.toml                 extra network hosts and gate isolation for headless delivery
 ├── .github/workflows/ci.yml     task check, actions pinned by SHA
 ├── .pre-commit-config.yaml      prek
 ├── .vscode/extensions.json      Mermaid preview

@@ -24,7 +24,7 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 
 - `task setup`: install the environment and git hooks. `task --list` shows all tasks.
 - `task check`: lint, types, import contracts and tests. This is the merge gate.
-- `task test -- <pytest args>`, `task lint`, `task run`
+- `task test -- <pytest args>`, `task test-fast -- <pytest args>` (no coverage), `task lint`, `task run`
   {%- if config == 'hydra' %} (Hydra overrides after `--`){% endif %}.
 {%- if tracking == 'mlflow' %}
 - `task mlflow`: MLflow UI for runs tracked in `data/09_tracking/`.
@@ -136,7 +136,11 @@ Entry points may import everything; nothing imports them.
   rules, what results may claim), record an ADR in `docs/adr/` before implementing. Link it
   from the design.
 - Accepted ADRs outrank code and tests, which outrank plans.
-- Execute approved plans with the `deliver` skill. Finish with `cross-review`.
+- Execute approved plans with the `deliver` skill. Finish with one `cross-review`.
+{%- if agent_harnesses %}
+- `task deliver` runs a committed plan unattended in `.worktrees/` and opens a GitHub PR after
+  `task check` and the final review. `task deliver:resume` continues a run.
+{%- endif %}
 
 ## Diagrams
 
@@ -145,6 +149,14 @@ Entry points may import everything; nothing imports them.
 {%- if agent_harnesses %}
 - `scripts/agent/check_mermaid.py` enforces the style after every agent edit and as a git hook.
 {%- endif %}
+
+## Pull requests
+
+- Never request human or team reviewers automatically. Humans choose reviewers.
+- Review rules, also for Codex automatic PR review. Blocking: a change contradicts an accepted
+  ADR without a new one; secrets or personal data appear; a reported number has no tracked run.
+  Non-blocking: docs or commands that no longer match the code or `Taskfile.yml`. Skip anything
+  Ruff enforces and historical records (`docs/plans/`).
 
 ## Definition of done
 

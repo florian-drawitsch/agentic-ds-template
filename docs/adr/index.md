@@ -31,3 +31,4 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0024](0024-provision-azure-with-pulumi.md) | Provision Azure with Pulumi in Python | 2026-10-09 |
 | [ADR-0025](0025-model-pipelines-as-graphs-of-nodes.md) | Model pipelines as graphs of nodes | 2026-10-09 |
 | [ADR-0026](0026-draw-diagrams-in-one-mermaid-house-style.md) | Draw diagrams in one Mermaid house style | 2026-10-11 |
+| [ADR-0027](0027-deliver-verified-pull-requests.md) | Deliver plans as verified pull requests with bounded cost | 2026-10-31 |
