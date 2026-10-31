@@ -1,0 +1,1 @@
+../../../plugins/project/skills/cross-review/scripts/cross_review.py
