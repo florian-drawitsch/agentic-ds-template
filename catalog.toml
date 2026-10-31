@@ -20,7 +20,7 @@ source = { type = "git", repo = "obra/superpowers", ref = "v6.4.2", sha = "8ca22
 
 [[plugins]]
 name = "project"
-description = "Plan delivery until done, implementer and reviewer roles, cross-vendor review"
+description = "Plan delivery to a verified pull request, implementer and reviewer roles, cross-vendor review"
 category = "Developer Tools"
 harnesses = ["claude", "codex"]
 source = { type = "local", path = "./plugins/project" }
