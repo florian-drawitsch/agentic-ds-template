@@ -1,6 +1,6 @@
 # ADR-0020: Deliver plans with a completion guard and cross-vendor review
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0027
 - **Date:** 2026-10-09
 
 ## Context
