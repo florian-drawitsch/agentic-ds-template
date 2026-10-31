@@ -14,7 +14,7 @@ coverage.xml
 htmlcov/
 .task/
 
-# Agent worktrees from `task agent:deliver`
+# Agent worktrees from `task deliver`
 .worktrees/
 
 # Documentation build

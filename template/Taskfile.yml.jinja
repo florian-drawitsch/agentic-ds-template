@@ -9,7 +9,9 @@ dotenv: ['.env']
 includes:
   docs: ./taskfiles/docs.yml
 {%- if agent_harnesses %}
-  agent: ./taskfiles/agent.yml
+  deliver:
+    taskfile: ./taskfiles/deliver.yml
+    aliases: [agent]
 {%- endif %}
 {%- if container %}
   docker: ./taskfiles/docker.yml
@@ -55,6 +57,11 @@ tasks:
     desc: Run the test suite
     cmds:
       - uv run pytest {{ '{{.CLI_ARGS}}' }}
+
+  test-fast:
+    desc: Run pytest without coverage, for focused checks while iterating, e.g. `task test-fast -- tests/unit`
+    cmds:
+      - uv run pytest --no-cov -q {{ '{{.CLI_ARGS}}' }}
 
   lint:
     desc: Run every git hook on tracked and untracked files without staging them

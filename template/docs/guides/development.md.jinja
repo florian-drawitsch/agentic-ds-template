@@ -10,15 +10,22 @@ Install [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
 1. **Branch:** work on a feature branch or worktree, never on `main`.
 2. **Plan:** for multi-step work, the agent brainstorms a design and writes a plan to
    `docs/plans/`. Durable decisions become ADRs in `docs/adr/`.
-3. **Deliver:** the `deliver` skill executes the approved plan:
-   - implementer and read-only reviewer roles do the work
-   - a completion guard keeps the session going until every plan item is ticked and
-     `task check` passes
-4. **Review:** `cross-review` has the other vendor's agent review the change read-only.
+3. **Deliver:** the `deliver` skill executes the approved plan. A completion guard keeps the
+   session going until every plan item is ticked and `task check` passes.
+4. **Review:** one `cross-review` by the other vendor's agent, read-only. Required findings are
+   fixed and verified without another review.
 5. **Commit:** Conventional Commits (`type(scope): subject`), sized by responsibility.
 
-For unattended runs, commit the plan and run `task agent:deliver PLAN=docs/plans/<plan>.md` (optional `MODEL=...`, `EFFORT=low|medium|high`, `HARNESS=claude|codex`).
-It works in a new git-ignored worktree, `.worktrees/<plan>`, on a `deliver/<plan>` branch.
+For unattended runs, commit the plan and run `task deliver`. Menus select the plan, the
+implementation model and effort, the reviewer and the review budget; `-- --preview` shows them
+without starting an agent. The run works in a new git-ignored worktree, `.worktrees/<topic>`, on
+a `feat/<topic>` branch. It pushes the branch and opens a GitHub PR after `task check` and the
+review passed. It never merges and never requests human reviewers.
+
+- `task deliver:resume`: continue a saved run, also after a usage limit or a closed terminal.
+- `task deliver:status -- --all-worktrees`: runs, token usage and estimated cost.
+- `deliver.toml`: extra network hosts for headless rounds, each with its reason.
+- Defaults: USD 2 and 150 turns per round, USD 10 per run. Pass `-- --max-cost <usd>` to change.
 
 ## Agent setup
 
@@ -28,9 +35,15 @@ Hooks run in both Claude Code and Codex:
 - formatting of changed Python files
 - the delivery completion guard
 
+Codex app actions in `.codex/environments/` run check, lint, test, docs and delivery tasks.
+`task deliver:setup` prepares each new worktree.
+
+Project-specific skills go into `.agents/skills/<name>/SKILL.md`, read by Codex. Link each one
+for Claude Code: `ln -s ../../.agents/skills/<name> .claude/skills/<name>`.
+
 Plugins come from the `{{ marketplace_repo }}` marketplace, pinned to `{{ marketplace_ref }}`.
 Trust the project in each harness once so the settings, hooks and plugins load (`/hooks` in
-Codex). `task agent:check` checks the installation.
+Codex). `task deliver:doctor` checks the installation, including the skill links.
 
 ## Quality gate
 

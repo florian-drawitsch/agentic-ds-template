@@ -1,29 +1,51 @@
 version: '3'
 
+# Plan delivery with the `deliver` and `cross-review` skills. `task deliver` runs `default`.
+# The scripts in scripts/agent/ are project copies of the plugin's; `install` refreshes them.
+
 tasks:
+  default:
+    interactive: true
+    desc: Deliver a committed plan as a verified GitHub pull request
+    summary: |
+      Choose a plan, implementation model and effort, frontier reviewer, and review budget.
+      Arrow keys move the selection; Enter accepts it. New branches use feat/<topic>.
+      Use `task deliver -- --preview` to inspect the choices without launching an agent.
+      Explicit flags after `--` remain supported, for example `--plan`, `--harness`, `--model`.
+      This task starts an agent session and authorizes a push and PR after verification.
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - >-
+        uv run --script scripts/agent/deliver.py headless --publish-pr --cross-review final
+        --focused-review --round-cost 2 --round-turns 150 --round-minutes 90 --max-cost 10
+        --review-cost 2 --check "task check" --setup "task deliver:setup" {{.CLI_ARGS}}
+
+  resume:
+    interactive: true
+    desc: Choose a saved delivery run in any worktree and resume its agent session
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/deliver.py resume {{.CLI_ARGS}}
+
   status:
-    desc: Show the repository state and delivery runs an agent session starts from
+    desc: Show the repository state and the delivery runs (`-- --all-worktrees` for every worktree)
     dir: '{{.ROOT_DIR}}'
     cmds:
       - uv run --script scripts/agent/status.py
-      - uv run --script scripts/agent/deliver.py status
+      - uv run --script scripts/agent/deliver.py status {{.CLI_ARGS}}
 
-  deliver:
-    desc: Deliver a committed plan unattended in a new worktree, waiting out usage limits, e.g. PLAN=docs/plans/x.md HARNESS=codex MAX_WAIT=24
+  setup:
+    desc: Prepare dependencies and git hooks in a delivery worktree
     dir: '{{.ROOT_DIR}}'
-    requires:
-      vars: [PLAN]
-    vars:
-      HARNESS: '{{.HARNESS | default "claude"}}'
-      MODEL_FLAG: '{{if .MODEL}}--model {{.MODEL}}{{end}}'
-      EFFORT_FLAG: '{{if .EFFORT}}--effort {{.EFFORT}}{{end}}'
-      MAX_WAIT_FLAG: '{{if .MAX_WAIT}}--max-wait {{.MAX_WAIT}}{{end}}'
+    env:
+      VIRTUAL_ENV: ''
     cmds:
-      - uv run --script scripts/agent/deliver.py headless --plan {{.PLAN}} --harness {{.HARNESS}} {{.MODEL_FLAG}} {{.EFFORT_FLAG}} {{.MAX_WAIT_FLAG}} {{.CLI_ARGS}}
+      - uv sync --locked
+      - uv run prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
 
-  check:
-    desc: Check that the agent hooks and roles are installed
-    aliases: [doctor]
+  doctor:
+    desc: Check that the delivery hooks, roles and project copies are installed
+    aliases: [check]
     dir: '{{.ROOT_DIR}}'
     cmds:
       - uv run --script scripts/agent/deliver.py doctor

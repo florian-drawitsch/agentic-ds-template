@@ -16,7 +16,12 @@
   {"cmd": ["pip3", "install"], "why": "Use uv add instead of pip."},
   {"cmd": ["uv", "pip", "install"], "why": "Use uv add instead of pip."},
 ] -%}
+{#- Read-only GitHub commands. They need the OS keychain, which the sandbox blocks. Commands that
+    change GitHub state, such as `gh pr create`, still ask: `task deliver` publishes from its
+    outer controller, outside any agent sandbox. -#}
 {%- set keychain_commands = [
-  ["gh", "auth", "status"], ["gh", "pr", "view"], ["gh", "pr", "create"], ["gh", "pr", "list"],
-  ["gh", "pr", "checks"], ["gh", "run", "view"], ["gh", "run", "list"],
+  ["gh", "auth", "status"], ["gh", "status"],
+  ["gh", "pr", "view"], ["gh", "pr", "list"], ["gh", "pr", "diff"], ["gh", "pr", "checks"],
+  ["gh", "pr", "status"], ["gh", "issue", "view"], ["gh", "issue", "list"],
+  ["gh", "run", "view"], ["gh", "run", "list"], ["gh", "run", "watch"],
 ] -%}

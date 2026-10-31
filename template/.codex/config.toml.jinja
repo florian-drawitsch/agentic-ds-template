@@ -1,11 +1,37 @@
 # Project-scoped Codex settings. Codex loads them once you trust the project.
+# Keep external or privileged actions interactive. Read-only GitHub commands are allowed in
+# rules/default.rules.
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
+
+# Medium reasoning for regular work, high while planning.
+model_reasoning_effort = "medium"
+plan_mode_reasoning_effort = "high"
 
 [sandbox_workspace_write]
 # uv needs the package index and its cache, which lives outside the workspace.
 network_access = true
-writable_roots = ["~/.cache/uv"]
+# This array replaces writable_roots from ~/.codex/config.toml; add your own global roots here.
+# Codex protects .agents/ and .codex/ even inside the workspace. Listing them keeps project
+# skills, roles and hooks editable.
+writable_roots = ["~/.cache/uv", "../.agents", "."]
+
+# Profile for headless `task deliver` rounds, selected only by deliver.py on Codex versions
+# that support permission profiles. Older versions run with network access disabled.
+[permissions.deliver]
+extends = ":workspace"
+description = "Headless delivery with bounded credentials, Git settings and egress."
+
+[permissions.deliver.filesystem]
+":minimal" = "read"
+
+[permissions.deliver.filesystem.":workspace_roots"]
+"." = "write"
+"**/*.env" = "deny"
+"**/.env.*" = "deny"
+
+[permissions.deliver.network]
+enabled = true
 
 [marketplaces.agentic-ds-template]
 source_type = "git"
