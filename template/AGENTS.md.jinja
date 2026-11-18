@@ -144,8 +144,7 @@ Entry points may import everything; nothing imports them.
 
 ## Diagrams
 
-- Draw diagrams in Mermaid only. Load the `mermaid` skill before writing, editing or reviewing
-  any diagram: in chat, plans, design specs, ADRs and docs.
+- Draw diagrams in Mermaid only, anywhere. Load the `mermaid` skill before drawing or reviewing one.
 {%- if agent_harnesses %}
 - `scripts/agent/check_mermaid.py` enforces the style after every agent edit and as a git hook.
 {%- endif %}
@@ -153,10 +152,11 @@ Entry points may import everything; nothing imports them.
 ## Pull requests
 
 - Never request human or team reviewers automatically. Humans choose reviewers.
-- Review rules, also for Codex automatic PR review. Blocking: a change contradicts an accepted
-  ADR without a new one; secrets or personal data appear; a reported number has no tracked run.
-  Non-blocking: docs or commands that no longer match the code or `Taskfile.yml`. Skip anything
-  Ruff enforces and historical records (`docs/plans/`).
+- Review rules, also for Codex automatic PR review. Give each finding a file and line, the rule
+  or record it breaks, and whether it blocks. Blocking: contradicts an accepted ADR without a new
+  one; breaks the "{{ use_case_titles[use_case] }} rules"; exposes secrets or personal data;
+  reports a number without a tracked run. Non-blocking: docs or commands that no longer match the
+  code or `Taskfile.yml`. Skip what Ruff or tests enforce and records in `docs/plans/`.
 
 ## Definition of done
 

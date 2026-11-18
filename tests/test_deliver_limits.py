@@ -270,6 +270,7 @@ def test_sandboxed_agents_may_write_the_shared_git_dir_and_package_caches(
     assert settings["sandbox"]["filesystem"]["allowWrite"] == writable
     hosts = set(settings["sandbox"]["network"]["allowedDomains"])
     assert {"pypi.org", "registry.npmjs.org"} <= hosts
+    monkeypatch.setattr(deliver, "codex_profile_mode", lambda: False)
     codex = deliver.agent_command("codex", "go", None, True, None, "acceptEdits", None, writable)
     assert f"sandbox_workspace_write.writable_roots={json.dumps(writable)}" in codex
 

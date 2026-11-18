@@ -4,92 +4,274 @@
 ![Codex](https://img.shields.io/badge/Codex-412991?style=flat-square&logo=openai&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-262626?style=flat-square&logo=python&logoColor=white)
 ![Task](https://img.shields.io/badge/Task-29BEB0?style=flat-square)
+![Ruff](https://img.shields.io/badge/Ruff-E5A00D?style=flat-square)
 ![ty](https://img.shields.io/badge/ty-333333?style=flat-square)
 ![prek](https://img.shields.io/badge/prek-333333?style=flat-square)
-![Pulumi](https://img.shields.io/badge/Pulumi-8A3391?style=flat-square&logo=pulumi&logoColor=white)
-![Ruff](https://img.shields.io/badge/Ruff-E5A00D?style=flat-square)
-![MLflow](https://img.shields.io/badge/MLflow-0194E2?style=flat-square&logo=mlflow&logoColor=white)
 ![Polars](https://img.shields.io/badge/Polars-0033A0?style=flat-square)
+![Hydra](https://img.shields.io/badge/Hydra-89B8CD?style=flat-square)
+![MLflow](https://img.shields.io/badge/MLflow-0194E2?style=flat-square&logo=mlflow&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
+![Sphinx](https://img.shields.io/badge/Sphinx-0A507A?style=flat-square&logo=sphinx&logoColor=white)
+![Pulumi](https://img.shields.io/badge/Pulumi-8A3391?style=flat-square&logo=pulumi&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
-A Copier template for agentic development of modern, production-ready machine learning and AI applications in Python.
+A [Copier](https://copier.readthedocs.io) template for data science and ML projects that coding
+agents build with you. One command gives you a working, tested baseline pipeline, a strict
+quality gate, and Claude Code and Codex set up to turn a written plan into a verified pull request.
 
-Sets up turn-key Python scaffolding with:
+- **Three architectures:** simple modules, Kedro-style pipeline graphs, or hexagonal layers, each
+  enforced by import contracts.
+- **Seven use-case presets:** forecasting, anomaly detection, optimization, computer vision,
+  GenAI, tabular and analysis, each with dependencies, domain rules and an evaluation protocol.
+- **Modern tooling:** uv, Task, Ruff, ty, import-linter, prek, pytest, Sphinx, all behind one
+  `task check`.
+- **Agents with guardrails:** hooks, permissions and sandboxing shared by Claude Code and Codex.
+- **Plan delivery:** `task deliver` runs a plan unattended under a completion guard, gets a
+  cross-vendor review and opens a PR, within cost budgets.
+- **Production path:** MLflow tracking, FastAPI, Streamlit, Docker and Azure via Pulumi, all
+  optional.
+- **Updatable:** pull later template versions without touching your code.
 
-- configurable architecture: hexagonal, pipeline-graph or plain
-- best-practice and test-driven agentic setup: Claude Code and Codex integration via local plugins, evaluated skills, hooks, and autonomous execution loops
-- modern tooling: uv, task, prek, ruff, ty
-- infrastructure as code: Pulumi on Azure, CI/CD via GitHub Actions
+Every feature is listed in the [feature index](docs/features.md).
 
-## Quickstart
+## Quick start
 
-1. **Prerequisites:** Install [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and [Task](https://taskfile.dev).
-2. **Generation:** Create a project from the template:
+1. **Install the prerequisites:** [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/)
+   and [Task](https://taskfile.dev). uv provides Python and every other tool.
+
+2. **Generate a project** and answer the questions:
 
    ```bash
-   uvx copier copy --trust gh:florian-drawitsch/agentic-ds-template <my-project>
+   uvx copier copy --trust gh:florian-drawitsch/agentic-ds-template my-project
    ```
 
-   `--trust` allows the post-generation tasks (`git init` and `uv lock`) to run.
-3. **Setup and verification:** Install dependencies and run the quality gate:
+   `--trust` lets Copier run `git init` and `uv lock` after rendering. To accept every default
+   without prompts:
+
+   ```bash
+   uvx copier copy --trust --defaults --data project_name=my-project --data github_owner=<you> gh:florian-drawitsch/agentic-ds-template my-project
+   ```
+
+3. **Install and verify:**
 
    ```bash
    cd my-project && task setup && task check
    ```
 
-4. **Agents:** Open the project in Claude Code or Codex and trust the workspace. Hooks, roles and plugins load automatically. Deliver plans with the `deliver` skill.
+   `task setup` syncs the locked environment, installs the git hooks and registers a Jupyter
+   kernel. `task check` runs lint, types, import contracts and tests.
 
-Pull later template versions with `task update-template`.
-
-## Agentic development
-
-Claude Code and Codex share an operating model defined in `AGENTS.md`.
-
-### Workflow
-
-1. **Brainstorm:** Use the `brainstorm` skill to examine requirements and evaluate design tradeoffs.
-2. **Plan:** Use the `write-plan` skill to generate a test-first implementation plan in `docs/plans/<plan>.md`.
-3. **Execute:** Run the `deliver` skill in the agent session, or deliver unattended in an isolated worktree:
+4. **Run the baseline pipeline:** put a CSV with a `target` column into
+   `data/01_raw/input.csv`, then:
 
    ```bash
-   task deliver
+   task run
    ```
 
-   Terminal menus select the plan, the implementation harness, model and effort, the reviewer and the review budget. `task deliver -- --preview` shows the menus without starting an agent. Explicit flags work too, for example `task deliver -- --plan docs/plans/<plan>.md --harness claude --model sonnet`.
+   With MLflow, `task mlflow` shows the tracked run at `http://127.0.0.1:5000`.
 
-4. **Review:** One focused review by the other vendor's agent, read-only. The implementing agent fixes required findings and verifies them without another review.
-5. **Publish:** After `task check` passes, the run pushes a `feat/<topic>` branch and opens or updates a GitHub pull request. It never merges and never requests human reviewers.
-6. **Document:** Record lasting architecture decisions in `docs/adr/`.
+5. **Open the project in Claude Code or Codex** and trust it. Hooks, permissions and the pinned
+   plugin marketplace load automatically. Fill `docs/context/` so agents know the problem and
+   the data.
 
-### Agent skills
+## Build features with agents
 
-Agents access workflow skills from the `project` plugin and `superpowers`:
+```mermaid
+---
+config:
+  themeCSS: >-
+    .row-rect-odd path, .row-rect-even path, marker circle { fill: none !important; }
+    .edgePaths path, .flowchart-link, .relation, .transition, .relationshipLine, marker path, marker circle { stroke: #868e96 !important; }
+    circle.state-start, circle.state-end { fill: #868e96 !important; stroke: #868e96 !important; }
+    rect.actor, rect.note, rect[class^=activation], polygon.labelBox { fill: none !important; stroke: #868e96 !important; }
+    line[class^=actor-line], line.loopLine, line[class^=messageLine], path[class^=messageLine] { stroke: #868e96 !important; }
+    text.actor, text.actor tspan, .messageText, .noteText, .noteText tspan, .labelText, .labelText tspan, .loopText, .loopText tspan, text.text { fill: #868e96 !important; }
+---
+flowchart LR
+  classDef default fill:none,stroke:#868e96,stroke-width:1px,color:#868e96
+  classDef blue fill:none,stroke:#2f81f7,stroke-width:2px,color:#2f81f7
+  linkStyle default stroke:#868e96
 
-| Skill | Source | Purpose |
-| --- | --- | --- |
-| `brainstorm` | `superpowers` (shimmed) | Explore requirements and design options before planning |
-| `write-plan` | `superpowers` (shimmed) | Create structured implementation plans in `docs/plans/` |
-| `deliver` | `project` | Run an autonomous execution loop until all tasks and `task check` pass, then open a PR |
-| `execute-plan` | `superpowers` (shimmed) | Execute plan tasks in batches with review checkpoints |
-| `implement-feature` | `superpowers` (shimmed) | Build features with test-driven development (red-green-refactor) |
-| `debug` | `superpowers` (shimmed) | Find root causes through hypothesis-driven reproduction |
-| `cross-review` | `project` | Run a headless, read-only review with the alternate agent CLI |
-| `github-create-pr` | `project` | Validate a PR description against the PR template and create or update the PR |
-| `mermaid` | `project` | Draw diagrams in one Mermaid house style, checked after every edit |
-| `request-review` | `superpowers` (shimmed) | Review changed files against the plan in the current session |
-| `wrap-feature` | `superpowers` (shimmed) | Verify work, clean up branches, or prepare pull requests |
+  idea([Idea]) --> brainstorm[brainstorm]
+  brainstorm --> plan[/plan file/]
+  plan --> deliver[task deliver]:::blue
+  deliver --> review[cross-vendor review]:::blue
+  review --> gate{task check?}
+  gate -->|fails| deliver
+  gate -->|passes| pr([GitHub PR])
+  pr --> fix[task deliver:fix-pr]:::blue
+  fix --> pr
+```
 
-### Agent tasks
+Blue steps run unattended.
 
-Project taskfiles provide commands to manage agent operations:
+1. **Brainstorm:** ask the agent to use the `brainstorm` skill. It explores requirements and
+   design options. Durable decisions become ADRs in `docs/adr/`.
+2. **Plan:** the `write-plan` skill writes a test-first plan with `- [ ]` items to
+   `docs/plans/YYYY-MM-DD-<topic>.md`. Commit it.
+3. **Deliver:** run `task deliver` and pick the plan, the implementing agent, the reviewer and
+   the review budget in the menus. `task deliver -- --preview` shows the menus without starting
+   anything.
+   - The run works in `.worktrees/<topic>` on a `feat/<topic>` branch.
+   - A completion guard keeps the agent working until every item is ticked and `task check`
+     passes.
+   - The other vendor's agent reviews the change once, read-only. Required findings are fixed
+     with a regression test.
+   - The run pushes the branch and opens a PR. It never merges and never requests human
+     reviewers.
+4. **Review and merge** the PR yourself. To fix Codex review comments on it, run
+   `task deliver:fix-pr -- <number>`.
 
-- `task deliver`: Runs a committed plan unattended in a fresh git worktree and opens a pull request. Caps cost per round (USD 2) and per run (USD 10); waits out usage limits for up to 48 hours.
-- `task deliver:resume`: Continues a saved run from any worktree, keeping its session and budgets.
-- `task deliver:status`: Displays repository status, delivery runs, token usage and estimated cost (`-- --all-worktrees` for every worktree).
-- `task deliver:doctor`: Verifies hooks, roles, project script copies and project skill links.
+Runs stop at USD 2 per round and USD 10 per run by default, wait out usage limits for up to 48
+hours, and continue with `task deliver:resume`. `task deliver:status -- --all-worktrees` shows
+every run with token usage and estimated cost.
 
-The Codex app gets the same tasks as actions in `.codex/environments/`. Project-specific skills live in `.agents/skills/<name>/`, with a symlink in `.claude/skills/<name>` for Claude Code.
+Inside an agent session, the `deliver` skill does the same without leaving the chat.
+
+### Skills
+
+| Skill | Use it to |
+| --- | --- |
+| `brainstorm` | Explore requirements and design trade-offs before planning |
+| `write-plan` | Write a test-first implementation plan in `docs/plans/` |
+| `deliver` | Execute a plan to a verified PR; resume runs; repair PR findings |
+| `cross-review` | Have the other vendor's agent review a change, read-only |
+| `github-create-pr` | Create or update a PR that follows the PR template |
+| `mermaid` | Draw diagrams in one checked house style |
+| `template-update` | Pull a newer template version and merge conflicts by file ownership |
+| `agents-md` | Audit or update AGENTS.md against the code, tasks and ADRs |
+| `implement-feature`, `debug`, `execute-plan`, `request-review`, `wrap-feature` | Test-driven work, debugging, step-wise execution, in-session review, finishing a branch ([Superpowers](https://github.com/obra/superpowers)) |
+
+### Guardrails
+
+The same hooks run in Claude Code and Codex:
+
+- **Session start:** branch, uncommitted changes, latest plan and active runs.
+- **Before each tool call:** blocks pip, `.env` access, hand edits of `uv.lock`, force pushes and
+  skipped git hooks, and says what to do instead.
+- **After each edit:** formats Python with Ruff and checks Mermaid diagrams.
+- **On stop:** the delivery completion guard.
+
+Unattended runs also scrub provider tokens, restrict network access to package registries, and
+scan published commits for secrets with gitleaks.
+
+## Choose the project shape
+
+The most important questions:
+
+| Question | Choices (default first) |
+| --- | --- |
+| `use_case` | forecasting, anomaly_detection, optimization, computer_vision, genai, tabular, analysis |
+| `maturity` | poc, production (80 % coverage gate, pipeline architecture) |
+| `architecture` | simple, pipeline, hexagonal |
+| `interfaces` | none, FastAPI REST API, Streamlit dashboard |
+| `config` | Hydra, TOML with dataclasses |
+| `tracking` | MLflow with a local SQLite store, none |
+| `infrastructure` | none, Azure with Pulumi |
+| `agent_harnesses` | Claude Code and Codex, either one, none |
+
+Optional context questions seed `docs/context/` and AGENTS.md. All questions are in the
+[feature index](docs/features.md#copier-questions).
+
+## What you get
+
+```text
+my-project/
+├── AGENTS.md, CLAUDE.md          agent instructions: commands, layout, rules, definition of done
+├── Taskfile.yml, taskfiles/      every command as a task
+├── pyproject.toml, uv.lock       dependencies, Ruff, ty, pytest, import contracts
+├── .pre-commit-config.yaml       git hooks run by prek
+├── .claude/, .codex/             settings, hooks, roles, Codex app actions
+├── .github/                      CI, Renovate, PR template
+├── conf/                         Hydra or TOML configuration
+├── data/01_raw … 09_tracking/    numbered data layers, git-ignored
+├── docs/                         Sphinx site: context, method, ADRs, plans, guides
+├── notebooks/                    exploration, outputs stripped on commit
+├── scripts/agent/                hook and delivery scripts
+├── src/<package>/                baseline pipeline in the chosen architecture
+├── tests/unit/, tests/integration/
+└── infra/                        Pulumi stack for Azure (optional)
+```
+
+## Everyday commands
+
+| Command | Does |
+| --- | --- |
+| `task --list` | Show every task |
+| `task check` | Merge gate: hooks, types, import contracts, tests |
+| `task test-fast -- tests/unit` | Focused tests without coverage |
+| `task run -- <overrides>` | Run the pipeline, with Hydra overrides |
+| `task sweep -- key=a,b` | Run every combination of overrides |
+| `task mlflow`, `task api`, `task dashboard` | Tracking UI, REST API, dashboard |
+| `task docs:serve` | Live documentation |
+| `task deliver` | Deliver a committed plan as a PR |
+| `task deliver:status` | Delivery runs, tokens and cost |
+| `task update-template` | Pull the latest template version |
+
+The [feature index](docs/features.md#tasks) lists every task, including Docker and Azure.
+
+## Deploy to Azure
+
+With `infrastructure=azure`, `infra/` holds a Pulumi stack: container registry, managed
+identity, Container Apps environment, and optionally a scheduled pipeline job, an API app, a
+file share, Key Vault and an MLflow workspace.
+
+```bash
+task infra:test
+```
+
+```bash
+task infra:bootstrap STATE_ACCOUNT=<unique-name>
+```
+
+```bash
+task infra:init && task infra:up && task infra:release
+```
+
+`infra:test` needs no Azure account. The generated `docs/guides/deployment.md` covers the
+one-time setup and the GitHub Actions deployment with OpenID Connect.
+
+## Keep projects current
+
+```bash
+task update-template
+```
+
+- Copier three-way merges template-owned files and never touches `src/`, `tests/`, `conf/`,
+  `notebooks/`, `docs/context/`, `docs/method/` or `README.md`.
+- In an agent session, the `template-update` skill runs the update, resolves conflicts by file
+  ownership, regenerates `uv.lock` and runs `task check`, without committing.
+- Skills update separately: bump `marketplace_ref` with
+  `uvx copier update --trust --data marketplace_ref=<tag>`.
+
+## Documentation
+
+- [Feature index](docs/features.md): every feature, task and option.
+- [Architecture](docs/design/architecture.md): repository layout, question model, file
+  ownership, test strategy.
+- [Decision records](docs/adr/index.md): why the template works the way it does.
+- [project plugin](plugins/project/README.md): skills and delivery setup in other repositories.
+
+## Contributing
+
+This repository holds the template (`copier.yml`, `template/`) and the plugin marketplace
+(`catalog.toml`, `plugins/`).
+
+```bash
+task setup
+```
+
+```bash
+task check
+```
+
+- `task build` regenerates the marketplace files and plugin manifests from `catalog.toml`.
+- `task test-e2e` renders a pairwise set of projects and runs each one's `task check`.
+- `task dev` registers this working copy as a local marketplace in Claude Code and Codex.
+- `task eval` scores the skills against a no-plugin baseline. It spends model tokens.
+
+Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
 
 ## License
 
