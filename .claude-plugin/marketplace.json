@@ -19,6 +19,11 @@
       "name": "project",
       "source": "./plugins/project",
       "description": "Plan delivery to a verified pull request, cross-vendor review, template updates and AGENTS.md upkeep"
+    },
+    {
+      "name": "factory",
+      "source": "./plugins/factory",
+      "description": "Run an opt-in ticket factory from GitHub issue labels: deterministic dispatch, admission, limits and spend caps"
     }
   ]
 }

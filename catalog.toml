@@ -24,3 +24,10 @@ description = "Plan delivery to a verified pull request, cross-vendor review, te
 category = "Developer Tools"
 harnesses = ["claude", "codex"]
 source = { type = "local", path = "./plugins/project" }
+
+[[plugins]]
+name = "factory"
+description = "Run an opt-in ticket factory from GitHub issue labels: deterministic dispatch, admission, limits and spend caps"
+category = "Developer Tools"
+harnesses = ["claude", "codex"]
+source = { type = "local", path = "./plugins/factory" }

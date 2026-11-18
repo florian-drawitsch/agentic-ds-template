@@ -14,6 +14,7 @@ build = load_script(ROOT / "scripts" / "build.py", "build")
 def kit(tmp_path: Path) -> Path:
     shutil.copy(ROOT / "catalog.toml", tmp_path / "catalog.toml")
     (tmp_path / "plugins" / "project").mkdir(parents=True)
+    (tmp_path / "plugins" / "factory").mkdir(parents=True)
     return tmp_path
 
 
