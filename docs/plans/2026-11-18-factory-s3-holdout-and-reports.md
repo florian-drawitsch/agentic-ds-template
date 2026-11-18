@@ -48,10 +48,11 @@ Non-goals: template integration (S4). Automatic merge.
   through `deliver.py headless` with a generated plan that asks for proposed AGENTS.md or skill
   changes only, and publishes the PR. The PR touches protected paths, so it is labeled
   `factory:needs-human` and never verified automatically. Tests with a fake deliver runner.
-- [ ] **Board mirror.** With `project` set, after every label change the controller updates
-  the item's single-select field `Status` to the state name through `gh api graphql`, adding
-  the issue to the project when missing. Errors are logged and never fail the tick. Tests: field
-  update payload, missing item added, GraphQL error tolerated.
+- [ ] **Board mirror.** Done early: `factory.py init` creates and links the board and sets
+  its Status columns, and `factory.py sync` mirrors every open issue. Left for this stage:
+  after every label change, the controller mirrors that one issue with the same code. Errors
+  are logged and never fail the tick. Tests: mirror called once per label change, `gh` error
+  tolerated.
 - [ ] **Docs and gate.** Document holdouts (with the data science example from ADR-0033),
   reports and the board mirror in the skill and `docs/features.md`. Run `task check`.
 

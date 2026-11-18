@@ -92,6 +92,7 @@ groups; questions that do not apply are hidden.
 | | `ci` | github, none | CI workflow, Renovate, PR template |
 | Agents | `agent_harnesses` | claude, codex | Agent config per harness; none removes agent config and delivery files |
 | | `marketplace_repo`, `marketplace_ref` | this repository, `v0.1.0` | Pinned plugin marketplace |
+| | `factory` | no, yes; needs `ci=github` and both harnesses | Ticket factory: config, tasks, guide, labels and board (in development) |
 | Context | `context_problem`, `context_decisions`, `context_data`, `context_success`, `context_constraints` | free text, optional | Seeds `docs/context/` and the project section of AGENTS.md; empty answers leave TODO stubs |
 
 ### Architectures
@@ -346,13 +347,16 @@ its own errors.
 ### Ticket factory (in development)
 
 The `factory` plugin runs an opt-in ticket factory from GitHub issue labels (ADR-0033, Proposed).
-Stage S1 ships the deterministic controller, `plugins/factory/skills/factory/scripts/factory.py`.
+The deterministic controller, `plugins/factory/skills/factory/scripts/factory.py`, ships first.
 It calls no model. Agent stages arrive in S2.
 
 | Feature | Details |
 | --- | --- |
 | Configuration | `factory.toml`: limits, repair cycles, daily and sprint caps in USD, protected paths, trusted bots; unknown keys and wrong types are errors |
 | Label states | Seven `factory:*` labels and the transition table of ADR-0033; `factory.py labels` creates them idempotently |
+| Board | `factory.py init` creates and links a project board with one Status column per state, records it in `factory.toml`; `sync` mirrors labels into it |
+| Generated projects | Copier question `factory` (needs GitHub CI and both harnesses); renders `factory.toml`, `taskfiles/factory.yml`, the script copy and `docs/guides/factory.md`; copy and `task setup` run `init` and skip it with a note while GitHub is not ready |
+| This repository | `task factory:init`, `factory:status`, `factory:tick`, `factory:sync` with the root `factory.toml` |
 | Admission | `factory:ready` counts only when a user with write access added it last; unadmitted issues are skipped and listed by `status` |
 | Dispatch | `tick --dry-run` prints one action in the order repair, verify, implement, triage; `priority:` labels, then issue number; limits on work in progress and waiting verified PRs |
 | Claim | The first non-forced push of `feat/<issue>-<slug>` wins |
