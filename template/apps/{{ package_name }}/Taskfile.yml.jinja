@@ -1,0 +1,55 @@
+{%- set hexagonal = architecture == "hexagonal" -%}
+{%- set p = package_name -%}
+version: '3'
+
+tasks:
+  run:
+    desc: Run the {{ 'pipelines (select with --pipeline)' if architecture == 'pipeline' else 'pipeline' }}{{ ', Hydra overrides after --' if config == 'hydra' else '' }}
+    cmds:
+      - uv run --package {{ p }} {{ p }} {{ '{{.CLI_ARGS}}' }}
+{%- if architecture == "pipeline" %}
+
+  pipeline-graph:
+    desc: Print the pipeline graph as a Mermaid diagram, e.g. `task {{ p }}:pipeline-graph -- --pipeline training`
+    cmds:
+      - uv run --package {{ p }} {{ p }} --graph {{ '{{.CLI_ARGS}}' }}
+{%- endif %}
+{%- if config == "hydra" %}
+
+  sweep:
+    desc: Run every combination of comma-separated override values, e.g. `task {{ package_name }}:sweep -- data.target=a,b`
+    cmds:
+      - uv run --package {{ p }} {{ p }} --multirun {{ '{{.CLI_ARGS}}' }}
+{%- endif %}
+
+{%- if "api" in interfaces %}
+
+  api:
+    desc: Serve the REST API with auto-reload
+    cmds:
+      - uv run --package {{ p }} uvicorn {{ p }}.{{ 'entrypoints.api' if hexagonal else 'api' }}:app --reload
+{%- endif %}
+{%- if "dashboard" in interfaces %}
+
+  dashboard:
+    desc: Run the dashboard
+    cmds:
+      - uv run --package {{ p }} streamlit run apps/{{ p }}/src/{{ p }}/{{ 'entrypoints/' if hexagonal else '' }}dashboard.py
+{%- endif %}
+
+{%- if container %}
+  docker:build:
+    desc: Build the container image
+    dir: '{{ '{{.ROOT_DIR}}' }}'
+    preconditions:
+      - sh: command -v docker
+        msg: Docker is not installed
+    cmds:
+      - docker build -f apps/{{ p }}/Dockerfile -t {{ p }}:latest .
+
+  docker:run:
+    desc: Run the pipeline in the container with the local data directory mounted
+    dir: '{{ '{{.ROOT_DIR}}' }}'
+    cmds:
+      - docker run --rm -v "$PWD/data:/app/data" {{ p }}:latest {{ '{{.CLI_ARGS}}' }}
+{%- endif %}

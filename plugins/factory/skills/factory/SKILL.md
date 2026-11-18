@@ -5,7 +5,7 @@ description: Use when running or inspecting the ticket factory, which moves GitH
 
 # Ticket factory
 
-In development: S1 ships the deterministic controller only (ADR-0032). Agent stages and evals
+In development: S1 ships the deterministic controller only (ADR-0033). Agent stages and evals
 arrive in S2, so do not tag a release before then.
 
 The controller keeps all state in issue labels and comments and chooses work without a model.

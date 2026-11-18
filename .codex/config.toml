@@ -1,0 +1,15 @@
+# Permission profile for headless delivery runs (scripts/agent/deliver.py), as in generated projects.
+[permissions.deliver]
+extends = ":workspace"
+description = "Headless delivery with bounded credentials, Git settings and egress."
+
+[permissions.deliver.filesystem]
+":minimal" = "read"
+
+[permissions.deliver.filesystem.":workspace_roots"]
+"." = "write"
+"**/*.env" = "deny"
+"**/.env.*" = "deny"
+
+[permissions.deliver.network]
+enabled = true

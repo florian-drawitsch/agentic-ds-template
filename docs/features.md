@@ -23,7 +23,7 @@ host. uv installs Python and every other tool (ADR-0004).
 | Feature | Details |
 | --- | --- |
 | Python | 3.14 (default) or 3.13, set by `python_version` |
-| Package manager | uv with a committed `uv.lock`; `task setup` runs `uv sync --locked` |
+| Package manager | uv with a committed `uv.lock`; `task setup` runs `uv sync --all-packages --locked` |
 | Build backend | `uv_build` |
 | Dependency groups | `dev` (ipykernel, plotly), `test` (pytest, pytest-cov, httpx), `lint`, `docs`; all installed by default |
 | Supply-chain cooldown | `exclude-newer = "7 days"`: only releases older than a week resolve (ADR-0012) |
@@ -36,8 +36,8 @@ host. uv installs Python and every other tool (ADR-0004).
 | --- | --- | --- |
 | [Ruff](https://docs.astral.sh/ruff/) | Format and lint | Line length 100; rule sets E, W, F, I, UP, B, SIM, RUF, D, N, PTH, RET, PT, C4, PIE, DTZ, TRY, PERF, NPY; Google docstrings |
 | [ty](https://github.com/astral-sh/ty) | Type checking | `[tool.ty]` in `pyproject.toml` |
-| [import-linter](https://import-linter.readthedocs.io) | Architecture contracts | `[tool.importlinter]`, generated per architecture (ADR-0005) |
-| [pytest](https://docs.pytest.org) and pytest-cov | Tests and branch coverage | Strict markers, strict xfail; coverage minimum 80 % when `maturity=production` |
+| [import-linter](https://import-linter.readthedocs.io) | Architecture contracts | `[tool.importlinter]` per app, generated per architecture (ADR-0005) |
+| [pytest](https://docs.pytest.org) and pytest-cov | Tests and branch coverage | Strict markers, strict xfail; coverage minimum 80 % for every project |
 | [commitizen](https://commitizen-tools.github.io/commitizen/) | Conventional Commit messages | Checked in the `commit-msg` hook |
 | [nbstripout](https://github.com/kynan/nbstripout) | Strip notebook outputs | With `notebooks=true` |
 
@@ -52,7 +52,8 @@ host. uv installs Python and every other tool (ADR-0004).
 | File hygiene | Trailing whitespace, end of file, line endings, YAML, TOML, JSON, merge markers, large files, private keys |
 | ruff format, ruff check | Formatting and lint, with safe autofixes |
 | ty | Types |
-| import contracts | `lint-imports` |
+| import contracts | `lint-imports --config <member>/pyproject.toml` for every member (ADR-0032) |
+| workspace | Reject cross-app imports, dependencies and unregistered app directories |
 | uv-lock | `uv.lock` matches `pyproject.toml` |
 | nbstripout | Notebook outputs (with notebooks) |
 | mermaid-style | Mermaid house style in Markdown (with agents) |
@@ -67,7 +68,7 @@ host. uv installs Python and every other tool (ADR-0004).
 | Pinned actions | Every action pinned by commit SHA; minimal `permissions`; no persisted credentials |
 | Renovate | `renovate.json`: digest pinning, 7-day minimum release age, weekly lockfile maintenance |
 | PR template | `.github/pull_request_template.md`: summary, changes, decisions, verification, risks |
-| Container | `Dockerfile` on `python:<version>-slim` with uv, cached dependency layer, pipeline as entry point (`container=true`, forced with Azure) |
+| Container | `apps/<app>/Dockerfile` on `python:<version>-slim` with uv, installs only its app, pipeline as entry point (`container=true`, forced with Azure) |
 
 ## Scaffolding and architecture
 
@@ -79,17 +80,15 @@ groups; questions that do not apply are hidden.
 | Group | Answer | Choices (default first) | Effect |
 | --- | --- | --- | --- |
 | Identity | `project_name`, `package_name`, `description`, `author_*`, `github_owner`, `python_version` | | Names, metadata, marketplace and CI links |
-| Shape | `use_case` | forecasting, anomaly_detection, optimization, computer_vision, genai, tabular, analysis | Dependency preset, domain rules in AGENTS.md, evaluation protocol |
-| | `maturity` | poc, production | Coverage gate; default architecture |
-| | `architecture` | simple (poc), pipeline (production), hexagonal | Package layout and import contracts |
+| Shape | `architecture` | simple, pipeline, hexagonal | Package layout and import contracts |
 | | `interfaces` | none; api, dashboard | FastAPI app, Streamlit app, their tasks and tests |
-| | `config` | hydra, python | Hydra `conf/config.yaml` or `conf/config.toml` with dataclasses |
+| | `config` | hydra, python | App-local `conf/config.yaml` or `conf/config.toml` with dataclasses |
 | | `dataframes` | polars, polars_pandas | Adds pandas and pyarrow |
 | | `tracking` | mlflow, none | MLflow tracking module or a null tracker |
 | | `notebooks` | yes, no | `notebooks/`, Jupyter kernel, nbstripout |
 | | `infrastructure` | none, azure | Pulumi project in `infra/`, deploy workflow, deployment guide |
 | | `azure_components` | job, storage, key_vault (+ api); mlflow optional | Azure resources the stack creates |
-| | `container` | no (yes with Azure) | Dockerfile and `docker:` tasks |
+| | `container` | no (yes with Azure) | Dockerfile and app `docker:` tasks |
 | | `ci` | github, none | CI workflow, Renovate, PR template |
 | Agents | `agent_harnesses` | claude, codex | Agent config per harness; none removes agent config and delivery files |
 | | `marketplace_repo`, `marketplace_ref` | this repository, `v0.1.0` | Pinned plugin marketplace |
@@ -111,23 +110,17 @@ Pipeline graphs (ADR-0025):
 - `graphlib` derives the order and rejects cycles; `params:<key>` inputs come from the config.
 - Datasets listed in the catalog are read and written as CSV, Parquet or JSON; others stay in
   memory.
-- `task pipeline-graph` prints any pipeline as a Mermaid diagram.
+- `task <app>:pipeline-graph` prints any pipeline as a Mermaid diagram.
 
-### Use-case presets
+### Workspace and dependencies
 
-`use_case` selects dependencies, rules for agents and an evaluation protocol (ADR-0013).
+Every project is a virtual uv workspace with `apps/*` and `packages/*` members (ADR-0031).
+The first app has its own source, tests, configuration, contracts, tasks and optional container.
+Apps never import each other. Shared libraries go to `packages/`.
 
-| Use case | Extra dependencies | Rule focus |
-| --- | --- | --- |
-| Forecasting | scikit-learn, statsforecast | Time splits, rolling-origin backtests, seasonal naive baseline, per-horizon and probabilistic metrics |
-| Anomaly detection | scikit-learn, pyod | Untouched labeled hold-out, event metrics, calibrated thresholds |
-| Optimization and pricing | scipy, cvxpy | Prediction apart from decision, constraint checks, objective in an ADR |
-| Computer vision | torch, torchvision, lightning | Split by subject or device, versioned data and labels, preprocessing parity |
-| GenAI and LLM applications | pydantic, httpx | Evaluation set, versioned prompts, structured outputs, cost and latency |
-| Tabular prediction | scikit-learn, lightgbm | Leakage prevention, group or time splits, calibration |
-| Exploratory analysis | scipy | Recorded questions, cited queries, uncertainty |
-
-Every project also gets Polars, plus Hydra, MLflow, FastAPI and Streamlit when chosen.
+Runtime dependencies start with Polars, plus pandas, Hydra, MLflow, FastAPI and Streamlit when
+chosen. No use-case preset is installed (ADR-0030). Every project gets a generic evaluation
+protocol with TODOs for design, baselines, metrics and acceptance.
 
 ### Data science defaults
 
@@ -139,7 +132,7 @@ Every project also gets Polars, plus Hydra, MLflow, FastAPI and Streamlit when c
 | REST API | FastAPI app with `/health` and `/report`, served by uvicorn |
 | Dashboard | Streamlit app (excluded from coverage) |
 | Notebooks | `notebooks/` for exploration, a named Jupyter kernel, outputs stripped on commit |
-| Tests | `tests/unit/` for logic, `tests/integration/` for boundaries, per option |
+| Tests | `apps/<app>/tests/unit/` for logic, `apps/<app>/tests/integration/` for boundaries, per option |
 
 ### Azure infrastructure
 
@@ -163,7 +156,7 @@ versions (ADR-0002, ADR-0022).
 | Owner | Files | On update |
 | --- | --- | --- |
 | Template | Tool configs, Taskfile, CI, hooks, permissions, AGENTS.md rules, docs scaffolding | Three-way merged with local edits |
-| Project | `README.md`, `src/`, `tests/`, `conf/`, `notebooks/`, `docs/context/`, `docs/method/`, `docs/roadmap.md`, first ADR | Never touched |
+| Project | `README.md`, `apps/`, `packages/`, `notebooks/`, `docs/context/`, `docs/method/`, `docs/roadmap.md`, first ADR | Never touched |
 | Plugin | `scripts/agent/` copies of plugin scripts, agent role files | Take the template side |
 
 ## Tasks
@@ -180,12 +173,12 @@ answer is chosen.
 | `task lint` | Run every git hook on all files without staging | |
 | `task test` | pytest with coverage | |
 | `task test-fast` | pytest without coverage, for focused checks | |
-| `task run` | Run the pipeline; Hydra overrides after `--` | |
-| `task pipeline-graph` | Print a pipeline as a Mermaid diagram | pipeline |
-| `task sweep` | Run every combination of comma-separated overrides | hydra |
+| `task <app>:run` | Run the pipeline; Hydra overrides after `--` | |
+| `task <app>:pipeline-graph` | Print a pipeline as a Mermaid diagram | pipeline |
+| `task <app>:sweep` | Run every combination of comma-separated overrides | hydra |
 | `task mlflow` | MLflow UI on port 5000 (`PORT=` to change) | mlflow |
-| `task api` | Serve the REST API with auto-reload | api |
-| `task dashboard` | Run the Streamlit dashboard | dashboard |
+| `task <app>:api` | Serve the REST API with auto-reload | api |
+| `task <app>:dashboard` | Run the Streamlit dashboard | dashboard |
 | `task update-template` | Pull the latest template version with inline conflict markers; refuses a dirty tree | |
 | `task clean` | Preview, confirm, then delete untracked files, keeping `data/` and `.env` | |
 
@@ -215,8 +208,8 @@ Available with at least one agent harness; `agent:` is an alias for `deliver:`.
 
 | Task | Does | Condition |
 | --- | --- | --- |
-| `task docker:build` | Build the image | container |
-| `task docker:run` | Run the pipeline in the container with `data/` mounted | container |
+| `task <app>:docker:build` | Build the image | container |
+| `task <app>:docker:run` | Run the pipeline in the container with `data/` mounted | container |
 | `task infra:test` | Test the stack with Pulumi mocks | azure |
 | `task infra:bootstrap STATE_ACCOUNT=<name>` | Create the Pulumi state storage, once per subscription | azure |
 | `task infra:init` | Create a stack (`STACK=prod`; default `dev`) | azure |
@@ -240,7 +233,7 @@ builds the site with warnings as errors.
 | `docs/context/project.md` | Problem, decisions supported, success, constraints; seeded from the context answers | Project |
 | `docs/context/data.md` | Sources, data contract, time and availability, personal data | Project |
 | `docs/context/glossary.md` | Domain terms | Project |
-| `docs/method/evaluation-protocol.md` | Design, baselines, metrics and acceptance for the use case | Project |
+| `docs/method/evaluation-protocol.md` | Design, baselines, metrics and acceptance, with project-owned TODOs | Project |
 | `docs/adr/` | Decision records with an index, a template and a first record | Template, first ADR project |
 | `docs/plans/` | Design specs and implementation plans, `YYYY-MM-DD-<topic>.md` | Project |
 | `docs/roadmap.md` | Roadmap | Project |
@@ -269,7 +262,7 @@ works in both (ADR-0017).
 
 | File | Role |
 | --- | --- |
-| `AGENTS.md` | Canonical instructions, under about 100 lines: project, commands, layout, rules, use-case rules, planning, diagrams, PR review rules, definition of done, writing style (ADR-0009, ADR-0019) |
+| `AGENTS.md` | Canonical instructions, under about 100 lines: project, commands, layout, rules, planning, diagrams, PR review rules, definition of done, writing style (ADR-0009, ADR-0019) |
 | `CLAUDE.md` | Imports `AGENTS.md` and adds Claude-only notes |
 | Nested `AGENTS.md` | One per hexagonal layer and in `pipelines/`, read before adding code there |
 
@@ -352,14 +345,14 @@ its own errors.
 
 ### Ticket factory (in development)
 
-The `factory` plugin runs an opt-in ticket factory from GitHub issue labels (ADR-0032, Proposed).
+The `factory` plugin runs an opt-in ticket factory from GitHub issue labels (ADR-0033, Proposed).
 Stage S1 ships the deterministic controller, `plugins/factory/skills/factory/scripts/factory.py`.
 It calls no model. Agent stages arrive in S2.
 
 | Feature | Details |
 | --- | --- |
 | Configuration | `factory.toml`: limits, repair cycles, daily and sprint caps in USD, protected paths, trusted bots; unknown keys and wrong types are errors |
-| Label states | Seven `factory:*` labels and the transition table of ADR-0032; `factory.py labels` creates them idempotently |
+| Label states | Seven `factory:*` labels and the transition table of ADR-0033; `factory.py labels` creates them idempotently |
 | Admission | `factory:ready` counts only when a user with write access added it last; unadmitted issues are skipped and listed by `status` |
 | Dispatch | `tick --dry-run` prints one action in the order repair, verify, implement, triage; `priority:` labels, then issue number; limits on work in progress and waiting verified PRs |
 | Claim | The first non-forced push of `feat/<issue>-<slug>` wins |

@@ -1,5 +1,5 @@
 # Configuration, composed by Hydra. Override any value on the command line,
-# for example `task run -- {{ 'params.target=y' if architecture == 'pipeline' else 'data.target=y' }}`. Sweep with `task sweep -- {{ 'params.target=a,b' if architecture == 'pipeline' else 'data.target=a,b' }}`.
+# for example `task {{ package_name }}:run -- {{ 'params.target=y' if architecture == 'pipeline' else 'data.target=y' }}`. Sweep with `task {{ package_name }}:sweep -- {{ 'params.target=a,b' if architecture == 'pipeline' else 'data.target=a,b' }}`.
 {%- if architecture == 'pipeline' %}
 catalog:
   raw: data/01_raw/input.csv

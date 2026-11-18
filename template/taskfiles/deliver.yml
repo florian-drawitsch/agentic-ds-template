@@ -53,7 +53,7 @@ tasks:
     env:
       VIRTUAL_ENV: ''
     cmds:
-      - uv sync --locked
+      - uv sync --all-packages --locked
       - uv run prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
 
   doctor:

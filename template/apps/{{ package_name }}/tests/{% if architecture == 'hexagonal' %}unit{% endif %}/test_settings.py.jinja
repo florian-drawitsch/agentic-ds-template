@@ -28,3 +28,8 @@ def test_default_config_loads() -> None:
     assert settings.data.target == "target"
     assert settings.report_dir == Path("data/08_reporting")
 {%- endif %}
+
+
+def test_config_directory_is_app_local() -> None:
+    assert CONFIG_DIR.is_dir()
+    assert CONFIG_DIR.parent.name == "{{ package_name }}"

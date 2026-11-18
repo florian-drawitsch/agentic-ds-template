@@ -5,14 +5,14 @@ Status: Proposed; not approved for implementation.
 ## Goal and scope
 
 Add the sealed holdout checks, the budget and sprint reports, the retrospective PR and the
-optional board mirror from ADR-0032.
+optional board mirror from ADR-0033.
 
 Non-goals: template integration (S4). Automatic merge.
 
 ## Prerequisites and decisions
 
 - Depends on [Factory S2: agent stages](2026-11-18-factory-s2-agent-stages.md).
-- ADR-0032 (Proposed). Holdout data never enters the repository or the worker sandbox.
+- ADR-0033 (Proposed). Holdout data never enters the repository or the worker sandbox.
 - Approval: pending. Once the user approves this named plan, delivery may publish a pull
   request. It never merges.
 
@@ -52,7 +52,7 @@ Non-goals: template integration (S4). Automatic merge.
   the item's single-select field `Status` to the state name through `gh api graphql`, adding
   the issue to the project when missing. Errors are logged and never fail the tick. Tests: field
   update payload, missing item added, GraphQL error tolerated.
-- [ ] **Docs and gate.** Document holdouts (with the data science example from ADR-0032),
+- [ ] **Docs and gate.** Document holdouts (with the data science example from ADR-0033),
   reports and the board mirror in the skill and `docs/features.md`. Run `task check`.
 
 ## Acceptance and verification

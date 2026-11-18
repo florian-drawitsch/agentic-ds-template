@@ -9,12 +9,12 @@ repair through `deliver fix-pr`, and verify with an independent reviewer of the 
 Add the triage role and its evals, so the skill meets the eval rule in AGENTS.md.
 
 Non-goals: holdout checks, reports and the board mirror (S3), template integration (S4),
-automatic merge (ADR-0032 forbids it).
+automatic merge (ADR-0033 forbids it).
 
 ## Prerequisites and decisions
 
 - Depends on [Factory S1: deterministic controller core](2026-11-18-factory-s1-controller.md).
-- ADR-0032 (Proposed), ADR-0027 and ADR-0028. The controller owns every GitHub write. Agents
+- ADR-0033 (Proposed), ADR-0027 and ADR-0028. The controller owns every GitHub write. Agents
   get no GitHub credentials.
 - Approval: pending. Once the user approves this named plan, delivery may publish a pull
   request. It never merges.

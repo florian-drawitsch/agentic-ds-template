@@ -12,4 +12,4 @@ nodes with `graphlib` and rejects cycles and datasets produced twice.
   enforces both rules.
 - New pipeline: add a module with its functions and a `pipeline([...])`, register it in
   `__init__.py`, add persisted datasets to the catalog, and unit-test each function.
-- `task pipeline-graph` prints the graph as a Mermaid diagram.
+- `task <app>:pipeline-graph` prints the graph as a Mermaid diagram.

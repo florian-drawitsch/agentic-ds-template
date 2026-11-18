@@ -32,23 +32,41 @@ def test_update_keeps_project_owned_files(tmp_path: Path) -> None:
 
     project = tmp_path / "project"
     copier.run_copy(
-        str(template), project, data=BASE_ANSWERS, defaults=True, vcs_ref="v1",
-        unsafe=True, skip_tasks=True, quiet=True,
+        str(template),
+        project,
+        data=BASE_ANSWERS,
+        defaults=True,
+        vcs_ref="v1",
+        unsafe=True,
+        skip_tasks=True,
+        quiet=True,
     )
     git(project, "init", "-q", "-b", "main")
-    model = project / "src/demo_project/model.py"
+    model = project / "apps/demo_project/src/demo_project/model.py"
     model.write_text('"""Project-specific model."""\n')
-    (project / "src/demo_project/evaluate.py").unlink()
+    (project / "apps/demo_project/src/demo_project/evaluate.py").unlink()
     (project / "docs/context/project.md").write_text("# Project context\n\nOur own text.\n")
+    shared = project / "packages/shared/pyproject.toml"
+    shared.parent.mkdir(parents=True)
+    shared.write_text('[project]\nname = "shared"\nversion = "0.1.0"\n')
     git(project, "add", "-A")
     git(project, "commit", "-qm", "project changes")
 
     copier.run_update(
-        project, defaults=True, vcs_ref="v2", unsafe=True, skip_tasks=True, overwrite=True,
+        project,
+        defaults=True,
+        vcs_ref="v2",
+        unsafe=True,
+        skip_tasks=True,
+        overwrite=True,
         quiet=True,
     )
 
+    assert shared.read_text() == '[project]\nname = "shared"\nversion = "0.1.0"\n'
     assert model.read_text() == '"""Project-specific model."""\n'
-    assert not (project / "src/demo_project/evaluate.py").exists()
+    assert not (project / "apps/demo_project/src/demo_project/evaluate.py").exists()
     assert (project / "docs/context/project.md").read_text().endswith("Our own text.\n")
-    assert "Template change for the update test." in (project / "docs/guides/development.md").read_text()
+    assert (
+        "Template change for the update test."
+        in (project / "docs/guides/development.md").read_text()
+    )

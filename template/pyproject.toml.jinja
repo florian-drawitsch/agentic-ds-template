@@ -1,40 +1,3 @@
-{%- set preset = {
-  "forecasting": ["scikit-learn", "statsforecast"],
-  "anomaly_detection": ["scikit-learn", "pyod"],
-  "optimization": ["scipy", "cvxpy"],
-  "computer_vision": ["torch", "torchvision", "lightning"],
-  "genai": ["pydantic", "httpx"],
-  "tabular": ["scikit-learn", "lightgbm"],
-  "analysis": ["scipy"],
-}[use_case] -%}
-{%- set deps = ["polars"] + preset -%}
-{%- if dataframes == "polars_pandas" %}{% set deps = deps + ["pandas", "pyarrow"] %}{% endif -%}
-{%- if config == "hydra" %}{% set deps = deps + ["hydra-core"] %}{% endif -%}
-{%- if tracking == "mlflow" %}{% set deps = deps + ["mlflow"] %}{% endif -%}
-{%- if "api" in interfaces %}{% set deps = deps + ["fastapi", "uvicorn"] %}{% endif -%}
-{%- if "dashboard" in interfaces %}{% set deps = deps + ["streamlit"] %}{% endif -%}
-{%- set hexagonal = architecture == "hexagonal" -%}
-{%- set p = package_name -%}
-[project]
-name = "{{ project_name }}"
-version = "0.1.0"
-description = {{ description | tojson }}
-readme = "README.md"
-requires-python = ">={{ python_version }}"
-authors = [{ name = {{ author_name | tojson }}, email = {{ author_email | tojson }} }]
-dependencies = [
-{%- for dep in deps | unique | sort %}
-    "{{ dep }}",
-{%- endfor %}
-]
-
-[project.scripts]
-{{ p }} = "{{ p }}.{{ 'entrypoints.cli' if hexagonal else 'cli' }}:main"
-
-[build-system]
-requires = ["uv_build>=0.12.9,<0.13"]
-build-backend = "uv_build"
-
 [dependency-groups]
 dev = [{% if notebooks %}"ipykernel", "plotly"{% endif %}]
 test = ["pytest", "pytest-cov"{% if "api" in interfaces %}, "httpx"{% endif %}]
@@ -61,12 +24,16 @@ docs = [
     "sphinxcontrib-mermaid",
 ]
 
+[tool.uv.workspace]
+members = ["apps/*", "packages/*"]
+
 [tool.uv]
 default-groups = "all"
 # Supply-chain cooldown: resolve only releases older than seven days (ADR-0012 of the template).
 exclude-newer = "7 days"
 
 [tool.ruff]
+src = ["apps/*/src", "packages/*/src"]
 line-length = 100
 # Copied from the template's plugin and updated with it; do not reformat them here.
 extend-exclude = ["scripts/agent/deliver.py", "scripts/agent/cross_review.py", "scripts/agent/create_pr.py", "scripts/agent/pr_findings.py", "scripts/agent/check_mermaid.py"]
@@ -92,141 +59,20 @@ convention = "google"
 exclude = ["notebooks", "scripts/agent/deliver.py", "scripts/agent/cross_review.py", "scripts/agent/create_pr.py", "scripts/agent/pr_findings.py", "scripts/agent/check_mermaid.py"{% if infrastructure == "azure" %}, "infra"{% endif %}]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--cov --cov-report=term-missing -ra"
+testpaths = ["apps/*/tests", "packages/*/tests"]
+addopts = "--import-mode=importlib --cov --cov-report=term-missing -ra"
 strict_markers = true
 xfail_strict = true
 
 [tool.coverage.run]
 branch = true
-source = ["src/{{ p }}"]
-{%- if "dashboard" in interfaces %}
-omit = ["*/dashboard.py"]
-{%- endif %}
+source = ["apps", "packages"]
+omit = ["*/tests/*", "*/dashboard.py"]
 
 [tool.coverage.report]
-fail_under = {{ 80 if maturity == "production" else 0 }}
+fail_under = 80
 show_missing = true
 exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-
-[tool.importlinter]
-root_package = "{{ p }}"
-include_external_packages = true
-{%- set frameworks = [] %}
-{%- if config == "hydra" %}{% set frameworks = frameworks + ["hydra", "omegaconf"] %}{% endif %}
-{%- if "api" in interfaces %}{% set frameworks = frameworks + ["fastapi", "uvicorn"] %}{% endif %}
-{%- if "dashboard" in interfaces %}{% set frameworks = frameworks + ["streamlit"] %}{% endif %}
-{%- if hexagonal %}
-
-[[tool.importlinter.contracts]]
-name = "Layers point inward"
-type = "layers"
-layers = [
-    "{{ p }}.entrypoints",
-    "{{ p }}.bootstrap",
-    "{{ p }}.adapters",
-    "{{ p }}.application",
-    "{{ p }}.ports",
-    "{{ p }}.domain",
-]
-{%- if frameworks %}
-
-[[tool.importlinter.contracts]]
-name = "Frameworks stay in entry points"
-type = "forbidden"
-source_modules = [
-    "{{ p }}.domain",
-    "{{ p }}.application",
-    "{{ p }}.ports",
-    "{{ p }}.adapters",
-    "{{ p }}.bootstrap",
-]
-forbidden_modules = [{% for m in frameworks %}"{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-allow_indirect_imports = true
-{%- endif %}
-{%- if tracking == "mlflow" %}
-
-[[tool.importlinter.contracts]]
-name = "MLflow only in the tracking adapter"
-type = "forbidden"
-source_modules = [
-    "{{ p }}.domain",
-    "{{ p }}.application",
-    "{{ p }}.ports",
-    "{{ p }}.adapters.files",
-    "{{ p }}.bootstrap",
-    "{{ p }}.entrypoints",
-]
-forbidden_modules = ["mlflow"]
-allow_indirect_imports = true
-{%- endif %}
-{%- elif architecture == "pipeline" %}
-{%- set core = ["catalog", "settings", "pipelines", "tracking"] %}
-{%- set entrypoints = ["cli"] + (["api"] if "api" in interfaces else []) + (["dashboard"] if "dashboard" in interfaces else []) %}
-{%- set steps = ["pipelines.features", "pipelines.training", "pipelines.inference"] %}
-
-[[tool.importlinter.contracts]]
-name = "Nothing imports entry points"
-type = "forbidden"
-source_modules = [{% for m in core %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-forbidden_modules = [{% for m in entrypoints %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-
-[[tool.importlinter.contracts]]
-name = "Steps stay pure: no catalog, settings or tracking"
-type = "forbidden"
-source_modules = [{% for m in steps + ["pipelines.graph"] %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-forbidden_modules = ["{{ p }}.catalog", "{{ p }}.settings", "{{ p }}.tracking"]
-
-[[tool.importlinter.contracts]]
-name = "Pipelines are independent"
-type = "independence"
-modules = [{% for m in steps %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-{%- if frameworks %}
-
-[[tool.importlinter.contracts]]
-name = "Frameworks stay in entry points"
-type = "forbidden"
-source_modules = [{% for m in core %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-forbidden_modules = [{% for m in frameworks %}"{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-allow_indirect_imports = true
-{%- endif %}
-{%- if tracking == "mlflow" %}
-
-[[tool.importlinter.contracts]]
-name = "MLflow only in the tracking module"
-type = "forbidden"
-source_modules = [{% for m in core + entrypoints if m != "tracking" %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-forbidden_modules = ["mlflow"]
-allow_indirect_imports = true
-{%- endif %}
-{%- else %}
-{%- set core = ["config", "data", "model", "evaluate", "pipeline", "tracking"] %}
-{%- set entrypoints = ["cli"] + (["api"] if "api" in interfaces else []) + (["dashboard"] if "dashboard" in interfaces else []) %}
-
-[[tool.importlinter.contracts]]
-name = "Nothing imports entry points"
-type = "forbidden"
-source_modules = [{% for m in core %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-forbidden_modules = [{% for m in entrypoints %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-{%- if frameworks %}
-
-[[tool.importlinter.contracts]]
-name = "Frameworks stay in entry points"
-type = "forbidden"
-source_modules = [{% for m in core %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-forbidden_modules = [{% for m in frameworks %}"{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-allow_indirect_imports = true
-{%- endif %}
-{%- if tracking == "mlflow" %}
-
-[[tool.importlinter.contracts]]
-name = "MLflow only in the tracking module"
-type = "forbidden"
-source_modules = [{% for m in core + entrypoints if m != "tracking" %}"{{ p }}.{{ m }}"{% if not loop.last %}, {% endif %}{% endfor %}]
-forbidden_modules = ["mlflow"]
-allow_indirect_imports = true
-{%- endif %}
-{%- endif %}

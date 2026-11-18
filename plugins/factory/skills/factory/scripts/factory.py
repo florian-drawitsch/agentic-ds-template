@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.11"
 # ///
-"""Deterministic controller core of the ticket factory (ADR-0032).
+"""Deterministic controller core of the ticket factory (ADR-0033).
 
 Commands:
     status    Show counts per state, unadmitted issues, spend, caps and the next action.

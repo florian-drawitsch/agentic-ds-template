@@ -1,4 +1,4 @@
-"""Agent wiring of a rendered project: delivery tasks, Codex settings, permissions, project copies."""
+"""Agent wiring of a rendered project: tasks, settings, permissions and copies."""
 
 from __future__ import annotations
 

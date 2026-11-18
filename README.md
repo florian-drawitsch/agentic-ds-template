@@ -22,8 +22,8 @@ quality gate, and Claude Code and Codex set up to turn a written plan into a ver
 
 - **Three architectures:** simple modules, Kedro-style pipeline graphs, or hexagonal layers, each
   enforced by import contracts.
-- **Seven use-case presets:** forecasting, anomaly detection, optimization, computer vision,
-  GenAI, tabular and analysis, each with dependencies, domain rules and an evaluation protocol.
+- **A virtual uv workspace:** apps under `apps/`, shared libraries under `packages/`,
+  a generic evaluation protocol and an 80 % branch coverage gate.
 - **Modern tooling:** uv, Task, Ruff, ty, import-linter, prek, pytest, Sphinx, all behind one
   `task check`.
 - **Agents with guardrails:** hooks, permissions and sandboxing shared by Claude Code and Codex.
@@ -66,7 +66,7 @@ Every feature is listed in the [feature index](docs/features.md).
    `data/01_raw/input.csv`, then:
 
    ```bash
-   task run
+   task my_project:run
    ```
 
    With MLflow, `task mlflow` shows the tracked run at `http://127.0.0.1:5000`.
@@ -162,8 +162,6 @@ The most important questions:
 
 | Question | Choices (default first) |
 | --- | --- |
-| `use_case` | forecasting, anomaly_detection, optimization, computer_vision, genai, tabular, analysis |
-| `maturity` | poc, production (80 % coverage gate, pipeline architecture) |
 | `architecture` | simple, pipeline, hexagonal |
 | `interfaces` | none, FastAPI REST API, Streamlit dashboard |
 | `config` | Hydra, TOML with dataclasses |
@@ -180,19 +178,26 @@ Optional context questions seed `docs/context/` and AGENTS.md. All questions are
 my-project/
 ├── AGENTS.md, CLAUDE.md          agent instructions: commands, layout, rules, definition of done
 ├── Taskfile.yml, taskfiles/      every command as a task
-├── pyproject.toml, uv.lock       dependencies, Ruff, ty, pytest, import contracts
+├── pyproject.toml, uv.lock       workspace, dev tools, Ruff, ty, pytest, coverage
 ├── .pre-commit-config.yaml       git hooks run by prek
 ├── .claude/, .codex/             settings, hooks, roles, Codex app actions
 ├── .github/                      CI, Renovate, PR template
-├── conf/                         Hydra or TOML configuration
 ├── data/01_raw … 09_tracking/    numbered data layers, git-ignored
 ├── docs/                         Sphinx site: context, method, ADRs, plans, guides
 ├── notebooks/                    exploration, outputs stripped on commit
 ├── scripts/agent/                hook and delivery scripts
-├── src/<package>/                baseline pipeline in the chosen architecture
-├── tests/unit/, tests/integration/
+├── apps/<package>/               pyproject.toml, Taskfile.yml, optional Dockerfile
+│   ├── src/<package>/            baseline pipeline in the chosen architecture
+│   ├── conf/                     Hydra or TOML configuration
+│   └── tests/{unit,integration}/
+├── packages/                     shared workspace libraries
 └── infra/                        Pulumi stack for Azure (optional)
 ```
+
+Every project has an 80 % branch coverage gate and a generic evaluation protocol in
+`docs/method/evaluation-protocol.md`. Runtime dependencies follow the selected tools.
+Apps never import each other. Shared libraries belong in `packages/`.
+The generated development guide explains how to add another app.
 
 ## Everyday commands
 
@@ -200,10 +205,10 @@ my-project/
 | --- | --- |
 | `task --list` | Show every task |
 | `task check` | Merge gate: hooks, types, import contracts, tests |
-| `task test-fast -- tests/unit` | Focused tests without coverage |
-| `task run -- <overrides>` | Run the pipeline, with Hydra overrides |
-| `task sweep -- key=a,b` | Run every combination of overrides |
-| `task mlflow`, `task api`, `task dashboard` | Tracking UI, REST API, dashboard |
+| `task test-fast -- apps/<app>/tests/unit` | Focused tests without coverage |
+| `task <app>:run -- <overrides>` | Run the pipeline, with Hydra overrides |
+| `task <app>:sweep -- key=a,b` | Run every combination of overrides |
+| `task mlflow`, `task <app>:api`, `task <app>:dashboard` | Tracking UI, REST API, dashboard |
 | `task docs:serve` | Live documentation |
 | `task deliver` | Deliver a committed plan as a PR |
 | `task deliver:status` | Delivery runs, tokens and cost |
@@ -238,7 +243,7 @@ one-time setup and the GitHub Actions deployment with OpenID Connect.
 task update-template
 ```
 
-- Copier three-way merges template-owned files and never touches `src/`, `tests/`, `conf/`,
+- Copier three-way merges template-owned files and never touches `apps/`, `packages/`,
   `notebooks/`, `docs/context/`, `docs/method/` or `README.md`.
 - In an agent session, the `template-update` skill runs the update, resolves conflicts by file
   ownership, regenerates `uv.lock` and runs `task check`, without committing.
