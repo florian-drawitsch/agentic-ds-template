@@ -171,3 +171,23 @@ def test_failed_push_does_not_create_pr(tmp_path: Path, monkeypatch) -> None:
 def test_non_github_remote_is_rejected() -> None:
     with pytest.raises(ValueError, match="not GitHub"):
         pr._parse_remote("git@bitbucket.org:team/project.git")
+
+
+@pytest.mark.usefixtures("fake_ssh")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "git@github-private:team/project.git",
+        "ssh://git@github-private/team/project.git",
+        "ssh://git@github.com/team/project.git",
+    ],
+)
+def test_ssh_host_aliases_resolve_to_github(url: str) -> None:
+    assert pr._parse_remote(url) == ("team", "project")
+
+
+@pytest.mark.usefixtures("fake_ssh")
+def test_https_aliases_and_other_ssh_hosts_are_rejected() -> None:
+    for url in ("https://github-private/team/project.git", "git@gitlab.com:team/project.git"):
+        with pytest.raises(ValueError, match="not GitHub"):
+            pr._parse_remote(url)

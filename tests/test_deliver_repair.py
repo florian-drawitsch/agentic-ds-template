@@ -675,3 +675,26 @@ def test_completed_repair_publication_completes_the_run(repo: Path) -> None:
     )
     assert deliver.evaluate(repo, run, outer=True).action == "release"
     assert run.status == "completed"
+
+
+@pytest.mark.usefixtures("fake_ssh")
+@pytest.mark.parametrize(
+    ("url", "accepted"),
+    [
+        ("git@github.com:example/project.git", True),
+        ("https://github.com/example/project.git", True),
+        ("git@github-private:example/project.git", True),
+        ("ssh://git@github-private/example/project.git", True),
+        ("https://github-private/example/project.git", False),
+        ("git@gitlab.com:example/project.git", False),
+    ],
+)
+def test_repair_resolves_ssh_aliases_only(
+    repo: Path, helper: ModuleType, url: str, accepted: bool
+) -> None:
+    deliver.git(repo, "remote", "set-url", "origin", url)
+    if accepted:
+        assert helper.repository(repo) == "example/project"
+    else:
+        with pytest.raises(SystemExit, match=r"github\.com remote"):
+            helper.repository(repo)

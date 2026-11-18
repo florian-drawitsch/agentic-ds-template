@@ -1,0 +1,9 @@
+{
+  "name": "factory",
+  "version": "0.1.0",
+  "description": "Run an opt-in ticket factory from GitHub issue labels: deterministic dispatch, admission, limits and spend caps",
+  "author": {
+    "name": "Florian Drawitsch"
+  },
+  "license": "MIT"
+}

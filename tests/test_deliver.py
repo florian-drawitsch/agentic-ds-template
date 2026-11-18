@@ -218,6 +218,21 @@ def test_claude_round_caps_are_passed() -> None:
     assert command[command.index("--max-turns") + 1] == "9"
 
 
+def test_claude_rounds_list_their_tools_before_the_prompt() -> None:
+    command = deliver.agent_command("claude", "prompt", "session", True, None, "acceptEdits")
+    listed = [item for item in command if item.startswith("--allowedTools=")]
+    assert len(listed) == 1
+    tools = listed[0].removeprefix("--allowedTools=").split(",")
+    assert {"Edit", "Write", "Bash"} <= set(tools)
+    assert command[-1] == "prompt"
+    assert "--allowedTools" not in command
+
+
+def test_codex_rounds_have_no_claude_tool_list() -> None:
+    command = deliver.agent_command("codex", "prompt", None, True, None, "acceptEdits", writable=[])
+    assert not any(item.startswith("--allowedTools") for item in command)
+
+
 def test_round_timeout_sends_sigint_and_is_recorded(tmp_path: Path) -> None:
     script = "import signal,time; signal.signal(signal.SIGINT, lambda *_: exit(0)); time.sleep(5)"
     result = deliver.run_round(
@@ -1120,6 +1135,33 @@ def test_publication_uses_the_remote_forge_helper(
     assert path.is_file()
 
 
+@pytest.mark.usefixtures("fake_ssh")
+@pytest.mark.parametrize(
+    "url",
+    ["git@github-private:example/project.git", "ssh://git@github-private/example/project.git"],
+)
+def test_publication_resolves_ssh_host_aliases(delivery_repo: Path, url: str) -> None:
+    subprocess.run(["git", "remote", "set-url", "origin", url], cwd=delivery_repo, check=True)
+    assert deliver.pr_forge(delivery_repo, "origin")[0] == "GitHub"
+
+
+@pytest.mark.usefixtures("fake_ssh")
+def test_https_host_names_are_never_treated_as_ssh_aliases(delivery_repo: Path) -> None:
+    subprocess.run(
+        ["git", "remote", "set-url", "origin", "https://github-private/example/project.git"],
+        cwd=delivery_repo,
+        check=True,
+    )
+    with pytest.raises(SystemExit, match="not on a supported forge"):
+        deliver.pr_forge(delivery_repo, "origin")
+
+
+def test_ssh_alias_lookup_falls_back_to_the_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(deliver.shutil, "which", lambda _: None)
+    assert deliver.ssh_hostname("github-private") == "github-private"
+    assert deliver.ssh_hostname("-oProxyCommand=x") == "-oProxyCommand=x"
+
+
 @pytest.mark.parametrize("host", ["gitlab.com", "bitbucket.org"])
 def test_unsupported_forge_blocks_publication(delivery_repo: Path, host: str) -> None:
     subprocess.run(
@@ -1161,8 +1203,10 @@ def test_sandbox_hosts_are_registry_only_with_documented_overrides(tmp_path: Pat
 
 def test_claude_settings_deny_credentials_and_fail_closed(delivery_repo: Path) -> None:
     settings = json.loads(deliver.claude_sandbox_settings([], delivery_repo))["sandbox"]
-    assert settings["credentials"]["files"]["mode"] == "deny"
-    assert settings["credentials"]["envVars"]["names"] == deliver.CREDENTIAL_ENV
+    files, env_vars = settings["credentials"]["files"], settings["credentials"]["envVars"]
+    assert files
+    assert all(entry["mode"] == "deny" and entry["path"] for entry in files)
+    assert env_vars == [{"name": name, "mode": "deny"} for name in deliver.CREDENTIAL_ENV]
     assert settings["failIfUnavailable"] is True
     assert settings["network"]["allowedDomains"] == deliver.PACKAGE_HOSTS
     assert settings["filesystem"]["denyWrite"]
@@ -1578,7 +1622,7 @@ def test_agent_credential_policy_covers_active_linked_worktree(
         "claude", "Implement", "session", True, None, "acceptEdits", root=worktree
     )
     settings = json.loads(command[command.index("--settings") + 1])["sandbox"]
-    paths = settings["credentials"]["files"]["paths"]
+    paths = [entry["path"] for entry in settings["credentials"]["files"]]
     assert str(worktree / ".env*") in paths
     assert str(delivery_repo / ".env*") in paths
 

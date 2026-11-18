@@ -97,6 +97,12 @@ CREDENTIAL_PATHS = [
     "~/.claude/.credentials.json",
 ]
 CREDENTIAL_ENV = ["GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+# Tools a headless Claude round may use without a prompt. Claude Code forces the default
+# permission mode when CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set unless tools are listed, and a
+# headless round cannot answer prompts. Bash stays confined by the sandbox settings.
+CLAUDE_DELIVERY_TOOLS = [
+    "Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash", "Skill", "Agent", "TodoWrite"
+]  # fmt: skip
 MIN_CODEX_PROFILE_VERSION = (0, 163, 0)
 OPEN_ITEM = re.compile(r"^\s*[-*+] \[ \]\s+(.*\S)")
 DONE_ITEM = re.compile(r"^\s*[-*+] \[[xX]\]\s+")
@@ -420,10 +426,29 @@ def review_command(run: Run) -> list[str]:
     return command
 
 
+def ssh_hostname(alias: str) -> str:
+    """Return the host an SSH alias such as `github-private` resolves to, or the alias itself."""
+    if not alias or alias.startswith("-") or shutil.which("ssh") is None:
+        return alias
+    try:
+        result = subprocess.run(
+            ["ssh", "-G", alias], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return alias
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "hostname" and value.strip():
+            return value.strip().lower()
+    return alias
+
+
 def pr_forge(root: Path, remote: str) -> tuple[str, Path]:
     """Return the forge name and the pull-request helper for the remote's host."""
     url = git(root, "remote", "get-url", remote)
     host = urllib.parse.urlparse(url).hostname if "://" in url else url.split("@")[-1].split(":")[0]
+    if host and host not in PR_HELPERS and ("://" not in url or url.startswith("ssh://")):
+        host = ssh_hostname(host)
     if host not in PR_HELPERS:
         supported = ", ".join(sorted(PR_HELPERS))
         raise SystemExit(f"Remote {remote} ({url}) is not on a supported forge: {supported}")
@@ -1361,9 +1386,12 @@ def claude_sandbox_settings(writable: list[str], root: Path | None = None) -> st
             "denyWrite": protected_git_paths(root or Path.cwd()),
         },
         "network": {"allowedDomains": allowed_hosts(root or Path.cwd())},
+        # Claude Code 2.1.303 expects one entry per path or variable, each with its own mode.
         "credentials": {
-            "files": {"mode": "deny", "paths": credential_file_paths(root or Path.cwd())},
-            "envVars": {"mode": "deny", "names": CREDENTIAL_ENV},
+            "files": [
+                {"path": path, "mode": "deny"} for path in credential_file_paths(root or Path.cwd())
+            ],
+            "envVars": [{"name": name, "mode": "deny"} for name in CREDENTIAL_ENV],
         },
         "failIfUnavailable": True,
     }
@@ -1403,6 +1431,8 @@ def agent_command(
     root = root or Path.cwd()
     if harness == "claude":
         command = ["claude", "-p", "--permission-mode", mode]
+        # One `=` token, so the variadic option cannot swallow the prompt.
+        command += [f"--allowedTools={','.join(CLAUDE_DELIVERY_TOOLS)}"]
         if cli_supports_argument("claude", "--permission-prompts"):
             command += ["--permission-prompts", "none"]
         command += ["--session-id" if first else "--resume", str(session)]
