@@ -34,4 +34,4 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0027](0027-deliver-verified-pull-requests.md) | Deliver plans as verified pull requests with bounded cost | 2026-10-31 |
 | [ADR-0028](0028-repair-pull-requests-in-bounded-cycles.md) | Repair pull requests in bounded cycles and launch delivery from app sessions | 2026-10-31 |
 | [ADR-0029](0029-maintain-generated-projects-with-evaluated-skills.md) | Maintain generated projects with evaluated skills | 2026-10-31 |
-| [ADR-0030](0030-run-an-opt-in-ticket-factory-from-issue-labels.md) | Run an opt-in ticket factory from issue labels (proposed) | 2026-11-18 |
+| [ADR-0032](0032-run-an-opt-in-ticket-factory-from-issue-labels.md) | Run an opt-in ticket factory from issue labels (proposed) | 2026-11-18 |

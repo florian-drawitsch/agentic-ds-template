@@ -1,4 +1,4 @@
-# ADR-0030: Run an opt-in ticket factory from issue labels
+# ADR-0032: Run an opt-in ticket factory from issue labels
 
 - **Status:** Proposed
 - **Date:** 2026-11-18

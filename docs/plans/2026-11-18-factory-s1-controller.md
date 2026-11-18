@@ -4,7 +4,7 @@ Status: Proposed; not approved for implementation.
 
 ## Goal and scope
 
-Build the deterministic core of the `factory` plugin from ADR-0030: configuration, label
+Build the deterministic core of the `factory` plugin from ADR-0032: configuration, label
 states, admission, a GitHub snapshot, the dispatch decision, the claim, protected paths and the
 spend ledger. `tick --dry-run` prints the action the controller would take. Nothing in this
 stage calls a model or changes GitHub state except label creation and the claim push.
@@ -14,7 +14,7 @@ integration (S4).
 
 ## Prerequisites and decisions
 
-- ADR-0030 (Proposed) defines the design. Its Verification section lists the checks needed
+- ADR-0032 (Proposed) defines the design. Its Verification section lists the checks needed
   before acceptance. Accepting it stays a human decision after S4 and the live run.
 - ADR-0017 (both harnesses), ADR-0018 (one repository, one tag), ADR-0022 (project copies),
   ADR-0027 and ADR-0028 (the outer controller owns GitHub writes).
@@ -37,11 +37,11 @@ integration (S4).
   A frozen dataclass with defaults: `max_in_progress = 1`, `max_verified = 3`,
   `max_repair_cycles = 2`, `review_wait_minutes = 30`, `daily_cap_usd = 20.0`,
   `sprint_cap_usd = 100.0`, `sprint_start` (ISO date, optional), `sprint_days = 14`,
-  `protected_paths` (the ADR-0030 defaults), `project` (optional board URL), `holdout`
+  `protected_paths` (the ADR-0032 defaults), `project` (optional board URL), `holdout`
   (optional, unused until S3), `[deliver]` table with `harness`, `reviewer`, `max_cost`.
   Unknown keys and wrong types raise `SystemExit` with the key name. Tests: defaults without a
   file, overrides, unknown key, wrong type.
-- [ ] **Label states.** Constants for the seven labels from ADR-0030 and the transition table
+- [ ] **Label states.** Constants for the seven labels from ADR-0032 and the transition table
   of its state diagram. `state_of(labels) -> State | None` returns the single factory state and
   raises on two factory labels. `transition(current, target)` rejects transitions that are not
   in the table. `labels` subcommand creates missing labels idempotently with fixed colors and
@@ -88,7 +88,7 @@ integration (S4).
   agent actions, and performs only the claim for implement. Exit codes: 0 action done or idle,
   1 error, 3 not implemented. Tests through `main(argv)` with the fake GitHub.
 - [ ] **Docs and gate.** Document the plugin in `docs/features.md` (Agentic development,
-  marked as in development) and add ADR-0030's controller to the plugin list in
+  marked as in development) and add ADR-0032's controller to the plugin list in
   `docs/design/architecture.md`. Run `task check`.
 
 ## Acceptance and verification

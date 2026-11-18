@@ -5,17 +5,17 @@ Status: Proposed; not approved for implementation.
 ## Goal and scope
 
 Let generated projects opt into the factory with one Copier answer: render its configuration,
-tasks and workflow, enable the plugin and test the rendering. After this stage, ADR-0030's
+tasks and workflow, enable the plugin and test the rendering. After this stage, ADR-0032's
 Verification section is complete except for the live run.
 
 Non-goals: the live run in `energy-forecasting` (a separate repository, manual), accepting
-ADR-0030 (a human decision), a hosted GitHub App.
+ADR-0032 (a human decision), a hosted GitHub App.
 
 ## Prerequisites and decisions
 
 - Depends on [Factory S3: holdout checks, reports and board mirror](2026-11-18-factory-s3-holdout-and-reports.md).
 - ADR-0002 and ADR-0022 (file ownership, plugin copies by symlink), ADR-0012 (actions pinned
-  by SHA), ADR-0030.
+  by SHA), ADR-0032.
 - Approval: pending. Once the user approves this named plan, delivery may publish a pull
   request. It never merges.
 
@@ -69,12 +69,12 @@ ADR-0030 (a human decision), a hosted GitHub App.
 - Final gate (run by the delivery controller): `task check`.
 - External checks, not part of this run, each needing the user's approval:
   - The live run in `energy-forecasting`: label an issue `factory:ready`, watch it reach
-    `factory:verified`, record cost and cycle time in ADR-0030.
+    `factory:verified`, record cost and cycle time in ADR-0032.
   - `task eval PLUGIN=factory` if the skill text changed in this stage.
 
 ## Rulings
 
 - The factory question requires both harnesses: the verifier must be the other vendor; if
-  wrong, a single-harness project would verify with its own vendor, which ADR-0030 rejects.
+  wrong, a single-harness project would verify with its own vendor, which ADR-0032 rejects.
 - The workflow's own token stays read-only: all writes go through `FACTORY_GH_TOKEN` so PRs
   start CI; if wrong, CI never runs on factory PRs.

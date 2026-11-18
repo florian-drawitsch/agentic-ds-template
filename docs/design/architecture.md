@@ -48,7 +48,7 @@ The marketplace is curated (ADR-0016) and vendor-independent (ADR-0017):
   - Planned: `adr`, `kickoff`.
   - Skill evals live in `plugins/project/evals/`; `task eval` scores them against a no-plugin
     baseline (ADR-0029).
-- **`factory`** (proposed, ADR-0030): an opt-in plugin whose controller moves labeled GitHub
+- **`factory`** (proposed, ADR-0032): an opt-in plugin whose controller moves labeled GitHub
   issues through triage, `deliver`, independent verification and `fix-pr` to a verified PR
   that a human merges.
 
