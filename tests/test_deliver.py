@@ -1203,8 +1203,10 @@ def test_sandbox_hosts_are_registry_only_with_documented_overrides(tmp_path: Pat
 
 def test_claude_settings_deny_credentials_and_fail_closed(delivery_repo: Path) -> None:
     settings = json.loads(deliver.claude_sandbox_settings([], delivery_repo))["sandbox"]
-    assert settings["credentials"]["files"]["mode"] == "deny"
-    assert settings["credentials"]["envVars"]["names"] == deliver.CREDENTIAL_ENV
+    files, env_vars = settings["credentials"]["files"], settings["credentials"]["envVars"]
+    assert files
+    assert all(entry["mode"] == "deny" and entry["path"] for entry in files)
+    assert env_vars == [{"name": name, "mode": "deny"} for name in deliver.CREDENTIAL_ENV]
     assert settings["failIfUnavailable"] is True
     assert settings["network"]["allowedDomains"] == deliver.PACKAGE_HOSTS
     assert settings["filesystem"]["denyWrite"]
@@ -1620,7 +1622,7 @@ def test_agent_credential_policy_covers_active_linked_worktree(
         "claude", "Implement", "session", True, None, "acceptEdits", root=worktree
     )
     settings = json.loads(command[command.index("--settings") + 1])["sandbox"]
-    paths = settings["credentials"]["files"]["paths"]
+    paths = [entry["path"] for entry in settings["credentials"]["files"]]
     assert str(worktree / ".env*") in paths
     assert str(delivery_repo / ".env*") in paths
 

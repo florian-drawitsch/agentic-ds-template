@@ -1386,9 +1386,12 @@ def claude_sandbox_settings(writable: list[str], root: Path | None = None) -> st
             "denyWrite": protected_git_paths(root or Path.cwd()),
         },
         "network": {"allowedDomains": allowed_hosts(root or Path.cwd())},
+        # Claude Code 2.1.303 expects one entry per path or variable, each with its own mode.
         "credentials": {
-            "files": {"mode": "deny", "paths": credential_file_paths(root or Path.cwd())},
-            "envVars": {"mode": "deny", "names": CREDENTIAL_ENV},
+            "files": [
+                {"path": path, "mode": "deny"} for path in credential_file_paths(root or Path.cwd())
+            ],
+            "envVars": [{"name": name, "mode": "deny"} for name in CREDENTIAL_ENV],
         },
         "failIfUnavailable": True,
     }
