@@ -72,7 +72,9 @@ def test_second_app_passes_workspace_gate(tmp_path: Path) -> None:
 
 @pytest.mark.slow
 def test_forbidden_import_fails_lint(tmp_path: Path) -> None:
-    root = render(tmp_path / "project", tasks=True, tracking="none", notebooks=False)
+    root = render(
+        tmp_path / "project", tasks=True, tracking="none", notebooks=False, config="python"
+    )
     run(["task", "setup"], root)
     model = root / "apps/demo_project/src/demo_project/model.py"
     model.write_text(model.read_text() + "\nfrom demo_project import cli  # noqa: F401\n")

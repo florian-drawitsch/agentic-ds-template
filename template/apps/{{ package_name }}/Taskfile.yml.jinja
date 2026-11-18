@@ -45,11 +45,11 @@ tasks:
       - sh: command -v docker
         msg: Docker is not installed
     cmds:
-      - docker build -f apps/{{ p }}/Dockerfile -t {{ project_name }}:latest .
+      - docker build -f apps/{{ p }}/Dockerfile -t {{ p }}:latest .
 
   docker:run:
     desc: Run the pipeline in the container with the local data directory mounted
     dir: '{{ '{{.ROOT_DIR}}' }}'
     cmds:
-      - docker run --rm -v "$PWD/data:/app/data" {{ project_name }}:latest {{ '{{.CLI_ARGS}}' }}
+      - docker run --rm -v "$PWD/data:/app/data" {{ p }}:latest {{ '{{.CLI_ARGS}}' }}
 {%- endif %}

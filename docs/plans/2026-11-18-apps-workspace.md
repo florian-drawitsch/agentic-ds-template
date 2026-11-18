@@ -39,7 +39,7 @@ Non-goals:
 Write or update the failing test first in every step, then change the template until it passes.
 Run focused tests with `uv run pytest tests/template/<file> -q`.
 
-- [ ] **Remove `use_case` and `maturity` (ADR-0030).**
+- [x] **Remove `use_case` and `maturity` (ADR-0030).**
   - `copier.yml`: delete both questions. `architecture` defaults to `simple`; its choice labels
     say when to pick each option.
   - `template/pyproject.toml.jinja`: drop the preset map; runtime dependencies come only from
@@ -53,7 +53,7 @@ Run focused tests with `uv run pytest tests/template/<file> -q`.
   - Tests: replace the per-use-case render test with one that asserts the generic protocol and
     no use-case section; assert neither question exists in `copier.yml`; assert `fail_under` is
     80 with default answers; drop `use_case` and `maturity` from `tests/template/test_e2e.py`.
-- [ ] **Make the root a virtual uv workspace and move the package into `apps/` (ADR-0031).**
+- [x] **Make the root a virtual uv workspace and move the package into `apps/` (ADR-0031).**
   - Move with `git mv`: `template/src/<arch dirs>` to
     `template/apps/{{ package_name }}/src/<arch dirs>`, `template/tests/` to
     `template/apps/{{ package_name }}/tests/`, `template/conf/` to
@@ -91,14 +91,14 @@ Run focused tests with `uv run pytest tests/template/<file> -q`.
   - The import-linter git hook passes every `apps/*/pyproject.toml` and
     `packages/*/pyproject.toml` to `lint-imports` (positional config files). Keep the ADR-0005
     test that a forbidden import fails `task lint`.
-- [ ] **Add `scripts/check_workspace.py` to the template.**
+- [x] **Add `scripts/check_workspace.py` to the template.**
   - Stdlib only, under 150 lines. Fails with a clear message when an app's source imports another
     app's package, when an app's `pyproject.toml` depends on another app, or when a directory in
     `apps/` has no `pyproject.toml` and is not in the workspace `exclude` list.
   - It runs as a git hook, so `task lint` and `task check` run it.
   - Tests in this repository render a project, then assert the script passes on it, fails on a
     planted cross-app import and fails on an unregistered directory in `apps/`.
-- [ ] **Update agent wiring, docs and project-owned paths in the template.**
+- [x] **Update agent wiring, docs and project-owned paths in the template.**
   - `copier.yml` `_exclude`: on update, exclude `apps` and `packages` instead of `src`, `tests`
     and `conf`. Update container and config conditions to the new paths.
   - `_message_after_copy`, `template/README.md.jinja` and `template/AGENTS.md.jinja`: the layout,
@@ -119,7 +119,7 @@ Run focused tests with `uv run pytest tests/template/<file> -q`.
   - `tests/template/test_e2e.py`: run `task {{ package_name }}:run` instead of `task run`.
   - New slow test: render the default answers, follow the "Add an app" procedure to create a
     second app from the first, then run `task setup`, `task check` and the second app's `run`.
-- [ ] **Update this repository's docs.**
+- [x] **Update this repository's docs.**
   - `docs/design/architecture.md`: question table without `use_case`, `maturity` and `layout`;
     the rendered project tree with `apps/` and `packages/`; the ownership table; the correct
     module list for `simple`; the post-copy message as rendered.
@@ -147,3 +147,35 @@ External checks, not required and not authorized by this plan:
 - Rendering the showcase project against this branch.
 
 ## Rulings
+
+- App distribution names match `package_name`: workspace package selection and copied app
+  renaming use one name; the root retains no distribution. If wrong, app dependency metadata
+  must be renamed before publication.
+- Root tool commands use `uv run --all-packages`; app commands use `uv run --package <app>`:
+  every test and contract sees all members even after an app-specific sync. If wrong, setup
+  installs more workspace packages than necessary.
+- `packages/README.md` preserves the empty shared-library directory: a two-app `uv lock`
+  accepts the placeholder. If wrong, locking fails before setup.
+- Directory-wide `git mv` was denied by the sandbox; individual tracked files were moved with
+  `git mv` instead. Empty old directories are untracked and absent from a clean checkout.
+- The sandbox denies `template/.env.example`, so normal Copier rendering cannot run here.
+  Focused render checks use a temporary source copy that omits that unchanged file and empty
+  untracked directories. These checks do not establish acceptance of the denied file.
+
+## Verification evidence
+
+- Focused checks on a temporary source copy omitting the sandbox-denied, unchanged
+  `template/.env.example`: 66 render/workspace/hook/agent-wiring tests passed. After the
+  custom-name and optional-dependency additions, all 36 render/workspace tests passed.
+- The filtered-source `test_update_keeps_project_owned_files` passed, including both app
+  edits/deletions and a shared package surviving the update.
+- Ruff and ty passed for `tests/template/` and `template/scripts/check_workspace.py`.
+- `git diff --check` passed. The template path audit found no old root source/config paths
+  in agent wiring. `AGENTS.md` of this repository now describes the existing render tests.
+- A two-app `uv lock --offline` passed with the `packages/README.md` placeholder.
+- Pending: normal unfiltered rendering, generated-project execution for every architecture,
+  the two-app gate/run and the forbidden-import `task lint` test. Setup encountered an uncached
+  Polars wheel offline, a distribution-cache rename denial in the shared cache, then package
+  download/build delays and a setuptools fetch timeout using a temporary cache. These are
+  not passing acceptance results.
+- The repository-wide `task check` is reserved for the outer controller and was not run here.
