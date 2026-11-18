@@ -1,6 +1,6 @@
 # ADR-0005: Enforce architecture with import-linter
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0031
 - **Date:** 2026-10-09
 
 ## Context

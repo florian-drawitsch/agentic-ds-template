@@ -1,6 +1,6 @@
 # ADR-0011: Test the template by rendering a pairwise matrix
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0031
 - **Date:** 2026-10-09
 
 ## Context
