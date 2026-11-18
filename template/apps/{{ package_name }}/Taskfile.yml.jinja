@@ -10,7 +10,7 @@ tasks:
 {%- if architecture == "pipeline" %}
 
   pipeline-graph:
-    desc: Print the pipeline graph as a Mermaid diagram, e.g. `task pipeline-graph -- --pipeline training`
+    desc: Print the pipeline graph as a Mermaid diagram, e.g. `task {{ p }}:pipeline-graph -- --pipeline training`
     cmds:
       - uv run --package {{ p }} {{ p }} --graph {{ '{{.CLI_ARGS}}' }}
 {%- endif %}

@@ -24,7 +24,7 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 - `task {{ package_name }}:api`: serve the REST API.
 {%- endif %}
 {%- if 'dashboard' in interfaces %}
-- `task dashboard`: run the dashboard.
+- `task {{ package_name }}:dashboard`: run the dashboard.
 {%- endif %}
 - `task docs:serve`: live documentation. `task docs:diagrams`: package and class diagrams of the
   code, generated into `docs/architecture/generated/`.

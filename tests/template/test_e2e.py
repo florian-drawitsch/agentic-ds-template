@@ -62,6 +62,14 @@ def test_second_app_passes_workspace_gate(tmp_path: Path) -> None:
             "includes:\n  second_app:\n    taskfile: ./apps/second_app/Taskfile.yml\n    dir: .\n",
         )
     )
+    # A shared library without import contracts must not break the contract hook.
+    shared = root / "packages/shared"
+    (shared / "src/shared").mkdir(parents=True)
+    (shared / "src/shared/__init__.py").write_text('"""Shared helpers."""\n')
+    (shared / "pyproject.toml").write_text(
+        '[project]\nname = "shared"\nversion = "0.1.0"\nrequires-python = ">=3.13"\n\n'
+        '[build-system]\nrequires = ["uv_build>=0.12.9,<0.13"]\nbuild-backend = "uv_build"\n'
+    )
     run(["uv", "lock"], root)
     run(["task", "setup"], root)
     rows = "".join(f"{i},{i % 10},{2 * (i % 10) + 1}\n" for i in range(50))
@@ -69,6 +77,9 @@ def test_second_app_passes_workspace_gate(tmp_path: Path) -> None:
     run(["task", "check"], root)
     run(["task", "second_app:run"], root)
     run(["task", "docs:build"], root)
+    run(["task", "docs:diagrams"], root)
+    diagrams = {path.name for path in (root / "docs/architecture/generated").iterdir()}
+    assert {"packages_demo_project.mmd", "packages_second_app.mmd"} <= diagrams
 
 
 @pytest.mark.slow

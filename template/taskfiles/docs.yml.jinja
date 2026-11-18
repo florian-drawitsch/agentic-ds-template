@@ -18,4 +18,4 @@ tasks:
     dir: '{{ '{{.ROOT_DIR}}' }}'
     cmds:
       - mkdir -p docs/architecture/generated
-      - for app in apps/*; do [ ! -d "$app/src" ] || uv run --all-packages pyreverse -o mmd -p "$(basename "$app")" -d docs/architecture/generated "$app/src"; done
+      - for pkg in apps/*/src/*/ packages/*/src/*/; do [ -f "$pkg/__init__.py" ] || continue; uv run --all-packages pyreverse -o mmd -p "$(basename "$pkg")" -d docs/architecture/generated "$pkg"; done

@@ -43,7 +43,10 @@ def check(root: Path) -> list[str]:
         if source.is_dir():
             for module in source.iterdir():
                 if module.is_dir() or module.suffix == ".py":
-                    packages[module.stem if module.is_file() else module.name] = app
+                    name = module.stem if module.is_file() else module.name
+                    if packages.get(name, app) != app:
+                        errors.append(f"{relative}: package {name} is also in {packages[name].name}")
+                    packages[name] = app
     for app, data in apps.items():
         project = data["project"]
         dependencies = list(project.get("dependencies", []))
@@ -54,7 +57,7 @@ def check(root: Path) -> list[str]:
             owner = names.get(normalized(match[0])) if match else None
             if owner is not None and owner != app:
                 errors.append(f"{app.relative_to(root)} depends on app {owner.name}: {dependency}")
-        for path in sorted((app / "src").rglob("*.py")):
+        for path in sorted(app.rglob("*.py")):
             tree = ast.parse(path.read_text(), filename=str(path))
             for node in ast.walk(tree):
                 imports: list[str] = []

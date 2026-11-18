@@ -54,11 +54,17 @@ def check_command(command: str) -> str | None:
         program = PurePosixPath(words[0]).name
         rest = words[1:]
         if program in {"pip", "pip3"} and "install" in rest:
-            return "Use `uv add <package>` (or `uv add --group <group>`) instead of pip."
+            return (
+                "Use `uv add --package <app> <package>` (or `uv add --group <group>`)"
+                " instead of pip."
+            )
         if program in {"python", "python3"} and rest[:2] == ["-m", "pip"]:
-            return "Use `uv add <package>` instead of pip."
+            return "Use `uv add --package <app> <package>` instead of pip."
         if program == "uv" and rest[:2] == ["pip", "install"]:
-            return "Use `uv add <package>` so the dependency is recorded in pyproject.toml."
+            return (
+                "Use `uv add --package <app> <package>` so the dependency is recorded in the"
+                " app's pyproject.toml."
+            )
         forced = any(
             w in {"--force", "-f", "--force-with-lease"} or w.startswith("+") for w in rest
         )

@@ -80,3 +80,20 @@ def test_workspace_requires_registration_or_exclusion(tmp_path: Path) -> None:
         )
     )
     assert check(root).returncode == 0
+
+
+def test_workspace_rejects_cross_app_import_in_tests(tmp_path: Path) -> None:
+    root = render(tmp_path / "project")
+    second_app(root)
+    (root / "apps/demo_project/tests/test_bad.py").write_text("import second_app\n")
+    result = check(root)
+    assert result.returncode == 1
+    assert "apps/demo_project/tests/test_bad.py:1 imports app second_app" in result.stdout
+
+
+def test_workspace_rejects_duplicate_package_names(tmp_path: Path) -> None:
+    root = render(tmp_path / "project")
+    shutil.copytree(root / "apps/demo_project", root / "apps/copy")
+    result = check(root)
+    assert result.returncode == 1
+    assert "package demo_project is also in" in result.stdout
