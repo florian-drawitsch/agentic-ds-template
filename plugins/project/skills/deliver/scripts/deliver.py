@@ -420,10 +420,29 @@ def review_command(run: Run) -> list[str]:
     return command
 
 
+def ssh_hostname(alias: str) -> str:
+    """Return the host an SSH alias such as `github-private` resolves to, or the alias itself."""
+    if not alias or alias.startswith("-") or shutil.which("ssh") is None:
+        return alias
+    try:
+        result = subprocess.run(
+            ["ssh", "-G", alias], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return alias
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "hostname" and value.strip():
+            return value.strip().lower()
+    return alias
+
+
 def pr_forge(root: Path, remote: str) -> tuple[str, Path]:
     """Return the forge name and the pull-request helper for the remote's host."""
     url = git(root, "remote", "get-url", remote)
     host = urllib.parse.urlparse(url).hostname if "://" in url else url.split("@")[-1].split(":")[0]
+    if host and host not in PR_HELPERS and ("://" not in url or url.startswith("ssh://")):
+        host = ssh_hostname(host)
     if host not in PR_HELPERS:
         supported = ", ".join(sorted(PR_HELPERS))
         raise SystemExit(f"Remote {remote} ({url}) is not on a supported forge: {supported}")

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import urllib.parse
@@ -46,18 +47,37 @@ def _gh(*args: str) -> str:
     return _run("gh", *args)
 
 
+def _ssh_hostname(alias: str) -> str:
+    """Return the host an SSH alias such as `github-private` resolves to, or the alias itself."""
+    if not alias or alias.startswith("-") or shutil.which("ssh") is None:
+        return alias
+    try:
+        result = subprocess.run(
+            ["ssh", "-G", alias], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return alias
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "hostname" and value.strip():
+            return value.strip().lower()
+    return alias
+
+
 def _parse_remote(remote_url: str) -> tuple[str, str]:
-    scp_match = re.fullmatch(r"git@github\.com:([^/]+)/(.+)", remote_url)
+    scp_match = re.fullmatch(r"(?:[^@/:]+@)?([^@/:]+):(?!//)(.+)", remote_url)
     if scp_match:
-        owner, repository = scp_match.groups()
+        host, path = scp_match.groups()
+        ssh = True
     else:
         parsed = urllib.parse.urlparse(remote_url)
-        if parsed.hostname != "github.com":
-            raise ValueError(f"remote is not GitHub: {remote_url}")
-        parts = [part for part in parsed.path.split("/") if part]
-        if len(parts) != 2:
-            raise ValueError(f"cannot resolve owner and repository from: {remote_url}")
-        owner, repository = parts
+        host, path, ssh = parsed.hostname or "", parsed.path, parsed.scheme == "ssh"
+    if host != "github.com" and not (ssh and _ssh_hostname(host) == "github.com"):
+        raise ValueError(f"remote is not GitHub: {remote_url}")
+    parts = [part for part in path.split("/") if part]
+    if len(parts) != 2:
+        raise ValueError(f"cannot resolve owner and repository from: {remote_url}")
+    owner, repository = parts
     return owner, repository.removesuffix(".git")
 
 

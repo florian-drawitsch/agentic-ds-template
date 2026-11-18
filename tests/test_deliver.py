@@ -1120,6 +1120,33 @@ def test_publication_uses_the_remote_forge_helper(
     assert path.is_file()
 
 
+@pytest.mark.usefixtures("fake_ssh")
+@pytest.mark.parametrize(
+    "url",
+    ["git@github-private:example/project.git", "ssh://git@github-private/example/project.git"],
+)
+def test_publication_resolves_ssh_host_aliases(delivery_repo: Path, url: str) -> None:
+    subprocess.run(["git", "remote", "set-url", "origin", url], cwd=delivery_repo, check=True)
+    assert deliver.pr_forge(delivery_repo, "origin")[0] == "GitHub"
+
+
+@pytest.mark.usefixtures("fake_ssh")
+def test_https_host_names_are_never_treated_as_ssh_aliases(delivery_repo: Path) -> None:
+    subprocess.run(
+        ["git", "remote", "set-url", "origin", "https://github-private/example/project.git"],
+        cwd=delivery_repo,
+        check=True,
+    )
+    with pytest.raises(SystemExit, match="not on a supported forge"):
+        deliver.pr_forge(delivery_repo, "origin")
+
+
+def test_ssh_alias_lookup_falls_back_to_the_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(deliver.shutil, "which", lambda _: None)
+    assert deliver.ssh_hostname("github-private") == "github-private"
+    assert deliver.ssh_hostname("-oProxyCommand=x") == "-oProxyCommand=x"
+
+
 @pytest.mark.parametrize("host", ["gitlab.com", "bitbucket.org"])
 def test_unsupported_forge_blocks_publication(delivery_repo: Path, host: str) -> None:
     subprocess.run(

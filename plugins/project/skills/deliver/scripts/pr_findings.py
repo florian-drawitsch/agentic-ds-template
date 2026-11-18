@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -29,17 +30,37 @@ def gh(root: Path, *args: str) -> Any:
     return json.loads(result.stdout)
 
 
+def ssh_hostname(alias: str) -> str:
+    """Return the host an SSH alias such as `github-private` resolves to, or the alias itself."""
+    if not alias or alias.startswith("-") or shutil.which("ssh") is None:
+        return alias
+    try:
+        result = subprocess.run(
+            ["ssh", "-G", alias], capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return alias
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key == "hostname" and value.strip():
+            return value.strip().lower()
+    return alias
+
+
 def repository(root: Path, remote: str = "origin") -> str:
     """Resolve a GitHub remote without consulting the user's default repository."""
     url = subprocess.run(
         ["git", "remote", "get-url", remote], cwd=root, capture_output=True, text=True, check=True
-    ).stdout
+    ).stdout.strip()
+    match = re.fullmatch(r"https://github\.com/([\w.-]+/[\w.-]+?)(?:\.git)?/?", url)
+    if match:
+        return match[1]
     match = re.fullmatch(
-        r"(?:git@github\.com:|https://github\.com/)([\w.-]+/[\w.-]+?)(?:\.git)?\s*", url
+        r"(?:ssh://)?(?:[\w.-]+@)?([\w.-]+)[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?", url
     )
-    if not match:
+    if not match or (match[1] != "github.com" and ssh_hostname(match[1]) != "github.com"):
         raise SystemExit("PR repair requires a github.com remote")
-    return match[1]
+    return match[2]
 
 
 def pull_request(root: Path, number: int, remote: str = "origin") -> dict[str, Any]:
