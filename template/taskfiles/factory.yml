@@ -1,0 +1,32 @@
+version: '3'
+
+# Ticket factory (ADR-0033 of agentic-ds-template), in development. The script is a project
+# copy of the `factory` plugin's controller.
+
+tasks:
+  init:
+    desc: Create the factory labels and the project board, and record the board in factory.toml
+    summary: |
+      Idempotent. Needs the GitHub repository and gh with the project scope
+      (`gh auth refresh -s project`). `--no-board` creates the labels only.
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/factory.py init {{.CLI_ARGS}}
+
+  status:
+    desc: Show factory issues per state, spend against the caps and the next action
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/factory.py status {{.CLI_ARGS}}
+
+  tick:
+    desc: Print the next factory action without changing anything
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/factory.py tick --dry-run {{.CLI_ARGS}}
+
+  sync:
+    desc: Mirror the label state of open factory issues into the board
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/factory.py sync

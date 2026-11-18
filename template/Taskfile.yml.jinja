@@ -13,6 +13,9 @@ includes:
     taskfile: ./taskfiles/deliver.yml
     aliases: [agent]
 {%- endif %}
+{%- if factory %}
+  factory: ./taskfiles/factory.yml
+{%- endif %}
   {{ p }}:
     taskfile: ./apps/{{ p }}/Taskfile.yml
     dir: .
@@ -33,6 +36,9 @@ tasks:
       - uv run --all-packages prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
 {%- if notebooks %}
       - uv run --all-packages python -m ipykernel install --sys-prefix --name {{ p }} --display-name {{ project_name }}
+{%- endif %}
+{%- if factory %}
+      - uv run --script scripts/agent/factory.py init --skip-unavailable
 {%- endif %}
 
   test:

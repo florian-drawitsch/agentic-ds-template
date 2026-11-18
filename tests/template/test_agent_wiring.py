@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -105,3 +108,83 @@ def test_project_tools_leave_plugin_copies_alone(project: Path) -> None:
     copies = {copy for copy in copies if copy.endswith(".py")} | {"scripts/agent/deliver.py"}
     assert copies <= ruff
     assert copies <= ty
+
+
+# --- ticket factory ---
+
+FACTORY = ROOT / "plugins/factory/skills/factory/scripts/factory.py"
+FACTORY_FILES = (
+    "factory.toml",
+    "taskfiles/factory.yml",
+    "scripts/agent/factory.py",
+    "docs/guides/factory.md",
+)
+FACTORY_INIT = "uv run --script scripts/agent/factory.py init --skip-unavailable"
+
+
+@pytest.fixture(scope="module")
+def factory_project(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    return render(tmp_path_factory.mktemp("factory") / "project", factory=True)
+
+
+def test_factory_files_follow_the_answer(project: Path, factory_project: Path) -> None:
+    for path in FACTORY_FILES:
+        assert not (project / path).exists(), path
+        assert (factory_project / path).is_file(), path
+
+
+def test_factory_question_needs_github_ci_and_both_harnesses(tmp_path: Path) -> None:
+    cases: dict[str, dict[str, Any]] = {
+        "no-ci": {"ci": "none"},
+        "one": {"agent_harnesses": ["claude"]},
+    }
+    for name, answers in cases.items():
+        assert not (render(tmp_path / name, **answers) / "factory.toml").exists(), name
+        with pytest.raises(ValueError, match="other vendor"):
+            render(tmp_path / f"{name}-forced", factory=True, **answers)
+
+
+def test_factory_copy_matches_the_plugin_and_reads_its_config(factory_project: Path) -> None:
+    copy = factory_project / "scripts/agent/factory.py"
+    assert copy.read_bytes() == FACTORY.read_bytes()
+    module = load_script(copy, "factory_project_copy")
+    config = module.load_config(factory_project)
+    ci = yaml.safe_load((factory_project / ".github/workflows/ci.yml").read_text())
+    assert set(config.required_checks) <= {job["name"] for job in ci["jobs"].values()}
+    assert {config.deliver.harness, config.deliver.reviewer} == {"claude", "codex"}
+    assert config.project is None
+
+
+def test_factory_tasks_plugins_and_lint_excludes_are_wired(
+    project: Path, factory_project: Path
+) -> None:
+    assert {"factory:init", "factory:status", "factory:tick", "factory:sync"} <= task_names(
+        factory_project
+    )
+    setup = yaml.safe_load((factory_project / "Taskfile.yml").read_text())["tasks"]["setup"]
+    assert FACTORY_INIT in setup["cmds"]
+    copier = yaml.safe_load((ROOT / "copier.yml").read_text())
+    assert FACTORY_INIT in [task["command"] for task in copier["_tasks"]]
+    for root, enabled in ((factory_project, True), (project, False)):
+        claude = json.loads((root / ".claude/settings.json").read_text())["enabledPlugins"]
+        codex = tomllib.loads((root / ".codex/config.toml").read_text())["plugins"]
+        assert ("factory@agentic-ds-template" in claude) is enabled
+        assert ("factory@agentic-ds-template" in codex) is enabled
+    pyproject = tomllib.loads((factory_project / "pyproject.toml").read_text())
+    assert "scripts/agent/factory.py" in pyproject["tool"]["ruff"]["extend-exclude"]
+    assert "scripts/agent/factory.py" in pyproject["tool"]["ty"]["src"]["exclude"]
+    assert "guides/factory" in (factory_project / "docs/index.md").read_text()
+
+
+def test_factory_init_skips_before_the_repository_exists(factory_project: Path) -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/agent/factory.py", "init", "--skip-unavailable"],
+        cwd=factory_project,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(factory_project), "GH_CONFIG_DIR": "/nonexistent"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "skipped" in result.stderr
+    assert "project =" not in (factory_project / "factory.toml").read_text().replace("# project", "")
