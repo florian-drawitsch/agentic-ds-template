@@ -1,0 +1,20 @@
+# Codex cost estimates for delivery runs and cross-reviews.
+# OpenAI Standard token rates in USD per million tokens, verified 2026-10-21.
+# Source: https://developers.openai.com/api/docs/pricing
+[prices."gpt-6.1-sol"]
+input = 2.0
+cached_input = 0.10
+cache_creation = 2.50
+output = 10.0
+
+[prices."gpt-6-luna"]
+input = 0.10
+cached_input = 0.01
+cache_creation = 0.125
+output = 0.50
+
+[prices."gpt-6-astra"]
+input = 10.0
+cached_input = 1.0
+cache_creation = 12.50
+output = 50.0
