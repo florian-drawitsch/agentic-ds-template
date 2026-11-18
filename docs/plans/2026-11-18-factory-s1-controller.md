@@ -87,7 +87,7 @@ integration (S4).
   nothing. `tick` without `--dry-run` exits with code 3 and "agent stages arrive in S2" for
   agent actions, and performs only the claim for implement. Exit codes: 0 action done or idle,
   1 error, 3 not implemented. Tests through `main(argv)` with the fake GitHub.
-- [ ] **Docs and gate.** Document the plugin in `docs/features.md` (Agentic development,
+- [x] **Docs and gate.** Document the plugin in `docs/features.md` (Agentic development,
   marked as in development) and add ADR-0032's controller to the plugin list in
   `docs/design/architecture.md`. Run `task check`.
 
@@ -116,4 +116,4 @@ integration (S4).
   counts `<!-- factory:repair -->` comments by the controller login only. Reaching
   `max_repair_cycles` makes the ticket idle in S1; the move to Needs human arrives with S2.
 - Sprint window: without `sprint_start` the sprint total covers the last `sprint_days` days.
-- `task check` and `task eval` were not run here; the outer controller owns the final gate.
+- Docs are written and the focused checks (ruff, ty, build check, tests/test_factory.py, tests/test_build.py) pass. The full `task check` was not run here: the outer controller owns the final gate.
