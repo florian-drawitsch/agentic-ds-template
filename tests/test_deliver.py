@@ -218,6 +218,21 @@ def test_claude_round_caps_are_passed() -> None:
     assert command[command.index("--max-turns") + 1] == "9"
 
 
+def test_claude_rounds_list_their_tools_before_the_prompt() -> None:
+    command = deliver.agent_command("claude", "prompt", "session", True, None, "acceptEdits")
+    listed = [item for item in command if item.startswith("--allowedTools=")]
+    assert len(listed) == 1
+    tools = listed[0].removeprefix("--allowedTools=").split(",")
+    assert {"Edit", "Write", "Bash"} <= set(tools)
+    assert command[-1] == "prompt"
+    assert "--allowedTools" not in command
+
+
+def test_codex_rounds_have_no_claude_tool_list() -> None:
+    command = deliver.agent_command("codex", "prompt", None, True, None, "acceptEdits", writable=[])
+    assert not any(item.startswith("--allowedTools") for item in command)
+
+
 def test_round_timeout_sends_sigint_and_is_recorded(tmp_path: Path) -> None:
     script = "import signal,time; signal.signal(signal.SIGINT, lambda *_: exit(0)); time.sleep(5)"
     result = deliver.run_round(

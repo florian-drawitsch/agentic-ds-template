@@ -97,6 +97,12 @@ CREDENTIAL_PATHS = [
     "~/.claude/.credentials.json",
 ]
 CREDENTIAL_ENV = ["GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+# Tools a headless Claude round may use without a prompt. Claude Code forces the default
+# permission mode when CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set unless tools are listed, and a
+# headless round cannot answer prompts. Bash stays confined by the sandbox settings.
+CLAUDE_DELIVERY_TOOLS = [
+    "Read", "Glob", "Grep", "Edit", "Write", "NotebookEdit", "Bash", "Skill", "Agent", "TodoWrite"
+]  # fmt: skip
 MIN_CODEX_PROFILE_VERSION = (0, 163, 0)
 OPEN_ITEM = re.compile(r"^\s*[-*+] \[ \]\s+(.*\S)")
 DONE_ITEM = re.compile(r"^\s*[-*+] \[[xX]\]\s+")
@@ -1422,6 +1428,8 @@ def agent_command(
     root = root or Path.cwd()
     if harness == "claude":
         command = ["claude", "-p", "--permission-mode", mode]
+        # One `=` token, so the variadic option cannot swallow the prompt.
+        command += [f"--allowedTools={','.join(CLAUDE_DELIVERY_TOOLS)}"]
         if cli_supports_argument("claude", "--permission-prompts"):
             command += ["--permission-prompts", "none"]
         command += ["--session-id" if first else "--resume", str(session)]
