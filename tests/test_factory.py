@@ -329,6 +329,11 @@ def clone(tmp_path):
     def git(cwd, *args):
         subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
 
+    probe = subprocess.run(
+        ["git", "init", "-q", str(tmp_path / "probe")], capture_output=True, check=False
+    )
+    if probe.returncode != 0:
+        pytest.skip("git cannot write repositories under this temporary directory")
     bare = tmp_path / "origin.git"
     subprocess.run(
         ["git", "init", "--template=", "--bare", "-b", "main", str(bare)],

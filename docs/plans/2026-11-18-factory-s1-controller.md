@@ -122,3 +122,6 @@ integration (S4).
   `max_repair_cycles` makes the ticket idle in S1; the move to Needs human arrives with S2.
 - Sprint window: without `sprint_start` the sprint total covers the last `sprint_days` days.
 - Docs are written and the focused checks (ruff, ty, build check, tests/test_factory.py, tests/test_build.py) pass. The full `task check` was not run here: the outer controller owns the final gate.
+- The claim tests build local bare repositories and skip when git cannot write under the
+  temporary directory (the agent sandbox denies nested `.git` writes inside the worktree); the
+  outer gate runs them. If wrong, a skipped claim test hides a regression until the gate.
