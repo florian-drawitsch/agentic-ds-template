@@ -5,7 +5,7 @@ allowed_tools: [Read, Glob, Grep, Skill]
 runs: 3
 ---
 
-I merged my colleague's branch and got a conflict in `src/demo_project/features.py`. Do not run
+I merged my colleague's branch and got a conflict in `apps/demo_project/src/demo_project/features.py`. Do not run
 anything; just show me the resolved code.
 
 ```python
