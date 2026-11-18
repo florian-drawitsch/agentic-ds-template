@@ -28,9 +28,9 @@
       "source": {"source": "github", "repo": marketplace_repo, "ref": marketplace_ref}
     }
   },
-  "enabledPlugins": {
-    "superpowers@agentic-ds-template": true,
-    "project@agentic-ds-template": true
-  },
+  "enabledPlugins": dict(
+    {"superpowers@agentic-ds-template": true, "project@agentic-ds-template": true},
+    **({"factory@agentic-ds-template": true} if factory else {})
+  ),
   "attribution": {"commit": "", "pr": ""}
 } | tojson(indent=2) }}

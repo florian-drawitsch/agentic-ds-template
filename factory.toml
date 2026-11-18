@@ -1,0 +1,30 @@
+# Ticket factory for developing this repository (ADR-0033). `task factory:init` creates the
+# labels and the board and records the board URL here.
+
+# Check runs that must pass before a PR counts as verified: the CI job.
+required_checks = ["Build check, lint, types, tests and manifests"]
+
+# Pull requests touching these paths always go to a human: agent instructions and settings,
+# the delivery guard and the factory itself, decisions, the catalog and CI.
+protected_paths = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "factory.toml",
+  ".claude/",
+  ".codex/",
+  ".claude-plugin/",
+  ".agents/",
+  "scripts/agent/",
+  "plugins/factory/",
+  "plugins/project/skills/deliver/",
+  "plugins/project/skills/cross-review/",
+  "catalog.toml",
+  "docs/adr/",
+  ".github/",
+]
+
+[deliver]
+# The implementer; the verifier is always the other vendor.
+harness = "claude"
+reviewer = "codex"
+max_cost = 10.0

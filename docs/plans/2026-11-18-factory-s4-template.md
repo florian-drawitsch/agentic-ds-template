@@ -21,7 +21,15 @@ ADR-0033 (a human decision), a hosted GitHub App.
 
 ## Implementation sequence
 
-- [ ] **Copier question.** Add `factory` (bool, default false) to the Agents group in
+Done early, on the branch `feat/factory-init`, so that projects can set up labels and the
+board at copy time: the Copier question (with a validator instead of only `when`), the
+rendered `factory.toml`, `taskfiles/factory.yml` with `init`, `status`, `tick` and `sync`, the
+script copy, plugin enablement, the guide, the wiring tests and the pairwise matrix. `copier
+copy` and `task setup` run `factory.py init --skip-unavailable`. Left for this stage: the
+workflow, the `loop` and `report` tasks, and the guide's sections on tokens, secrets and
+branch protection.
+
+- [x] **Copier question.** Add `factory` (bool, default false) to the Agents group in
   `copier.yml`, with `when` true only for `ci == 'github'` and both harnesses selected. Help
   text names the cost and the GitHub App or token it needs. Exclude the factory files below
   when it is false. Tests in `tests/template/test_render.py`: question hidden without GitHub CI
@@ -47,11 +55,11 @@ ADR-0033 (a human decision), a hosted GitHub App.
   `--max-wait` sized so a run finishes inside one job. Tests: YAML parses, every `uses:` has
   a 40-character SHA, no `pull_request_target`, no issue text interpolated into `run:`,
   and the rendered project's zizmor hook passes on it in the e2e run.
-- [ ] **Agent wiring tests.** In `tests/template/test_agent_wiring.py`: the factory project
+- [x] **Agent wiring tests.** In `tests/template/test_agent_wiring.py`: the factory project
   copy resolves locally, `factory.toml` parses with the controller's `load_config`, the
   workflow's tasks exist in the rendered Taskfile, and `.worktreeinclude` still excludes
   credentials.
-- [ ] **Pairwise matrix.** Add `factory` to the pairwise parameters in
+- [x] **Pairwise matrix.** Add `factory` to the pairwise parameters in
   `tests/template/test_e2e.py` so at least one rendered project runs `task check` with it on.
 - [ ] **Docs.**
   - `template/docs/guides/factory.md` (rendered only when true): setup steps (labels, token,

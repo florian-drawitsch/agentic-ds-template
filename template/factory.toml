@@ -1,0 +1,34 @@
+# Ticket factory controller (ADR-0033 of agentic-ds-template). Omitted keys use the defaults
+# shown in comments. Changes to this file always need a human merge (protected path).
+
+# GitHub project board that mirrors the label states. `task factory:init` creates one and
+# writes its URL here.
+# project = "https://github.com/users/<owner>/projects/<number>"
+
+# Work in progress: issues being implemented at once, and verified PRs waiting for a merge.
+# max_in_progress = 1
+# max_verified = 3
+# max_repair_cycles = 2
+# review_wait_minutes = 30
+
+# Spend caps in USD per UTC day and per sprint.
+# daily_cap_usd = 20.0
+# sprint_cap_usd = 100.0
+# sprint_start = 2026-01-05
+# sprint_days = 14
+
+# Check runs that must pass before a PR counts as verified: the CI job.
+required_checks = ["Lint, types, contracts, tests and docs"]
+
+# Pull requests touching these paths always go to a human.
+# protected_paths = ["AGENTS.md", "CLAUDE.md", "factory.toml", "deliver.toml", ".claude/",
+#                    ".codex/", "scripts/agent/", ".github/", "infra/"]
+
+# Bots allowed to release tickets with `factory:ready`.
+# trusted_bots = []
+
+[deliver]
+# The implementer; the verifier is always the other vendor.
+harness = "claude"
+reviewer = "codex"
+max_cost = 10.0

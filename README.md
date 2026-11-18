@@ -20,6 +20,17 @@ A [Copier](https://copier.readthedocs.io) template for data science and ML proje
 agents build with you. One command gives you a working, tested baseline pipeline, a strict
 quality gate, and Claude Code and Codex set up to turn a written plan into a verified pull request.
 
+With the optional **ticket factory** (in development), the project runs as a dark software
+factory, one where no person drives each step: you write GitHub issues and release them with
+a label, agents triage, implement and verify them, and a project board shows each ticket
+moving to a verified pull request that you merge.
+[How the factory works](#ticket-factory-from-issue-to-pull-request).
+
+- **Ticket factory:** issues labeled `factory:ready` move through a GitHub project board via
+  triage, implementation and cross-vendor verification to a pull request you merge. Labels and
+  board set themselves up when the project is copied. In development.
+- **Plan delivery:** `task deliver` runs a plan unattended under a completion guard, gets a
+  cross-vendor review and opens a PR, within cost budgets.
 - **Three architectures:** simple modules, Kedro-style pipeline graphs, or hexagonal layers, each
   enforced by import contracts.
 - **A virtual uv workspace:** apps under `apps/`, shared libraries under `packages/`,
@@ -27,8 +38,6 @@ quality gate, and Claude Code and Codex set up to turn a written plan into a ver
 - **Modern tooling:** uv, Task, Ruff, ty, import-linter, prek, pytest, Sphinx, all behind one
   `task check`.
 - **Agents with guardrails:** hooks, permissions and sandboxing shared by Claude Code and Codex.
-- **Plan delivery:** `task deliver` runs a plan unattended under a completion guard, gets a
-  cross-vendor review and opens a PR, within cost budgets.
 - **Production path:** MLflow tracking, FastAPI, Streamlit, Docker and Azure via Pulumi, all
   optional.
 - **Updatable:** pull later template versions without touching your code.
@@ -74,6 +83,84 @@ Every feature is listed in the [feature index](docs/features.md).
 5. **Open the project in Claude Code or Codex** and trust it. Hooks, permissions and the pinned
    plugin marketplace load automatically. Fill `docs/context/` so agents know the problem and
    the data.
+
+6. **Optionally run the ticket factory:** answer `factory=yes` in step 2, push the project to
+   GitHub and run `task factory:init`. See [Ticket factory](#ticket-factory-from-issue-to-pull-request).
+
+## Ticket factory: from issue to pull request
+
+> In development (ADR-0033). Labels, the board, status and the dispatch decision work today.
+> Triage, implementation and verification by agents arrive in the next stages.
+
+The factory turns GitHub issues into verified pull requests without a person driving each
+step. Issue labels hold the state, and a GitHub project board shows it. A deterministic
+controller, not a model, picks the next action. A human still merges every pull request.
+
+```mermaid
+---
+config:
+  themeCSS: >-
+    .row-rect-odd path, .row-rect-even path, marker circle { fill: none !important; }
+    .edgePaths path, .flowchart-link, .relation, .transition, .relationshipLine, marker path, marker circle { stroke: #868e96 !important; }
+    circle.state-start, circle.state-end { fill: #868e96 !important; stroke: #868e96 !important; }
+    rect.actor, rect.note, rect[class^=activation], polygon.labelBox { fill: none !important; stroke: #868e96 !important; }
+    line[class^=actor-line], line.loopLine, line[class^=messageLine], path[class^=messageLine] { stroke: #868e96 !important; }
+    text.actor, text.actor tspan, .messageText, .noteText, .noteText tspan, .labelText, .labelText tspan, .loopText, .loopText tspan, text.text { fill: #868e96 !important; }
+---
+flowchart LR
+  classDef default fill:none,stroke:#868e96,stroke-width:1px,color:#868e96
+  classDef blue fill:none,stroke:#2f81f7,stroke-width:2px,color:#2f81f7
+  classDef red fill:none,stroke:#e5534b,stroke-width:2px,color:#e5534b
+  linkStyle default stroke:#868e96
+
+  issue([Issue]) -->|maintainer labels| ready[Ready]
+  ready --> triage[triage]:::blue
+  triage -->|unclear| info[Needs info]:::red
+  info --> ready
+  triage --> accepted[Accepted]
+  accepted --> deliver[deliver]:::blue
+  deliver --> verify[independent verification]:::blue
+  verify --> verified[Verified]
+  verify -->|stuck or protected path| human[Needs human]:::red
+  verified --> merge([human merge])
+```
+
+Blue steps run unattended. Red columns wait for a person.
+
+**Set it up in a generated project:**
+
+1. Answer `factory=yes` when copying. The question appears with GitHub CI and both agent
+   harnesses, because the verifier must be the other vendor.
+2. Allow `gh` to manage projects, once per machine:
+
+   ```bash
+   gh auth refresh -s project
+   ```
+
+3. Push the project to GitHub, then create the labels and the board:
+
+   ```bash
+   task factory:init
+   ```
+
+   `init` creates the seven `factory:*` labels and a board named `<repository> factory` with
+   one Status column per state, links it to the repository and writes its URL to
+   `factory.toml`. Commit that change. `copier copy` and `task setup` run the same step and
+   skip it with a note while the repository, the scope or write access is missing, so copying
+   into a clone of an existing GitHub repository sets everything up at once.
+
+**Work with it:**
+
+1. Write an issue with a clear goal and acceptance criteria.
+2. Add the label `factory:ready`. Only labels set by users with write access count.
+3. `task factory:status` shows the issues per state, spend against the caps and the next
+   action. `task factory:tick` prints that action without changing anything.
+4. `task factory:sync` mirrors manual label changes into the board.
+
+`factory.toml` limits the work: one issue in progress, at most three verified pull requests
+waiting for a merge, USD 20 per day and USD 100 per sprint. Pull requests that touch protected
+paths, such as agent settings, CI or `factory.toml`, always go to a human. The generated
+`docs/guides/factory.md` describes every label and board column.
 
 ## Build features with agents
 
@@ -168,6 +255,7 @@ The most important questions:
 | `tracking` | MLflow with a local SQLite store, none |
 | `infrastructure` | none, Azure with Pulumi |
 | `agent_harnesses` | Claude Code and Codex, either one, none |
+| `factory` | no, yes: the ticket factory; needs GitHub CI and both harnesses |
 
 Optional context questions seed `docs/context/` and AGENTS.md. All questions are in the
 [feature index](docs/features.md#copier-questions).
@@ -212,6 +300,7 @@ The generated development guide explains how to add another app.
 | `task docs:serve` | Live documentation |
 | `task deliver` | Deliver a committed plan as a PR |
 | `task deliver:status` | Delivery runs, tokens and cost |
+| `task factory:status` | Ticket factory issues per state, spend and next action |
 | `task update-template` | Pull the latest template version |
 
 The [feature index](docs/features.md#tasks) lists every task, including Docker and Azure.
@@ -275,6 +364,10 @@ task check
 - `task test-e2e` renders a pairwise set of projects and runs each one's `task check`.
 - `task dev` registers this working copy as a local marketplace in Claude Code and Codex.
 - `task eval` scores the skills against a no-plugin baseline. It spends model tokens.
+- `task factory:init` sets up the ticket factory for this repository: labels, the board and its
+  URL in the root `factory.toml`. `task factory:status` and `task factory:tick` work as in
+  generated projects. The root `factory.toml` also protects the delivery guard, the factory
+  itself, ADRs and the catalog, so changes there always go to a human.
 
 Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
 

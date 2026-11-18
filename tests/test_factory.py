@@ -29,7 +29,7 @@ def test_help_lists_subcommands():
     out = subprocess.run(
         ["uv", "run", "--script", str(SCRIPT), "--help"], capture_output=True, text=True, check=True
     ).stdout
-    for name in ("status", "tick", "labels"):
+    for name in ("status", "tick", "labels", "init", "sync"):
         assert name in out
 
 
@@ -671,3 +671,165 @@ def test_configured_controller_avoids_user_endpoint(tmp_path):
     gh.add_comment(1, cost_comment(4.0, NOW)["body"], login="factory-app[bot]")
     snap = factory.snapshot(gh, config)
     assert factory.spend(snap, NOW, config).day == 4.0
+
+
+# --- board ---
+
+COLUMNS = [name for name, _, _, _ in factory.BOARD_COLUMNS]
+
+
+def board_gh():
+    gh = FakeGitHub()
+    gh.error_type = factory.GhError
+    return gh
+
+
+def test_init_creates_labels_board_and_records_it(tmp_path, capsys):
+    gh = board_gh()
+    gh.add_issue(1, ["factory:ready"])
+    gh.add_issue(2, ["factory:in-review"])
+    gh.add_issue(3, ["factory:verified"], state="closed")
+    gh.add_issue(4, ["bug"])
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    assert set(gh.created) == {s.value for s in State}
+    board = gh.boards["acme"][0]
+    assert board["title"] == "widgets factory"
+    assert gh.links == [("acme", board["number"], "acme/widgets")]
+    assert [o["name"] for o in gh.option_updates[0]] == COLUMNS
+    assert {o["color"] for o in gh.option_updates[0]} <= {
+        "GRAY", "BLUE", "GREEN", "YELLOW", "ORANGE", "RED", "PINK", "PURPLE"
+    }  # fmt: skip
+    assert factory.load_config(tmp_path).project == board["url"]
+    url = "https://github.com/acme/widgets/issues/{}"
+    assert gh.item_values == {
+        gh.items[url.format(1)]: "O-Ready",
+        gh.items[url.format(2)]: "O-In review",
+    }
+    assert "created" in capsys.readouterr().out
+
+
+def test_init_is_idempotent(tmp_path):
+    gh = board_gh()
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    first = (tmp_path / "factory.toml").read_text()
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    assert len(gh.boards["acme"]) == 1
+    assert len(gh.option_updates) == 1
+    assert len(gh.links) == 1
+    assert (tmp_path / "factory.toml").read_text() == first
+
+
+def test_init_reuses_a_board_found_by_title_before_the_url_was_saved(tmp_path):
+    gh = board_gh()
+    gh.add_board("acme", 7, "widgets factory", COLUMNS)
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    assert gh.option_updates == []
+    assert gh.links == []
+    assert factory.load_config(tmp_path).project.endswith("/projects/7")
+
+
+def test_init_never_rewrites_an_arranged_board(tmp_path, capsys):
+    gh = board_gh()
+    gh.add_board("acme", 3, "Roadmap", ["Backlog", "Doing", "Done"])
+    (tmp_path / "factory.toml").write_text('project = "https://github.com/users/acme/projects/3"\n')
+    assert run_main(["init"], gh, root=tmp_path) == 1
+    assert gh.option_updates == []
+    assert "lacks the columns" in capsys.readouterr().err
+
+
+def test_init_skips_without_a_github_repository(tmp_path, capsys):
+    gh = board_gh()
+    gh.repo_error = "none of the git remotes configured for this repository point to GitHub"
+    assert run_main(["init", "--skip-unavailable"], gh, root=tmp_path) == 0
+    assert gh.created == []
+    assert "skipped" in capsys.readouterr().err
+    assert run_main(["init"], gh, root=tmp_path) == 1
+    assert not (tmp_path / "factory.toml").exists()
+
+
+def test_init_names_the_missing_project_scope(tmp_path, capsys):
+    gh = board_gh()
+    gh.project_error = "your authentication token is missing required scopes [read:project]"
+    assert run_main(["init", "--skip-unavailable"], gh, root=tmp_path) == 0
+    assert set(gh.created) == {s.value for s in State}
+    assert "gh auth refresh -s project" in capsys.readouterr().err
+
+
+def test_init_without_board_creates_labels_only(tmp_path):
+    gh = board_gh()
+    assert run_main(["init", "--no-board"], gh, root=tmp_path) == 0
+    assert gh.boards == {}
+    assert len(gh.created) == len(State)
+
+
+def test_sync_mirrors_open_issues_and_skips_conflicts(tmp_path):
+    gh = board_gh()
+    run_main(["init"], gh, root=tmp_path)
+    gh.add_issue(5, ["factory:needs-human"])
+    gh.add_issue(6, ["factory:ready", "factory:accepted"])
+    assert run_main(["sync"], gh, root=tmp_path) == 0
+    item = gh.items["https://github.com/acme/widgets/issues/5"]
+    assert gh.item_values[item] == "O-Needs human"
+    assert "https://github.com/acme/widgets/issues/6" not in gh.items
+
+
+def test_sync_without_board_fails(tmp_path, capsys):
+    assert run_main(["sync"], board_gh(), root=tmp_path) == 1
+    assert "run init first" in capsys.readouterr().err
+
+
+def test_every_state_has_a_board_column():
+    assert set(factory.COLUMN_OF) == set(State)
+    assert COLUMNS[-1] == "Done"
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("", 'project = "U"\n'),
+        ("max_verified = 2\n", 'max_verified = 2\nproject = "U"\n'),
+        ('project = "old"\nmax_verified = 2\n', 'project = "U"\nmax_verified = 2\n'),
+        ("max_verified = 2\n\n[deliver]\nharness = \"claude\"\n",
+         "max_verified = 2\n\nproject = \"U\"\n\n[deliver]\nharness = \"claude\"\n"),
+        ('# project = "x"\n[deliver]\n', '# project = "x"\nproject = "U"\n\n[deliver]\n'),
+    ],
+)  # fmt: skip
+def test_write_project_sets_only_the_top_level_key(tmp_path, before, after):
+    if before:
+        (tmp_path / "factory.toml").write_text(before)
+    factory.write_project(tmp_path, "U")
+    assert (tmp_path / "factory.toml").read_text() == after
+
+
+def test_project_calls_pass_values_as_arguments():
+    created = json.dumps({"id": "P1", "number": 4, "title": "t", "url": "u"})
+    gh = RecordingGitHub([created, ""])
+    gh.create_project("acme", "x; rm -rf /")
+    gh.link_project("acme", 4, "acme/widgets")
+    assert gh.calls[0][0][-3:] == ["x; rm -rf /", "--format", "json"]
+    assert gh.calls[1][0] == ["project", "link", "4", "--owner", "acme", "--repo", "acme/widgets"]
+
+
+def test_field_options_go_through_graphql_input():
+    gh = RecordingGitHub(["{}"])
+    gh.set_field_options("F1", [{"name": "Ready", "color": "BLUE", "description": "d"}])
+    args, sent = gh.calls[0]
+    assert args == ["api", "graphql", "--input", "-"]
+    body = json.loads(sent)
+    assert "updateProjectV2Field" in body["query"]
+    assert body["variables"] == {
+        "field": "F1",
+        "options": [{"name": "Ready", "color": "BLUE", "description": "d"}],
+    }
+
+
+def test_init_skip_also_covers_refused_writes(tmp_path, capsys):
+    class ReadOnly(FakeGitHub):
+        def create_label(self, name, color, description):
+            raise factory.GhError("HTTP 403: Resource not accessible by integration")
+
+    gh = ReadOnly()
+    gh.error_type = factory.GhError
+    assert run_main(["init", "--skip-unavailable"], gh, root=tmp_path) == 0
+    assert "403" in capsys.readouterr().err
+    assert run_main(["init"], gh, root=tmp_path) == 1

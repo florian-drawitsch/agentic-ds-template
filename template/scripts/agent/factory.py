@@ -1,0 +1,1 @@
+../../../plugins/factory/skills/factory/scripts/factory.py

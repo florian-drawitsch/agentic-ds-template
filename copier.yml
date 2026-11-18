@@ -38,6 +38,10 @@ _exclude:
   - "{% if infrastructure != 'azure' %}taskfiles/infra.yml{% endif %}"
   - "{% if infrastructure != 'azure' %}docs/guides/deployment.md{% endif %}"
   - "{% if infrastructure != 'azure' or ci != 'github' %}.github/workflows/deploy.yml{% endif %}"
+  - "{% if not factory %}factory.toml{% endif %}"
+  - "{% if not factory %}taskfiles/factory.yml{% endif %}"
+  - "{% if not factory %}scripts/agent/factory.py{% endif %}"
+  - "{% if not factory %}docs/guides/factory.md{% endif %}"
 
 _tasks:
   - command: git init --quiet --initial-branch=main
@@ -45,6 +49,10 @@ _tasks:
   - command: uv lock --quiet
   - command: uv lock --quiet --directory infra
     when: "{{ infrastructure == 'azure' }}"
+  # Labels and board for the ticket factory. Skips with a note until the GitHub repository
+  # exists and gh has the project scope; `task setup` and `task factory:init` retry.
+  - command: uv run --script scripts/agent/factory.py init --skip-unavailable
+    when: "{{ factory }}"
 
 _message_after_copy: |
   Created {{ project_name }}. Next steps:
@@ -57,6 +65,11 @@ _message_after_copy: |
 
   Then open the project in Claude Code or Codex and trust it, so the hooks and the
   {{ marketplace_repo }} marketplace load. Fill docs/context/ before the first plan.
+  {%- if factory %}
+
+  Ticket factory: after pushing to GitHub, run `gh auth refresh -s project` once, then
+  `task factory:init` creates the labels and the board. See docs/guides/factory.md.
+  {%- endif %}
 
 # --- Identity ---------------------------------------------------------------------------------
 
@@ -221,6 +234,18 @@ marketplace_ref:
   help: Marketplace release tag to pin
   default: v0.1.0
   when: "{{ agent_harnesses | length > 0 }}"
+
+factory:
+  type: bool
+  help: >-
+    Add the ticket factory (ADR-0033, in development): labeled GitHub issues move through a
+    project board to verified pull requests. Needs gh with the project scope; spends model tokens
+  default: false
+  when: "{{ ci == 'github' and 'claude' in agent_harnesses and 'codex' in agent_harnesses }}"
+  validator: >-
+    {% if factory and not (ci == 'github' and 'claude' in agent_harnesses
+    and 'codex' in agent_harnesses) %}The factory needs GitHub CI and both agent harnesses:
+    the verifier must be the other vendor{% endif %}
 
 # --- Optional context (leave empty to fill later) ---------------------------------------------
 

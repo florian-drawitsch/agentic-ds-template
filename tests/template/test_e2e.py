@@ -23,8 +23,18 @@ PARAMETERS: dict[str, list[Any]] = {
     "agent_harnesses": [["claude", "codex"], ["codex"], []],
     "ci": ["github", "none"],
     "infrastructure": ["none", "azure"],
+    "factory": [False, True],
 }
-COMBINATIONS = pairwise(PARAMETERS)
+# The factory needs GitHub CI and both harnesses; elsewhere Copier rejects it.
+COMBINATIONS = [
+    answers
+    | {
+        "factory": answers["factory"]
+        and answers["ci"] == "github"
+        and answers["agent_harnesses"] == ["claude", "codex"]
+    }
+    for answers in pairwise(PARAMETERS)
+]
 
 
 def run(command: list[str], cwd: Path) -> None:
