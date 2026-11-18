@@ -7,6 +7,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -848,6 +849,20 @@ def test_discovery_across_worktrees_and_completed_prerequisite(delivery_repo: Pa
     assert deliver.prerequisite_branches(root, "docs/plans/phase2.md") == ["codex/deliver/phase1"]
 
 
+def test_run_discovery_skips_stale_worktree_directory(delivery_repo: Path) -> None:
+    linked = delivery_repo.parent / "stale worktree"
+    subprocess.run(
+        ["git", "worktree", "add", "-q", "--detach", str(linked)], cwd=delivery_repo, check=True
+    )
+    (linked / ".git").unlink()
+    deliver.Run("available", "plan.md", "exit 0").save(delivery_repo)
+
+    assert [(path, run.token) for path, run in deliver.worktree_runs(delivery_repo)] == [
+        (delivery_repo, "available")
+    ]
+    assert linked.is_dir()
+
+
 def test_status_across_worktrees_includes_completed_runs(
     delivery_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1170,6 +1185,34 @@ def test_codex_profile_and_legacy_network_fallback(
     )
     assert "--profile" not in command
     assert "sandbox_workspace_write.network_access=false" in command
+
+
+def test_codex_permission_overrides_keep_dotted_keys_and_project_rules(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(deliver, "cli_version", lambda _: "0.163.0")
+    (delivery_repo / ".codex").mkdir()
+    (delivery_repo / ".codex/config.toml").write_text(
+        '[permissions.deliver.filesystem.":workspace_roots"]\n"**/*.env" = "deny"\n'
+    )
+    command = deliver.agent_command(
+        "codex",
+        "Implement",
+        None,
+        True,
+        None,
+        "acceptEdits",
+        writable=["/tmp/project.with.dots/.git"],
+        root=delivery_repo,
+    )
+    # Codex splits override keys on dots, so only table names may stand left of `=`.
+    overrides = [command[i + 1] for i, part in enumerate(command) if part == "-c"]
+    assert all('"' not in item.split("=", 1)[0] for item in overrides)
+    config = tomllib.loads("\n".join(overrides))["permissions"]["deliver"]
+    assert config["workspace_roots"]["/tmp/project.with.dots/.git"] is True
+    assert config["network"]["domains"]["pypi.org"] == "allow"
+    assert config["filesystem"][str(Path.home() / ".ssh")] == "deny"
+    assert config["filesystem"][":workspace_roots"]["**/*.env"] == "deny"
 
 
 def test_outer_gate_receives_scrubbed_environment(

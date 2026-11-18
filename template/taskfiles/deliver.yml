@@ -27,6 +27,19 @@ tasks:
     cmds:
       - uv run --script scripts/agent/deliver.py resume {{.CLI_ARGS}}
 
+  fix-pr:
+    interactive: true
+    desc: Repair one cycle of unresolved Codex review findings on an existing PR
+    summary: |
+      Pass the PR number first, for example `task deliver:fix-pr -- 12`. `--preview` only reads.
+      A run authorizes a fast-forward push, one reply per finding, resolving fixed threads and
+      one Codex review request on that PR. `--no-resolve` and `--no-rereview` turn those off.
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - >-
+        uv run --script scripts/agent/deliver.py fix-pr --check "task check"
+        --setup "task deliver:setup" --pr {{.CLI_ARGS}}
+
   status:
     desc: Show the repository state and the delivery runs (`-- --all-worktrees` for every worktree)
     dir: '{{.ROOT_DIR}}'

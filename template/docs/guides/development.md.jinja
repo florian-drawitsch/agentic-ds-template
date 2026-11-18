@@ -23,6 +23,8 @@ a `feat/<topic>` branch. It pushes the branch and opens a GitHub PR after `task 
 review passed. It never merges and never requests human reviewers.
 
 - `task deliver:resume`: continue a saved run, also after a usage limit or a closed terminal.
+- `task deliver:fix-pr -- <number>`: fix the open Codex review findings on a PR in one cycle;
+  `-- <number> --preview` lists them without changing anything.
 - `task deliver:status -- --all-worktrees`: runs, token usage and estimated cost.
 - `deliver.toml`: extra network hosts for headless rounds, each with its reason.
 - Defaults: USD 2 and 150 turns per round, USD 10 per run. Pass `-- --max-cost <usd>` to change.

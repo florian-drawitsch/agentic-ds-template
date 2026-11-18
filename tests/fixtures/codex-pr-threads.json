@@ -1,0 +1,191 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "nodes": [
+            {
+              "id": "T-open",
+              "path": "example.py",
+              "line": 7,
+              "isResolved": false,
+              "isOutdated": false,
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": null
+                },
+                "nodes": [
+                  {
+                    "id": "C-root",
+                    "databaseId": 41,
+                    "url": "https://example.test/review/41",
+                    "author": {
+                      "login": "chatgpt-codex-connector[bot]",
+                      "__typename": "Bot"
+                    },
+                    "body": "<!-- codex-code-review-finding:v1 -->\n**P1 Handle an empty sequence**\nSynthetic finding."
+                  },
+                  {
+                    "id": "C-human",
+                    "databaseId": 42,
+                    "url": "https://example.test/review/42",
+                    "author": {
+                      "login": "maintainer",
+                      "__typename": "User"
+                    },
+                    "body": "Synthetic context."
+                  }
+                ]
+              }
+            },
+            {
+              "id": "T-resolved",
+              "path": "example.py",
+              "line": 7,
+              "isResolved": true,
+              "isOutdated": false,
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": null
+                },
+                "nodes": [
+                  {
+                    "id": "C-root",
+                    "databaseId": 41,
+                    "url": "https://example.test/review/41",
+                    "author": {
+                      "login": "chatgpt-codex-connector[bot]",
+                      "__typename": "Bot"
+                    },
+                    "body": "<!-- codex-code-review-finding:v1 -->\n**P1 Handle an empty sequence**\nSynthetic finding."
+                  },
+                  {
+                    "id": "C-human",
+                    "databaseId": 42,
+                    "url": "https://example.test/review/42",
+                    "author": {
+                      "login": "maintainer",
+                      "__typename": "User"
+                    },
+                    "body": "Synthetic context."
+                  }
+                ]
+              }
+            },
+            {
+              "id": "T-human",
+              "path": "example.py",
+              "line": 7,
+              "isResolved": false,
+              "isOutdated": false,
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": null
+                },
+                "nodes": [
+                  {
+                    "id": "C-root",
+                    "databaseId": 41,
+                    "url": "https://example.test/review/41",
+                    "author": {
+                      "login": "human",
+                      "__typename": "User"
+                    },
+                    "body": "<!-- codex-code-review-finding:v1 -->\n**P1 Handle an empty sequence**\nSynthetic finding."
+                  },
+                  {
+                    "id": "C-human",
+                    "databaseId": 42,
+                    "url": "https://example.test/review/42",
+                    "author": {
+                      "login": "maintainer",
+                      "__typename": "User"
+                    },
+                    "body": "Synthetic context."
+                  }
+                ]
+              }
+            },
+            {
+              "id": "T-unmarked",
+              "path": "example.py",
+              "line": 7,
+              "isResolved": false,
+              "isOutdated": false,
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": null
+                },
+                "nodes": [
+                  {
+                    "id": "C-root",
+                    "databaseId": 41,
+                    "url": "https://example.test/review/41",
+                    "author": {
+                      "login": "chatgpt-codex-connector[bot]",
+                      "__typename": "Bot"
+                    },
+                    "body": "**P2 Generic bot comment**"
+                  },
+                  {
+                    "id": "C-human",
+                    "databaseId": 42,
+                    "url": "https://example.test/review/42",
+                    "author": {
+                      "login": "maintainer",
+                      "__typename": "User"
+                    },
+                    "body": "Synthetic context."
+                  }
+                ]
+              }
+            },
+            {
+              "id": "T-outdated",
+              "path": "example.py",
+              "line": 7,
+              "isResolved": false,
+              "isOutdated": true,
+              "comments": {
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": null
+                },
+                "nodes": [
+                  {
+                    "id": "C-root",
+                    "databaseId": 41,
+                    "url": "https://example.test/review/41",
+                    "author": {
+                      "login": "chatgpt-codex-connector[bot]",
+                      "__typename": "Bot"
+                    },
+                    "body": "<!-- codex-code-review-finding:v1 -->\n**P1 Handle an empty sequence**\nSynthetic finding."
+                  },
+                  {
+                    "id": "C-human",
+                    "databaseId": 42,
+                    "url": "https://example.test/review/42",
+                    "author": {
+                      "login": "maintainer",
+                      "__typename": "User"
+                    },
+                    "body": "Synthetic context."
+                  }
+                ]
+              }
+            }
+          ],
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": null
+          }
+        }
+      }
+    }
+  }
+}
