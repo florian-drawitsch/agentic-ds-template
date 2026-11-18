@@ -15,7 +15,8 @@ unreleased changes in its [release notes](https://import-linter.readthedocs.io/e
 
 The hook selects `apps/*/pyproject.toml` and `packages/*/pyproject.toml` and runs
 `lint-imports --config <file>` once per file. It stops on the first failure. Unmatched globs
-are omitted. Each invocation runs with all workspace members installed.
+are omitted. Files without a `[tool.importlinter]` section are skipped, because import-linter
+fails on a configuration file without contracts and a new shared library often has none. Each invocation runs with all workspace members installed.
 
 ## Consequences
 
