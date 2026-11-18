@@ -68,6 +68,7 @@ def test_second_app_passes_workspace_gate(tmp_path: Path) -> None:
     (root / "data/01_raw/input.csv").write_text("step,x,target\n" + rows)
     run(["task", "check"], root)
     run(["task", "second_app:run"], root)
+    run(["task", "docs:build"], root)
 
 
 @pytest.mark.slow

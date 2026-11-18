@@ -52,7 +52,7 @@ host. uv installs Python and every other tool (ADR-0004).
 | File hygiene | Trailing whitespace, end of file, line endings, YAML, TOML, JSON, merge markers, large files, private keys |
 | ruff format, ruff check | Formatting and lint, with safe autofixes |
 | ty | Types |
-| import contracts | `lint-imports apps/*/pyproject.toml packages/*/pyproject.toml` |
+| import contracts | `lint-imports --config <member>/pyproject.toml` for every member (ADR-0032) |
 | workspace | Reject cross-app imports, dependencies and unregistered app directories |
 | uv-lock | `uv.lock` matches `pyproject.toml` |
 | nbstripout | Notebook outputs (with notebooks) |

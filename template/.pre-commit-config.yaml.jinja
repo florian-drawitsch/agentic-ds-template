@@ -55,7 +55,9 @@ repos:
 
       - id: import-linter
         name: import contracts
-        entry: bash -O nullglob -c 'uv run --all-packages lint-imports apps/*/pyproject.toml packages/*/pyproject.toml'
+        entry: >-
+          bash -O nullglob -c 'for config in apps/*/pyproject.toml packages/*/pyproject.toml;
+          do uv run --all-packages lint-imports --config "$config" || exit; done'
         language: system
         files: (^|/)(.*\.py|pyproject\.toml)$
         pass_filenames: false

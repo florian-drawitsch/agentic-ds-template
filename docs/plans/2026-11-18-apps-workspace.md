@@ -1,6 +1,6 @@
 # Apps workspace and fewer shape questions
 
-Status: Approved for implementation.
+Status: Implementation verified; final review, outer gate and publication pending.
 
 ## Goal and scope
 
@@ -77,7 +77,7 @@ Run focused tests with `uv run pytest tests/template/<file> -q`.
     where Copier's `_exclude` cannot see the rendered `package_name`. Verify with render tests.
   - Tests: render tests assert the workspace members, the app files and their absence at the
     root, for all three architectures and both config options.
-- [ ] **Split tasks, container and contracts by app.**
+- [x] **Split tasks, container and contracts by app.**
   - New `template/apps/{{ package_name }}/Taskfile.yml.jinja` with `run`, `sweep`,
     `pipeline-graph`, `api`, `dashboard` and, with a container, `docker:build` and `docker:run`.
     The root includes it under the name `{{ package_name }}` with `dir: .`, so commands run from
@@ -115,7 +115,7 @@ Run focused tests with `uv run pytest tests/template/<file> -q`.
     project-owned instead of `src/`, `tests/` and `conf/`.
   - Tests: update `tests/template/test_update.py` (project-owned paths survive an update) and
     `tests/template/test_hooks.py` to the new paths.
-- [ ] **Prove multi-app support end to end.**
+- [x] **Prove multi-app support end to end.**
   - `tests/template/test_e2e.py`: run `task {{ package_name }}:run` instead of `task run`.
   - New slow test: render the default answers, follow the "Add an app" procedure to create a
     second app from the first, then run `task setup`, `task check` and the second app's `run`.
@@ -154,28 +154,51 @@ External checks, not required and not authorized by this plan:
 - Root tool commands use `uv run --all-packages`; app commands use `uv run --package <app>`:
   every test and contract sees all members even after an app-specific sync. If wrong, setup
   installs more workspace packages than necessary.
-- `packages/README.md` preserves the empty shared-library directory: a two-app `uv lock`
-  accepts the placeholder. If wrong, locking fails before setup.
-- Directory-wide `git mv` was denied by the sandbox; individual tracked files were moved with
-  `git mv` instead. Empty old directories are untracked and absent from a clean checkout.
-- The sandbox denies `template/.env.example`, so normal Copier rendering cannot run here.
-  Focused render checks use a temporary source copy that omits that unchanged file and empty
-  untracked directories. These checks do not establish acceptance of the denied file.
+- `packages/README.md` preserves the shared-library directory: a two-app `uv lock` accepts
+  the placeholder. If wrong, locking fails before setup.
+- Directory-wide `git mv` was denied by the sandbox, so individual tracked files were moved
+  with `git mv`. Empty old directories are untracked and absent from a clean checkout.
+- Focused render checks use a temporary source copy omitting the sandbox-denied, unchanged
+  `template/.env.example` and empty untracked directories. This validates the implementation
+  without reading denied content. Acceptance of that unchanged file remains unverified.
+- Import-linter uses one `--config` invocation per member (ADR-0032): released version 2.16
+  rejects positional config files. This preserves all contracts without bypassing the
+  supply-chain cooldown; the cost is repeated graph construction.
 
 ## Verification evidence
 
-- Focused checks on a temporary source copy omitting the sandbox-denied, unchanged
-  `template/.env.example`: 66 render/workspace/hook/agent-wiring tests passed. After the
-  custom-name and optional-dependency additions, all 36 render/workspace tests passed.
-- The filtered-source `test_update_keeps_project_owned_files` passed, including both app
-  edits/deletions and a shared package surviving the update.
+All rendering evidence below uses the filtered source described above. Focused logs and the
+validation runner are preserved in the delivery run directory under `focused-checks/`.
+
+- 37 render/workspace tests passed after the tooling fixes. The exact default dependency-set
+  assertion also passed after tightening it. Earlier, all 66 render/workspace/hook/agent-wiring
+  tests passed before the three additional structural cases were added.
+- Copier update preservation passed, including app edits/deletions and a shared package.
+- The normal slow `second_app` and `forbidden_import` regression tests both passed, 15 other
+  slow cases deselected. The two-app test runs setup, the generated `task check`, the second
+  app's run command and the multi-app documentation build.
+- Independent runtime checks passed for pipeline/Hydra (17 tests, 94.20 % coverage) and
+  hexagonal/Python (9 tests, 93.10 % coverage), including each CLI, import contracts, Ruff, ty
+  and documentation build. The two-app simple/Hydra project passed 24 tests at 95.45 % coverage.
+- The generated two-app `task lint` passed using existing cached hooks. Its actual contract
+  hook rejected a planted forbidden import. Fresh hook downloads returned HTTP 403, but the
+  existing hook cache allowed the authorized focused acceptance checks to finish.
 - Ruff and ty passed for `tests/template/` and `template/scripts/check_workspace.py`.
-- `git diff --check` passed. The template path audit found no old root source/config paths
-  in agent wiring. `AGENTS.md` of this repository now describes the existing render tests.
-- A two-app `uv lock --offline` passed with the `packages/README.md` placeholder.
-- Pending: normal unfiltered rendering, generated-project execution for every architecture,
-  the two-app gate/run and the forbidden-import `task lint` test. Setup encountered an uncached
-  Polars wheel offline, a distribution-cache rename denial in the shared cache, then package
-  download/build delays and a setuptools fetch timeout using a temporary cache. These are
-  not passing acceptance results.
-- The repository-wide `task check` is reserved for the outer controller and was not run here.
+  `git diff --check` passed. The template path audit found no old root source/config paths
+  in agent wiring. This repository's AGENTS.md now describes its existing render tests.
+- The repository-wide `task check` remains reserved for the outer controller and was not run.
+
+## Pending delivery gates
+
+- The requested Opus cross-review command was launched once. It exited 1 because Claude's
+  subprocess hardening forces default permission mode and requires an explicit `allowedTools`
+  declaration. The current controller supplies `--tools`, not that declaration. No verdict or
+  findings were returned, and zero completed review passes were consumed. The final change
+  still requires review. The hardening was not disabled.
+- Publication staging was attempted through the current main-checkout controller. It refused:
+  `This run does not authorize PR publication; start it with --publish-pr`. The existing run
+  has `publish_pr=false`, despite this task's publication authorization. No replacement run
+  was started and no saved authorization state was edited. A prepared description is preserved
+  as `prepared-pr-description.md` in the run directory. No PR was created.
+- The final review, the outer broad gate and publication remain pending. The last plan item is
+  deliberately unticked.

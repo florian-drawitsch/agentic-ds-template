@@ -206,7 +206,7 @@ def test_options_select_files_and_dependencies(full: Path, default: Path) -> Non
     ]["dependencies"]
     assert {"pandas", "fastapi", "streamlit", "mlflow"} <= set(full_deps)
     assert "hydra-core" not in full_deps
-    assert {"hydra-core", "mlflow", "polars"} <= set(default_deps)
+    assert set(default_deps) == {"hydra-core", "mlflow", "polars"}
     assert (full / "apps/demo_project/conf/config.toml").is_file()
     assert not (full / "apps/demo_project/conf/config.yaml").exists()
     assert (default / "apps/demo_project/conf/config.yaml").is_file()
@@ -311,3 +311,15 @@ def test_custom_app_paths_and_optional_files(tmp_path: Path) -> None:
     assert "--package custom_app" in dockerfile
     assert "COPY apps ./apps" in dockerfile
     assert "apps/custom_app/Dockerfile" in (app / "Taskfile.yml").read_text()
+
+
+def test_workspace_tooling_covers_every_member(default: Path) -> None:
+    root = tomllib.loads((default / "pyproject.toml").read_text())
+    assert root["tool"]["ruff"]["src"] == ["apps/*/src", "packages/*/src"]
+    hooks = yaml.safe_load((default / ".pre-commit-config.yaml").read_text())
+    contract = next(
+        hook for repo in hooks["repos"] for hook in repo["hooks"] if hook["id"] == "import-linter"
+    )
+    assert 'lint-imports --config "$config"' in contract["entry"]
+    assert "apps/*/pyproject.toml packages/*/pyproject.toml" in contract["entry"]
+    assert "api/*/index" in (default / "docs/index.md").read_text()

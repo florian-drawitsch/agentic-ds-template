@@ -36,3 +36,4 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0029](0029-maintain-generated-projects-with-evaluated-skills.md) | Maintain generated projects with evaluated skills | 2026-10-31 |
 | [ADR-0030](0030-drop-use-case-and-maturity-questions.md) | Drop the use-case and maturity questions | 2026-11-18 |
 | [ADR-0031](0031-organize-projects-as-a-workspace-of-apps.md) | Organize generated projects as a uv workspace of apps | 2026-11-18 |
+| [ADR-0032](0032-run-workspace-contracts-with-released-import-linter.md) | Run workspace contracts with released import-linter | 2026-11-18 |

@@ -33,6 +33,7 @@ default-groups = "all"
 exclude-newer = "7 days"
 
 [tool.ruff]
+src = ["apps/*/src", "packages/*/src"]
 line-length = 100
 # Copied from the template's plugin and updated with it; do not reformat them here.
 extend-exclude = ["scripts/agent/deliver.py", "scripts/agent/cross_review.py", "scripts/agent/create_pr.py", "scripts/agent/pr_findings.py", "scripts/agent/check_mermaid.py"]

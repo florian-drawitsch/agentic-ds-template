@@ -1,6 +1,6 @@
 # ADR-0031: Organize generated projects as a uv workspace of apps
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0032
 - **Date:** 2026-11-18
 - **Amends:** ADR-0003, ADR-0005, ADR-0011, ADR-0022
 
