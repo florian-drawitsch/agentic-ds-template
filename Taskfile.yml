@@ -5,6 +5,9 @@ silent: true
 env:
   VIRTUAL_ENV: ''
 
+vars:
+  FACTORY: plugins/factory/skills/factory/scripts/factory.py
+
 tasks:
   setup:
     desc: Install the locked development environment
@@ -70,6 +73,28 @@ tasks:
       - task: lint
       - task: test
       - task: validate
+
+  factory:init:
+    desc: Create the factory labels and board for this repository and record the board (ADR-0033)
+    summary: |
+      Idempotent. Needs gh with the project scope (`gh auth refresh -s project`).
+    cmds:
+      - uv run --script {{.FACTORY}} init {{.CLI_ARGS}}
+
+  factory:status:
+    desc: Show factory issues per state, spend against the caps and the next action
+    cmds:
+      - uv run --script {{.FACTORY}} status {{.CLI_ARGS}}
+
+  factory:tick:
+    desc: Print the next factory action without changing anything
+    cmds:
+      - uv run --script {{.FACTORY}} tick --dry-run {{.CLI_ARGS}}
+
+  factory:sync:
+    desc: Mirror the label state of open factory issues into the board
+    cmds:
+      - uv run --script {{.FACTORY}} sync
 
   dev:
     desc: Register this working copy as the marketplace in both CLIs

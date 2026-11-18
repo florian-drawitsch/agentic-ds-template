@@ -50,7 +50,9 @@ The marketplace is curated (ADR-0016) and vendor-independent (ADR-0017):
     baseline (ADR-0029).
 - **`factory`** (proposed, ADR-0033): an opt-in plugin whose controller moves labeled GitHub
   issues through triage, `deliver`, independent verification and `fix-pr` to a verified PR
-  that a human merges.
+  that a human merges. `init` creates the labels and a project board that mirrors the states.
+  Generated projects opt in with the `factory` question; this repository uses it through
+  `task factory:*` and the root `factory.toml`.
   - S1 (in development): `plugins/factory/skills/factory/scripts/factory.py`, a stdlib-only
     controller with configuration, label states, admission, a GitHub snapshot, a pure dispatch
     function, the claim, protected paths and a spend ledger. It calls no model.
@@ -91,6 +93,7 @@ Questions appear in four groups. `when:` hides questions that do not apply.
 | --- | --- | --- |
 | `agent_harnesses` | multiselect | claude, codex |
 | `marketplace_ref` | str | latest tag |
+| `factory` | bool | no; asked only with `ci=github` and both harnesses (ADR-0033) |
 
 Every project enables `superpowers` and `project` (ADR-0013).
 
@@ -116,7 +119,7 @@ trust the project and fill `docs/context/` before the first plan.
 | --- | --- | --- |
 | Template | tool configs, Taskfile, CI, hooks, permissions, AGENTS.md rules, docs scaffolding | re-rendered on update, three-way merged with local edits |
 | Project | `README.md`, `apps/`, `packages/`, `notebooks/`, `docs/context/`, `docs/method/`, `docs/roadmap.md`, `docs/adr/0001` | rendered on copy, excluded on update (ADR-0022) |
-| Plugin | `scripts/agent/{deliver,cross_review,create_pr,pr_findings,check_mermaid}.py`, `scripts/agent/prices.toml`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022, ADR-0027, ADR-0028) |
+| Plugin | `scripts/agent/{deliver,cross_review,create_pr,pr_findings,check_mermaid,factory}.py`, `scripts/agent/prices.toml`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022, ADR-0027, ADR-0028) |
 
 Nested app AGENTS.md files belong to the project with the rest of `apps/`.
 

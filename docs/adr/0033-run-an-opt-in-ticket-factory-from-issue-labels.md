@@ -124,8 +124,13 @@ Blue states need a human action. Red states stop the factory for that ticket.
   does not start.
 - **Triggers.** A scheduled workflow, `workflow_dispatch` and `issues: labeled` run the tick in
   Actions. `task factory:loop` runs it locally on an interval. Board events are not used.
-- **Board.** When `factory.toml` names a project, the controller mirrors the label into the
-  board's Status field. Without one, labels are the only view.
+- **Board.** `factory.py init` creates the labels and a GitHub project named
+  `<repository> factory`, links it to the repository, gives its Status field one column per
+  state plus Done, and records its URL in `factory.toml`. It reuses a board found by URL or
+  title and never rewrites the columns of a board someone arranged. The controller mirrors
+  each label into the Status field (`factory.py sync`). Labels stay the source of truth.
+- **Setup.** In generated projects, `copier copy` and `task setup` run `init` and skip it with a
+  note while the GitHub repository, the `project` token scope or write access is missing.
 
 ### Planning and delivery
 
