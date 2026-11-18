@@ -1,6 +1,6 @@
 # Factory S1: deterministic controller core
 
-Status: Proposed; not approved for implementation.
+Status: Approved for implementation on 2026-11-18.
 
 ## Goal and scope
 
@@ -18,7 +18,7 @@ integration (S4).
   before acceptance. Accepting it stays a human decision after S4 and the live run.
 - ADR-0017 (both harnesses), ADR-0018 (one repository, one tag), ADR-0022 (project copies),
   ADR-0027 and ADR-0028 (the outer controller owns GitHub writes).
-- Approval: pending. Once the user approves this named plan, delivery may publish a pull
+- Approval: the user approved this named plan on 2026-11-18. Delivery may publish a pull
   request. It never merges.
 
 ## Implementation sequence
