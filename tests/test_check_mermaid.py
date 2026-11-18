@@ -145,7 +145,7 @@ def test_hook_never_blocks_the_agent_on_its_own_failure(
 
 
 def test_pipeline_graphs_of_the_template_follow_the_house_style(checker: ModuleType) -> None:
-    package = next((ROOT / "template/src").glob("*pipeline*"))
+    package = next((ROOT / "template/apps/{{ package_name }}/src").glob("*pipeline*"))
     graph = load_script(package / "pipelines/graph.py", "pipeline_graph")
     built = graph.pipeline(
         [

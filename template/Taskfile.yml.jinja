@@ -13,60 +13,42 @@ includes:
     taskfile: ./taskfiles/deliver.yml
     aliases: [agent]
 {%- endif %}
-{%- if container %}
-  docker: ./taskfiles/docker.yml
-{%- endif %}
+  {{ p }}:
+    taskfile: ./apps/{{ p }}/Taskfile.yml
+    dir: .
 {%- if infrastructure == 'azure' %}
   infra:
     taskfile: ./taskfiles/infra.yml
     vars:
       PROJECT: {{ project_name }}
       LOCATION: {{ azure_location }}
+      APP: {{ p }}
 {%- endif %}
 
 tasks:
   setup:
     desc: Install the environment and the git hooks
     cmds:
-      - uv sync --locked
-      - uv run prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
+      - uv sync --all-packages --locked
+      - uv run --all-packages prek install --install-hooks --hook-type pre-commit --hook-type commit-msg
 {%- if notebooks %}
-      - uv run python -m ipykernel install --sys-prefix --name {{ p }} --display-name {{ project_name }}
-{%- endif %}
-
-  run:
-    desc: Run the {{ 'pipelines (select with --pipeline)' if architecture == 'pipeline' else 'pipeline' }}{{ ', Hydra overrides after --' if config == 'hydra' else '' }}
-    cmds:
-      - uv run {{ p }} {{ '{{.CLI_ARGS}}' }}
-{%- if architecture == "pipeline" %}
-
-  pipeline-graph:
-    desc: Print the pipeline graph as a Mermaid diagram, e.g. `task pipeline-graph -- --pipeline training`
-    cmds:
-      - uv run {{ p }} --graph {{ '{{.CLI_ARGS}}' }}
-{%- endif %}
-{%- if config == "hydra" %}
-
-  sweep:
-    desc: Run every combination of comma-separated override values, e.g. `task sweep -- data.target=a,b`
-    cmds:
-      - uv run {{ p }} --multirun {{ '{{.CLI_ARGS}}' }}
+      - uv run --all-packages python -m ipykernel install --sys-prefix --name {{ p }} --display-name {{ project_name }}
 {%- endif %}
 
   test:
     desc: Run the test suite
     cmds:
-      - uv run pytest {{ '{{.CLI_ARGS}}' }}
+      - uv run --all-packages pytest {{ '{{.CLI_ARGS}}' }}
 
   test-fast:
-    desc: Run pytest without coverage, for focused checks while iterating, e.g. `task test-fast -- tests/unit`
+    desc: Run pytest without coverage, for focused checks while iterating, e.g. `task test-fast -- apps/{{ p }}/tests/unit`
     cmds:
-      - uv run pytest --no-cov -q {{ '{{.CLI_ARGS}}' }}
+      - uv run --all-packages pytest --no-cov -q {{ '{{.CLI_ARGS}}' }}
 
   lint:
     desc: Run every git hook on tracked and untracked files without staging them
     cmds:
-      - uv run python scripts/run_hooks.py
+      - uv run --all-packages python scripts/run_hooks.py
 
   check:
     desc: 'Merge gate: lint, types, import contracts and tests{{ ", including infrastructure tests" if infrastructure == "azure" else "" }}'
@@ -83,21 +65,7 @@ tasks:
     vars:
       PORT: '{{ '{{.PORT | default "5000"}}' }}'
     cmds:
-      - uv run mlflow ui --backend-store-uri sqlite:///data/09_tracking/mlflow.db --port {{ '{{.PORT}}' }}
-{%- endif %}
-{%- if "api" in interfaces %}
-
-  api:
-    desc: Serve the REST API with auto-reload
-    cmds:
-      - uv run uvicorn {{ p }}.{{ 'entrypoints.api' if hexagonal else 'api' }}:app --reload
-{%- endif %}
-{%- if "dashboard" in interfaces %}
-
-  dashboard:
-    desc: Run the dashboard
-    cmds:
-      - uv run streamlit run src/{{ p }}/{{ 'entrypoints/' if hexagonal else '' }}dashboard.py
+      - uv run --all-packages mlflow ui --backend-store-uri sqlite:///data/09_tracking/mlflow.db --port {{ '{{.PORT}}' }}
 {%- endif %}
 
   update-template:

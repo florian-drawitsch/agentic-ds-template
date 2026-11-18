@@ -18,9 +18,8 @@ _exclude:
   - .git
   - .DS_Store
   - "{% if _copier_operation == 'update' %}README.md{% endif %}"
-  - "{% if _copier_operation == 'update' %}src{% endif %}"
-  - "{% if _copier_operation == 'update' %}tests{% endif %}"
-  - "{% if _copier_operation == 'update' %}conf{% endif %}"
+  - "{% if _copier_operation == 'update' %}apps{% endif %}"
+  - "{% if _copier_operation == 'update' %}packages{% endif %}"
   - "{% if _copier_operation == 'update' %}notebooks{% endif %}"
   - "{% if _copier_operation == 'update' %}docs/context{% endif %}"
   - "{% if _copier_operation == 'update' %}docs/method{% endif %}"
@@ -33,12 +32,8 @@ _exclude:
   - "{% if not agent_harnesses %}deliver.toml{% endif %}"
   - "{% if ci != 'github' %}.github{% endif %}"
   - "{% if ci != 'github' %}renovate.json{% endif %}"
-  - "{% if not container %}Dockerfile{% endif %}"
   - "{% if not container %}.dockerignore{% endif %}"
-  - "{% if not container %}taskfiles/docker.yml{% endif %}"
   - "{% if not notebooks %}notebooks{% endif %}"
-  - "{% if config != 'hydra' %}conf/config.yaml{% endif %}"
-  - "{% if config != 'python' %}conf/config.toml{% endif %}"
   - "{% if infrastructure != 'azure' %}infra{% endif %}"
   - "{% if infrastructure != 'azure' %}taskfiles/infra.yml{% endif %}"
   - "{% if infrastructure != 'azure' %}docs/guides/deployment.md{% endif %}"
@@ -58,7 +53,7 @@ _message_after_copy: |
     task setup          # environment, hooks{% if notebooks %}, notebook kernel{% endif %}{% if agent_harnesses %}, agent plugins{% endif %}
     task check          # lint, architecture contracts and tests
 
-  Put the input data into data/01_raw/input.csv, then run the pipeline with `task run`.
+  Put the input data into data/01_raw/input.csv, then run the pipeline with `task {{ package_name }}:run`.
 
   Then open the project in Claude Code or Codex and trust it, so the hooks and the
   {{ marketplace_repo }} marketplace load. Fill docs/context/ before the first plan.
@@ -110,27 +105,6 @@ python_version:
 
 # --- Shape ------------------------------------------------------------------------------------
 
-use_case:
-  type: str
-  help: Main use case. Sets dependencies, domain rules for agents and the evaluation protocol
-  choices:
-    Forecasting: forecasting
-    Anomaly detection: anomaly_detection
-    Optimization and pricing: optimization
-    Computer vision: computer_vision
-    GenAI and LLM applications: genai
-    Tabular prediction: tabular
-    Exploratory analysis: analysis
-  default: forecasting
-
-maturity:
-  type: str
-  help: Maturity. Production enables a coverage gate and the pipeline architecture by default
-  choices:
-    Proof of concept: poc
-    Production: production
-  default: poc
-
 architecture:
   type: str
   help: Package architecture
@@ -138,7 +112,7 @@ architecture:
     Simple (flat modules, for analysis and proofs of concept): simple
     Pipeline (feature, training and inference pipelines over a data catalog): pipeline
     Hexagonal (domain, ports and adapters, for services with several integrations): hexagonal
-  default: "{{ 'pipeline' if maturity == 'production' else 'simple' }}"
+  default: simple
 
 interfaces:
   type: str

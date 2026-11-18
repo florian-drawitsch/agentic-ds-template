@@ -10,10 +10,17 @@ Requirements: [git](https://git-scm.com), [uv](https://docs.astral.sh/uv/) and
 ```bash
 task setup          # environment, git hooks and agent plugins
 task check          # lint, types, import contracts and tests
-task run            # run the pipeline on data/01_raw/input.csv
+task {{ package_name }}:run            # run the pipeline on data/01_raw/input.csv
 ```
 
 `task --list` shows every task.
+
+## Workspace
+
+`apps/{{ package_name }}/` holds the first app's source, tests, configuration, contracts and
+tasks. The root is a virtual uv workspace. Shared libraries go to `packages/`.
+Apps never import each other. The development guide explains how to add an app.
+Every project starts with an 80 % branch coverage gate and a generic evaluation protocol.
 
 ## Working with coding agents
 

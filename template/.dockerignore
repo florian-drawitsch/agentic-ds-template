@@ -6,7 +6,7 @@
 data
 docs
 notebooks
-tests
+**/tests
 **/__pycache__
 .env
 .env.*

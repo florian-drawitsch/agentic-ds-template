@@ -1,5 +1,7 @@
 """Sphinx configuration."""
 
+from pathlib import Path
+
 project = "{{ project_name }}"
 author = "{{ author_name }}"
 
@@ -37,7 +39,12 @@ mermaid_init_config = {
 myst_heading_anchors = 3
 exclude_patterns = ["_build", "plans"]
 
-autoapi_dirs = ["../src"]
+workspace_root = Path(__file__).resolve().parents[1]
+autoapi_dirs = [
+    str(path)
+    for pattern in ("apps/*/src", "packages/*/src")
+    for path in sorted(workspace_root.glob(pattern))
+]
 autoapi_root = "api"
 autoapi_add_toctree_entry = False
 autoapi_options = ["members", "undoc-members", "show-inheritance", "show-module-summary"]

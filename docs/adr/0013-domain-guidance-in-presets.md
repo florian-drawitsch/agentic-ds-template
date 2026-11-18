@@ -1,6 +1,6 @@
 # ADR-0013: Carry domain guidance in presets and adopt Superpowers conventions
 
-- **Status:** Accepted, amended by ADR-0018
+- **Status:** Accepted, amended by ADR-0018 and ADR-0030
 - **Date:** 2026-10-09
 - **Amends:** ADR-0003
 

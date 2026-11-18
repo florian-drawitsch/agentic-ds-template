@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --script \"$(git rev-parse --show-toplevel)/scripts/agent/deliver.py\" hook",
+            "timeout": 1800,
+            "statusMessage": "Checking the delivery run"
+          }
+        ]
+      }
+    ]
+  }
+}

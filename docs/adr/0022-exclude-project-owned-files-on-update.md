@@ -1,6 +1,6 @@
 # ADR-0022: Exclude project-owned files on update and vendor plugin files by symlink
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0031
 - **Date:** 2026-10-09
 - **Amends:** ADR-0002, ADR-0010
 

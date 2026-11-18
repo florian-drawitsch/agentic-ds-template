@@ -1,6 +1,6 @@
 # ADR-0029: Maintain generated projects with evaluated skills
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0030
 - **Date:** 2026-10-31
 
 ## Context
