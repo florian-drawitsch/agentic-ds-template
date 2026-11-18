@@ -8,6 +8,8 @@ Commands:
     status    Show counts per state, unadmitted issues, spend, caps and the next action.
     tick      Print (--dry-run) or take the next action.
     labels    Create the factory labels that are missing.
+    init      Create the labels and the board, record the board in factory.toml, mirror issues.
+    sync      Mirror the label state of open issues into the board's Status field.
 
 All state lives in GitHub issue labels and comments. No model chooses work, and issue text
 never reaches a shell.
@@ -377,6 +379,71 @@ class GitHub:
             "POST", f"repos/{{owner}}/{{repo}}/issues/{int(number)}/comments", {"body": body}
         )
 
+    # Projects (the board). `gh project` needs the token scope `project`.
+
+    def repository(self) -> dict[str, str]:
+        """Return the owner login and the full name of the current repository."""
+        raw = self._json(["api", "repos/{owner}/{repo}"])
+        return {"owner": raw["owner"]["login"], "name": raw["full_name"]}
+
+    def projects(self, owner: str) -> list[dict[str, Any]]:
+        """Return the owner's projects with `id`, `number`, `title` and `url`."""
+        data = self._json(["project", "list", "--owner", owner, "--format", "json"])
+        return (data or {}).get("projects", [])
+
+    def create_project(self, owner: str, title: str) -> dict[str, Any]:
+        """Create a project and return it with `id`, `number`, `title` and `url`."""
+        args = ["project", "create", "--owner", owner, "--title", title, "--format", "json"]
+        return self._json(args)
+
+    def link_project(self, owner: str, number: int, repo: str) -> None:
+        """Link the project to the repository, so it shows in the repository's Projects tab."""
+        self._call(["project", "link", str(int(number)), "--owner", owner, "--repo", repo])
+
+    def project_fields(self, owner: str, number: int) -> list[dict[str, Any]]:
+        """Return the project fields; single-select fields carry `options`."""
+        args = ["project", "field-list", str(int(number)), "--owner", owner, "--format", "json"]
+        return (self._json(args) or {}).get("fields", [])
+
+    def set_field_options(self, field_id: str, options: Sequence[dict[str, str]]) -> None:
+        """Replace the options of a single-select field."""
+        body = {
+            "query": UPDATE_FIELD_MUTATION,
+            "variables": {"field": field_id, "options": list(options)},
+        }
+        self._json(["api", "graphql", "--input", "-"], input=json.dumps(body))
+
+    def add_item(self, owner: str, number: int, url: str) -> str:
+        """Add an issue to the project (a no-op when present) and return the item id."""
+        args = ["project", "item-add", str(int(number)), "--owner", owner, "--url", url]
+        return self._json([*args, "--format", "json"])["id"]
+
+    def set_item_option(self, project_id: str, item_id: str, field_id: str, option: str) -> None:
+        """Set a single-select field of one project item."""
+        self._call(
+            [
+                "project",
+                "item-edit",
+                "--id",
+                item_id,
+                "--project-id",
+                project_id,
+                "--field-id",
+                field_id,
+                "--single-select-option-id",
+                option,
+            ]
+        )
+
+
+UPDATE_FIELD_MUTATION = """
+mutation($field: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]) {
+  updateProjectV2Field(input: {fieldId: $field, singleSelectOptions: $options}) {
+    projectV2Field { ... on ProjectV2SingleSelectField { id } }
+  }
+}
+""".strip()
+
 
 def _issue(raw: dict[str, Any]) -> dict[str, Any]:
     labels = [x["name"] if isinstance(x, dict) else x for x in raw.get("labels", [])]
@@ -385,6 +452,7 @@ def _issue(raw: dict[str, Any]) -> dict[str, Any]:
         "title": raw.get("title", ""),
         "state": raw.get("state", "open"),
         "labels": labels,
+        "url": raw.get("html_url", ""),
     }
 
 
@@ -689,6 +757,150 @@ def touches_protected(files: Sequence[str], patterns: Sequence[str]) -> list[str
     return hits
 
 
+# --- board -------------------------------------------------------------------------------
+
+STATUS_FIELD = "Status"
+GITHUB_DEFAULT_STATUS = ["Todo", "In Progress", "Done"]
+# Board columns in workflow order: option name, color, description and the mirrored state.
+# "Done" has no label: GitHub's built-in "Item closed" workflow moves closed issues there.
+BOARD_COLUMNS: tuple[tuple[str, str, str, State | None], ...] = (
+    ("Ready", "BLUE", "A maintainer released the ticket", State.READY),
+    ("Needs info", "RED", "Triage needs more information", State.NEEDS_INFO),
+    ("Accepted", "GRAY", "Triaged and queued for implementation", State.ACCEPTED),
+    ("In progress", "YELLOW", "Claimed, implementation running", State.IN_PROGRESS),
+    ("In review", "PURPLE", "Pull request open and under review", State.IN_REVIEW),
+    ("Verified", "GREEN", "All checks passed, waiting for a human merge", State.VERIFIED),
+    ("Needs human", "ORANGE", "Stopped, a human must decide", State.NEEDS_HUMAN),
+    ("Done", "GREEN", "Closed", None),
+)
+COLUMN_OF = {state: name for name, _, _, state in BOARD_COLUMNS if state is not None}
+PROJECT_URL = re.compile(r"https://github\.com/(?:orgs|users)/([^/\s]+)/projects/(\d+)/?")
+
+
+class Unavailable(RuntimeError):
+    """GitHub cannot serve this step yet; the message says what to fix."""
+
+
+@dataclass(frozen=True)
+class Board:
+    """A GitHub project that mirrors the factory states in its Status field."""
+
+    owner: str
+    number: int
+    id: str
+    url: str
+
+
+def board_title(repo: str) -> str:
+    """Return the title of the board init creates for `owner/name`."""
+    return f"{repo.split('/')[-1]} factory"
+
+
+def _status_field(github: GitHub, board: Board) -> dict[str, Any]:
+    for item in github.project_fields(board.owner, board.number):
+        if item.get("name") == STATUS_FIELD and "options" in item:
+            return item
+    raise ValueError(f"project {board.url} has no single-select field '{STATUS_FIELD}'")
+
+
+def find_board(
+    github: GitHub, config: Config, repo: dict[str, str], create: bool = False
+) -> tuple[Board | None, bool]:
+    """Return the configured board, else the one titled after the repository.
+
+    With create, a missing board is created and linked to the repository. The second value
+    tells whether it was created.
+    """
+    owner = repo["owner"]
+    if config.project:
+        match = PROJECT_URL.fullmatch(config.project)
+        if not match:
+            raise ValueError("factory.toml: 'project' must be a GitHub project URL")
+        owner, number = match.group(1), int(match.group(2))
+        found = next((p for p in github.projects(owner) if p["number"] == number), None)
+        if found is None:
+            raise ValueError(f"project {config.project} does not exist or is not accessible")
+    else:
+        title = board_title(repo["name"])
+        found = next((p for p in github.projects(owner) if p["title"] == title), None)
+        if found is None and create:
+            found = github.create_project(owner, title)
+            github.link_project(owner, found["number"], repo["name"])
+            board = Board(owner, int(found["number"]), found["id"], found["url"])
+            return board, True
+    if found is None:
+        return None, False
+    return Board(owner, int(found["number"]), found["id"], found["url"]), False
+
+
+def ensure_columns(github: GitHub, board: Board, created: bool) -> bool:
+    """Give the Status field the factory columns; return True when it changed.
+
+    Options are replaced only on a new board or one with GitHub's default options, so a
+    board someone already arranged is never rewritten.
+    """
+    field = _status_field(github, board)
+    names = [o["name"] for o in field["options"]]
+    wanted = [name for name, _, _, _ in BOARD_COLUMNS]
+    missing = [name for name in wanted if name not in names]
+    if not missing:
+        return False
+    if not created and names != GITHUB_DEFAULT_STATUS:
+        raise ValueError(
+            f"Status field of {board.url} lacks the columns {', '.join(missing)}; add them"
+        )
+    options = [{"name": n, "color": c, "description": d} for n, c, d, _ in BOARD_COLUMNS]
+    github.set_field_options(field["id"], options)
+    return True
+
+
+def factory_issues(github: GitHub) -> list[dict[str, Any]]:
+    """Return every issue with a factory label, once each, by number."""
+    seen: dict[int, dict[str, Any]] = {}
+    for state in State:
+        for issue in github.issues_with_label(state.value):
+            seen[issue["number"]] = issue
+    return [seen[number] for number in sorted(seen)]
+
+
+def sync_board(github: GitHub, board: Board, issues: Sequence[dict[str, Any]]) -> int:
+    """Mirror the label state of open issues into the board's Status field."""
+    field = _status_field(github, board)
+    options = {o["name"]: o["id"] for o in field["options"]}
+    mirrored = 0
+    for issue in issues:
+        try:
+            state = state_of(issue["labels"])
+        except ValueError:
+            continue
+        if state is None or issue["state"] != "open" or not issue.get("url"):
+            continue
+        column = COLUMN_OF[state]
+        if column not in options:
+            raise ValueError(f"Status field of {board.url} lacks the column {column}")
+        item = github.add_item(board.owner, board.number, issue["url"])
+        github.set_item_option(board.id, item, field["id"], options[column])
+        mirrored += 1
+    return mirrored
+
+
+def write_project(root: Path, url: str) -> None:
+    """Set the top-level `project` key of `factory.toml`, creating the file if needed."""
+    path = root / "factory.toml"
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    line = f'project = "{url}"'
+    header = re.search(r"^\[", text, re.MULTILINE)
+    top, rest = (text[: header.start()], text[header.start() :]) if header else (text, "")
+    key = re.compile(r"^project\s*=.*$", re.MULTILINE)
+    if key.search(top):
+        top = key.sub(lambda _: line, top, count=1)
+    else:
+        top = top + ("\n" if top and not top.endswith("\n") else "") + line + "\n"
+        top += "\n" if rest else ""
+    path.write_text(top + rest, encoding="utf-8")
+    load_config(root)
+
+
 # --- commands ----------------------------------------------------------------------------
 
 
@@ -750,6 +962,57 @@ def _tick(
     return EXIT_OK
 
 
+def _repository(github: GitHub) -> dict[str, str]:
+    try:
+        return github.repository()
+    except GhError as exc:
+        reason = str(exc).splitlines()[0] if str(exc) else "gh failed"
+        raise Unavailable(f"no GitHub repository for this checkout yet ({reason})") from exc
+
+
+def _board_step(exc: GhError) -> Exception:
+    """Turn a missing token scope into an actionable Unavailable, keep other errors."""
+    if "scope" in str(exc).lower():
+        return Unavailable("the gh token lacks the project scope; run `gh auth refresh -s project`")
+    return exc
+
+
+def _init(github: GitHub, config: Config, root: Path, board: bool) -> int:
+    repo = _repository(github)
+    created = ensure_labels(github)
+    print(f"labels: {repo['name']}, created " + (", ".join(created) or "none"))
+    if not board:
+        return EXIT_OK
+    try:
+        found, new = find_board(github, config, repo, create=True)
+        assert found is not None
+        changed = ensure_columns(github, found, new)
+        mirrored = sync_board(github, found, factory_issues(github))
+    except GhError as exc:
+        raise _board_step(exc) from exc
+    if config.project != found.url:
+        write_project(root, found.url)
+        print(f"factory.toml: project = {found.url}")
+    columns = "columns set" if changed else "columns present"
+    print(f"board: {found.url} ({'created' if new else 'found'}, {columns})")
+    print(f"mirrored: {mirrored} issues")
+    return EXIT_OK
+
+
+def _sync(github: GitHub, config: Config) -> int:
+    repo = _repository(github)
+    try:
+        found, _ = find_board(github, config, repo)
+        if found is None:
+            print("no factory board; run init first", file=sys.stderr)
+            return EXIT_ERROR
+        mirrored = sync_board(github, found, factory_issues(github))
+    except GhError as exc:
+        raise _board_step(exc) from exc
+    print(f"mirrored: {mirrored} issues to {found.url}")
+    return EXIT_OK
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="factory.py", description=__doc__.split("\n\n")[0])
     parser.add_argument("--version", action="version", version=VERSION)
@@ -760,6 +1023,16 @@ def _parser() -> argparse.ArgumentParser:
     tick.add_argument("--dry-run", action="store_true", help="print the action, change nothing")
     tick.add_argument("--json", action="store_true")
     sub.add_parser("labels", help="create the missing factory labels")
+    init = sub.add_parser(
+        "init", help="create the labels and the board, record it in factory.toml, mirror issues"
+    )
+    init.add_argument("--no-board", action="store_true", help="create the labels only")
+    init.add_argument(
+        "--skip-unavailable",
+        action="store_true",
+        help="exit 0 with a note when GitHub refuses a step (no repository, scope or access)",
+    )
+    sub.add_parser("sync", help="mirror the label state of open issues into the board")
     return parser
 
 
@@ -780,10 +1053,21 @@ def main(
             created = ensure_labels(github)
             print("created: " + (", ".join(created) or "none"))
             return EXIT_OK
+        if args.command == "init":
+            return _init(github, config, root, not args.no_board)
+        if args.command == "sync":
+            return _sync(github, config)
         if args.command == "status":
             return _status(github, config, now, args.json)
         return _tick(github, config, root, now, args.dry_run, args.json)
-    except (GhError, ValueError) as exc:
+    except (Unavailable, GhError) as exc:
+        # Setup and `copier copy` pass --skip-unavailable: GitHub must never fail them.
+        if getattr(args, "skip_unavailable", False):
+            print(f"factory init skipped: {exc}. Rerun init once that is fixed.", file=sys.stderr)
+            return EXIT_OK
+        print(f"factory: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    except ValueError as exc:
         print(f"factory: {exc}", file=sys.stderr)
         return EXIT_ERROR
 

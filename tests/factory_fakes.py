@@ -19,12 +19,46 @@ class FakeGitHub:
         self.runs: dict[str, list[dict[str, Any]]] = {}
         self.files: dict[int, list[str]] = {}
         self.created: list[str] = []
+        # board
+        self.repo = {"owner": "acme", "name": "acme/widgets"}
+        self.repo_error: str | None = None
+        self.project_error: str | None = None
+        self.error_type: type[Exception] = RuntimeError  # tests set the script's GhError
+        self.boards: dict[str, list[dict[str, Any]]] = {}
+        self.fields: dict[int, list[dict[str, Any]]] = {}
+        self.links: list[tuple[str, int, str]] = []
+        self.option_updates: list[list[dict[str, str]]] = []
+        self.items: dict[str, str] = {}
+        self.item_values: dict[str, str] = {}
 
     # test setup helpers
     def add_issue(
         self, number: int, labels: list[str], title: str = "t", state: str = "open"
     ) -> None:
-        self.issues[number] = {"number": number, "title": title, "state": state, "labels": labels}
+        self.issues[number] = {
+            "number": number,
+            "title": title,
+            "state": state,
+            "labels": labels,
+            "url": f"https://github.com/acme/widgets/issues/{number}",
+        }
+
+    def add_board(
+        self, owner: str, number: int, title: str, options: list[str] | None = None
+    ) -> None:
+        url = f"https://github.com/users/{owner}/projects/{number}"
+        board = {"id": f"P{number}", "number": number, "title": title, "url": url}
+        self.boards.setdefault(owner, []).append(board)
+        names = ["Todo", "In Progress", "Done"] if options is None else options
+        self.fields[number] = [
+            {"id": "F-title", "name": "Title", "type": "ProjectV2Field"},
+            {
+                "id": f"F{number}",
+                "name": "Status",
+                "type": "ProjectV2SingleSelectField",
+                "options": [{"id": f"O-{n}", "name": n} for n in names],
+            },
+        ]
 
     def label_event(self, number: int, label: str, login: str, bot: bool = False) -> None:
         event = {
@@ -91,3 +125,37 @@ class FakeGitHub:
 
     def comment(self, number: int, body: str) -> None:
         self.add_comment(number, body)
+
+    def repository(self) -> dict[str, str]:
+        if self.repo_error:
+            raise self.error_type(self.repo_error)
+        return dict(self.repo)
+
+    def projects(self, owner: str) -> list[dict[str, Any]]:
+        if self.project_error:
+            raise self.error_type(self.project_error)
+        return [dict(b) for b in self.boards.get(owner, [])]
+
+    def create_project(self, owner: str, title: str) -> dict[str, Any]:
+        number = 1 + max((b["number"] for bs in self.boards.values() for b in bs), default=0)
+        self.add_board(owner, number, title)
+        return dict(self.boards[owner][-1])
+
+    def link_project(self, owner: str, number: int, repo: str) -> None:
+        self.links.append((owner, number, repo))
+
+    def project_fields(self, owner: str, number: int) -> list[dict[str, Any]]:
+        return self.fields[number]
+
+    def set_field_options(self, field_id: str, options: list[dict[str, str]]) -> None:
+        self.option_updates.append(list(options))
+        for fields in self.fields.values():
+            for item in fields:
+                if item["id"] == field_id:
+                    item["options"] = [{"id": f"O-{o['name']}", "name": o["name"]} for o in options]
+
+    def add_item(self, owner: str, number: int, url: str) -> str:
+        return self.items.setdefault(url, f"I{len(self.items) + 1}")
+
+    def set_item_option(self, project_id: str, item_id: str, field_id: str, option: str) -> None:
+        self.item_values[item_id] = option
