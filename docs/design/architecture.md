@@ -36,12 +36,18 @@ The marketplace is curated (ADR-0016) and vendor-independent (ADR-0017):
     back to work until every plan item is ticked, the check passes and an optional cross-vendor
     review passed (ADR-0020).
     Runs end as a GitHub PR for the verified branch, within cost and turn budgets (ADR-0027).
+    `fix-pr` repairs Codex review findings on an existing PR in one bounded cycle; the outer
+    controller owns every GitHub write (ADR-0028).
   - `cross-review` runs the other vendor's agent as a read-only reviewer.
   - `github-create-pr` validates the PR description against the PR template and creates or
     updates the PR idempotently; `deliver` uses it for publication.
   - `mermaid` defines the diagram house style; its checker runs after every edit and as a git
     hook in generated projects (ADR-0026).
-  - Planned: `adr`, `kickoff`, `template-update`.
+  - `template-update` merges a newer template version by file ownership; `agents-md` keeps
+    AGENTS.md accurate (ADR-0029).
+  - Planned: `adr`, `kickoff`.
+  - Skill evals live in `plugins/project/evals/`; `task eval` scores them against a no-plugin
+    baseline (ADR-0029).
 
 ## Copier question model
 
@@ -106,7 +112,7 @@ Answers seed `docs/context/project.md` and the project section of AGENTS.md. Aft
 | --- | --- | --- |
 | Template | tool configs, Taskfile, CI, hooks, permissions, AGENTS.md rules, nested AGENTS.md, docs scaffolding | re-rendered on update, three-way merged with local edits |
 | Project | `README.md`, `src/`, `tests/`, `conf/`, `notebooks/`, `docs/context/`, `docs/method/`, `docs/roadmap.md`, `docs/adr/0001` | rendered on copy, excluded on update (ADR-0022) |
-| Plugin | `scripts/agent/{deliver,cross_review,create_pr,check_mermaid}.py`, `scripts/agent/prices.toml`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022, ADR-0027) |
+| Plugin | `scripts/agent/{deliver,cross_review,create_pr,pr_findings,check_mermaid}.py`, `scripts/agent/prices.toml`, `.claude/agents/*`, `.codex/agents/*` | symlinks into `plugins/project/`, copied verbatim (ADR-0022, ADR-0027, ADR-0028) |
 
 The project section of AGENTS.md is rendered once from the context answers. Its template text
 never changes, so later updates cannot conflict with edits there.
