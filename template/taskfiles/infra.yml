@@ -58,7 +58,7 @@ tasks:
       - |
         registry=$(pulumi stack output registry --stack {{.STACK}} --cwd infra)
         tag=$(git rev-parse --short HEAD)
-        az acr build --registry "${registry%%.*}" --image "{{.PROJECT}}:$tag" .
+        az acr build --registry "${registry%%.*}" --image "{{.PROJECT}}:$tag" --file "apps/{{.APP}}/Dockerfile" .
         pulumi config set imageTag "$tag" --stack {{.STACK}} --cwd infra
         pulumi up --yes --stack {{.STACK}} --cwd infra
 

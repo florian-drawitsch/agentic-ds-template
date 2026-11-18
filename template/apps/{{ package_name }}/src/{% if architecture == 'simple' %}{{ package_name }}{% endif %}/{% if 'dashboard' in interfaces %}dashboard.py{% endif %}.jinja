@@ -15,4 +15,4 @@ if REPORT_PATH.is_file():
     st.metric("Mean absolute error", f"{latest['mae']:.3f}")
     st.json(latest)
 else:
-    st.info("No report yet. Run `task run` first.")
+    st.info("No report yet. Run `task {{ package_name }}:run` first.")

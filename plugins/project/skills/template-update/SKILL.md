@@ -56,7 +56,7 @@ Merge deliberately; never pick a side blindly.
 
 File ownership decides some conflicts for you:
 
-- **Project-owned files** are excluded from updates: `README.md`, `src/`, `tests/`, `conf/`,
+- **Project-owned files** are excluded from updates: `README.md`, `apps/`, `packages/`,
   `notebooks/`, `docs/context/`, `docs/method/`, `docs/roadmap.md` and the first ADR. Never copy
   template versions of them in by hand. The `## Project` section of `AGENTS.md` is project-owned
   too.

@@ -1,12 +1,3 @@
-{%- set use_case_titles = {
-  "forecasting": "Forecasting",
-  "anomaly_detection": "Anomaly detection",
-  "optimization": "Optimization and pricing",
-  "computer_vision": "Computer vision",
-  "genai": "GenAI",
-  "tabular": "Tabular prediction",
-  "analysis": "Analysis",
-} -%}
 # {{ project_name }}
 
 {{ description or "TODO: one-sentence description." }}
@@ -24,13 +15,13 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 
 - `task setup`: install the environment and git hooks. `task --list` shows all tasks.
 - `task check`: lint, types, import contracts and tests. This is the merge gate.
-- `task test -- <pytest args>`, `task test-fast -- <pytest args>` (no coverage), `task lint`, `task run`
+- `task test -- <pytest args>`, `task test-fast -- <pytest args>` (no coverage), `task lint`, `task {{ package_name }}:run`
   {%- if config == 'hydra' %} (Hydra overrides after `--`){% endif %}.
 {%- if tracking == 'mlflow' %}
 - `task mlflow`: MLflow UI for runs tracked in `data/09_tracking/`.
 {%- endif %}
 {%- if 'api' in interfaces %}
-- `task api`: serve the REST API.
+- `task {{ package_name }}:api`: serve the REST API.
 {%- endif %}
 {%- if 'dashboard' in interfaces %}
 - `task dashboard`: run the dashboard.
@@ -41,13 +32,16 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 - `task infra:test`: test the Azure infrastructure in `infra/` with Pulumi mocks. `infra:preview`,
   `infra:up` and `infra:release` change real resources: run them only when asked.
 {%- endif %}
-- Dependencies: `uv add <pkg>`, or `uv add --group <dev|test|lint|docs> <pkg>` for tooling.
+- Dependencies: `uv add --package {{ package_name }} <pkg>`, or `uv add --group <dev|test|lint|docs> <pkg>` for tooling.
   Never use pip. Never edit `uv.lock` by hand.
 - Turn repeated commands into named tasks in `Taskfile.yml`.
 
 ## Layout
+
+- Apps never import each other. Shared code goes to `packages/`.
+- The virtual uv workspace includes `apps/*` and `packages/*`.
 {% if architecture == 'hexagonal' %}
-`src/{{ package_name }}/` follows a hexagonal architecture. Dependencies point inward:
+`apps/{{ package_name }}/src/{{ package_name }}/` follows a hexagonal architecture. Dependencies point inward:
 `entrypoints` → `bootstrap` → `adapters` → `application` → `ports` → `domain`.
 
 - `domain/`: pure types and logic, no I/O
@@ -59,18 +53,18 @@ Before changing behavior, read `docs/context/project.md` (goals, stakeholders, c
 
 Each layer has an AGENTS.md. Read it before adding code there.
 {%- elif architecture == 'pipeline' %}
-`src/{{ package_name }}/pipelines/` holds the `features`, `training` and `inference` pipelines:
+`apps/{{ package_name }}/src/{{ package_name }}/pipelines/` holds the `features`, `training` and `inference` pipelines:
 graphs of nodes (pure functions with named inputs and outputs), in the style of Kedro. `catalog.py` maps dataset names to
-files (configured in `conf/`), `settings.py` holds typed settings, and `cli.py`{% if 'api' in interfaces %}, `api.py`{% endif %}{% if 'dashboard' in interfaces %}, `dashboard.py`{% endif %} are the entry
+files (configured in `apps/{{ package_name }}/conf/`), `settings.py` holds typed settings, and `cli.py`{% if 'api' in interfaces %}, `api.py`{% endif %}{% if 'dashboard' in interfaces %}, `dashboard.py`{% endif %} are the entry
 points. Read `pipelines/AGENTS.md` before adding a step or a pipeline.
 {%- else %}
-`src/{{ package_name }}/` holds flat modules: `data`, `model`, `evaluate`, `pipeline`,
+`apps/{{ package_name }}/src/{{ package_name }}/` holds flat modules: `data`, `model`, `evaluate`, `pipeline`,
 `tracking`, `config` and the entry points (`cli`{% if 'api' in interfaces %}, `api`{% endif %}{% if 'dashboard' in interfaces %}, `dashboard`{% endif %}).
 Entry points may import everything; nothing imports them.
 {%- endif %}
 
-- Import rules are enforced by import-linter (`[tool.importlinter]` in `pyproject.toml`).
-- Tests: `tests/unit/` for logic, `tests/integration/` for component boundaries.
+- Import rules are enforced by import-linter (`[tool.importlinter]` in each app's `pyproject.toml`).
+- Tests: `apps/{{ package_name }}/tests/unit/` for logic, `apps/{{ package_name }}/tests/integration/` for component boundaries.
 - Data follows the numbered layers in `data/`: `01_raw` (immutable input), `02_intermediate`,
   `03_primary`, `04_feature`, `05_model_input`, `06_models`, `07_model_output`, `08_reporting`,
   `09_tracking`. All of `data/` except the folders is git-ignored.
@@ -87,46 +81,6 @@ Entry points may import everything; nothing imports them.
 - Report only results from tracked runs or saved artifacts. Never state a number you did not
   produce.
 - Google-style docstrings for public functions and classes.
-
-## {{ use_case_titles[use_case] }} rules
-{% if use_case == 'forecasting' %}
-- Split by time only. Evaluate with rolling-origin backtests over several origins.
-- Every feature must exist at the forecast origin. Mark covariates as past-only or known in
-  advance.
-- Beat a seasonal naive baseline first. Report errors per horizon.
-- Report point and probabilistic metrics (for example MASE and quantile loss) with interval
-  coverage.
-{%- elif use_case == 'anomaly_detection' %}
-- Keep a labeled hold-out that threshold tuning never touches.
-- Evaluate events (detection delay, missed and false events), not only points.
-- Calibrate thresholds on validation data and document the alert budget.
-- Split by time or by asset so no series appears on both sides.
-{%- elif use_case == 'optimization' %}
-- Keep prediction and decision apart: models estimate, an optimizer decides.
-- Check every recommendation against constraints and guardrails before reporting it.
-- Record the objective in an ADR and state the trade-offs it ignores.
-- Validate decisions on held-out periods or by simulation, not only by model fit.
-{%- elif use_case == 'computer_vision' %}
-- Split by subject, device or session, never by image.
-- Version datasets and labels, and record the version with every training run.
-- Check label quality on a sample before trusting metrics.
-- Keep training and inference preprocessing identical. Test exported models for parity.
-{%- elif use_case == 'genai' %}
-- Keep an evaluation set with expected outcomes. Grade every prompt or model change against it.
-- Version prompts like code. Record prompt version, model and parameters with each run.
-- Prefer validated structured outputs over parsing free text.
-- Track cost and latency per request. Send no personal data without an approved basis.
-{%- elif use_case == 'tabular' %}
-- Prevent target leakage: every feature must be known at prediction time.
-- Split by group when rows are related, by time when the target drifts.
-- Compare against a simple baseline and report calibration, not only accuracy.
-- Report uncertainty for small samples.
-{%- else %}
-- Record each question, the data used and the answer.
-- Conclusions cite the exact query or code that produced them.
-- Report uncertainty and sample sizes with every estimate.
-- Prefer simple, explainable methods unless a complex one is clearly justified.
-{%- endif %}
 
 ## Planning and decisions
 
@@ -154,7 +108,7 @@ Entry points may import everything; nothing imports them.
 - Never request human or team reviewers automatically. Humans choose reviewers.
 - Review rules, also for Codex automatic PR review. Give each finding a file and line, the rule
   or record it breaks, and whether it blocks. Blocking: contradicts an accepted ADR without a new
-  one; breaks the "{{ use_case_titles[use_case] }} rules"; exposes secrets or personal data;
+  one; reports results that contradict `docs/method/evaluation-protocol.md`; exposes secrets or personal data;
   reports a number without a tracked run. Non-blocking: docs or commands that no longer match the
   code or `Taskfile.yml`. Skip what Ruff or tests enforce and records in `docs/plans/`.
 

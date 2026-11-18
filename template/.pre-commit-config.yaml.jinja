@@ -34,43 +34,50 @@ repos:
     hooks:
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format
+        entry: uv run --all-packages ruff format
         language: system
         types_or: [python, pyi, jupyter]
         require_serial: true
 
       - id: ruff-check
         name: ruff check
-        entry: uv run ruff check --fix --exit-non-zero-on-fix
+        entry: uv run --all-packages ruff check --fix --exit-non-zero-on-fix
         language: system
         types_or: [python, pyi, jupyter]
         require_serial: true
 
       - id: ty
         name: ty
-        entry: uv run ty check
+        entry: uv run --all-packages ty check
         language: system
         types: [python]
         pass_filenames: false
 
       - id: import-linter
         name: import contracts
-        entry: uv run lint-imports
+        entry: bash -O nullglob -c 'uv run --all-packages lint-imports apps/*/pyproject.toml packages/*/pyproject.toml'
         language: system
-        types: [python]
+        files: (^|/)(.*\.py|pyproject\.toml)$
+        pass_filenames: false
+
+      - id: workspace
+        name: workspace app boundaries
+        entry: uv run --all-packages python scripts/check_workspace.py
+        language: system
+        always_run: true
         pass_filenames: false
 
       - id: uv-lock
         name: uv.lock is current
         entry: uv lock --check
         language: system
-        files: ^(pyproject\.toml|uv\.lock)$
+        files: (^|/)(pyproject\.toml|uv\.lock)$
         pass_filenames: false
 {%- if notebooks %}
 
       - id: nbstripout
         name: strip notebook outputs
-        entry: uv run nbstripout
+        entry: uv run --all-packages nbstripout
         language: system
         types: [jupyter]
 {%- endif %}
@@ -78,7 +85,7 @@ repos:
 
       - id: mermaid-style
         name: mermaid house style
-        entry: uv run --script scripts/agent/check_mermaid.py
+        entry: uv run --all-packages --script scripts/agent/check_mermaid.py
         language: system
         types: [markdown]
 {%- endif %}
@@ -86,13 +93,13 @@ repos:
 
       - id: zizmor
         name: zizmor (workflow security)
-        entry: uv run zizmor --no-progress
+        entry: uv run --all-packages zizmor --no-progress
         language: system
         files: ^\.github/workflows/
 {%- endif %}
 
       - id: commitizen
         name: conventional commit message
-        entry: uv run cz check --allow-abort --commit-msg-file
+        entry: uv run --all-packages cz check --allow-abort --commit-msg-file
         language: system
         stages: [commit-msg]

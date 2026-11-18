@@ -51,7 +51,7 @@ Codex). `task deliver:doctor` checks the installation, including the skill links
 
 `task check` runs:
 - every git hook: ruff, ty, import contracts, file hygiene{% if ci == 'github' %}, workflow security{% endif %}
-- the tests{% if maturity == 'production' %}, with a coverage minimum of 80 %{% endif %}
+- the tests, with a coverage minimum of 80 %
 
 {%- if ci == 'github' %} CI runs the same gate and builds the documentation.{% endif %}
 
@@ -59,7 +59,34 @@ Codex). `task deliver:doctor` checks the installation, including the skill links
 
 `task update-template` pulls the latest template version with Copier. Project-owned files are
 never touched:
-- `README.md`, `src/`, `tests/`, `conf/`, `notebooks/`
+- `README.md`, `apps/`, `packages/`, `notebooks/`
 - `docs/context/`, `docs/method/`, `docs/roadmap.md`
 
 Resolve conflict markers in the other files, then run `task check`.
+
+## Add an app
+
+Tasks run from the repository root, including app tasks. Paths in app configuration remain
+relative to that root. The first app lives in `apps/{{ package_name }}/`; shared libraries
+belong in `packages/`. Apps never import each other.
+
+1. Copy `apps/{{ package_name }}/` to `apps/second_app/` without caches or build outputs.
+2. Rename `src/{{ package_name }}/` inside the copy to `src/second_app/`.
+3. Replace `{{ package_name }}` with `second_app` throughout the copied files, including
+   the distribution name, imports, console script, contracts, Taskfile and Dockerfile.
+   Give each app distinct output paths in its configuration if they run on the same data.
+4. Add an include to the root `Taskfile.yml`:
+
+   ```yaml
+   second_app:
+     taskfile: ./apps/second_app/Taskfile.yml
+     dir: .
+   ```
+
+5. Run `uv lock`, `task setup`, `task check` and `task second_app:run`.
+
+The root installs every member, tests all apps in one pytest run and checks each app's import
+contracts. For shared libraries, add a package under `packages/` and declare it with
+`uv add --package <app> --editable ./packages/<library>`.
+Non-Python apps need a workspace `exclude` entry such as `exclude = ["apps/frontend"]` under
+`[tool.uv.workspace]` in the root `pyproject.toml`.
