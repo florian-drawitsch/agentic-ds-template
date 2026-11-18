@@ -331,10 +331,14 @@ def clone(tmp_path):
 
     bare = tmp_path / "origin.git"
     subprocess.run(
-        ["git", "init", "--bare", "-b", "main", str(bare)], check=True, capture_output=True
+        ["git", "init", "--template=", "--bare", "-b", "main", str(bare)],
+        check=True,
+        capture_output=True,
     )
     seed = tmp_path / "seed"
-    subprocess.run(["git", "clone", str(bare), str(seed)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "clone", "--template=", str(bare), str(seed)], check=True, capture_output=True
+    )
     git(seed, "config", "user.email", "a@b.c")
     git(seed, "config", "user.name", "a")
     (seed / "f").write_text("x")
@@ -344,7 +348,9 @@ def clone(tmp_path):
     clones = []
     for name in ("one", "two"):
         path = tmp_path / name
-        subprocess.run(["git", "clone", str(bare), str(path)], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "clone", "--template=", str(bare), str(path)], check=True, capture_output=True
+        )
         clones.append(path)
     return clones
 
