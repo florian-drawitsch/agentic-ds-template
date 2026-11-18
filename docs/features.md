@@ -350,6 +350,22 @@ its own errors.
 | PR repair | `task deliver:fix-pr` fixes unresolved Codex review threads, replies per finding, resolves fixed threads, requests one re-review; USD 5 and 15 rounds by default (ADR-0028) |
 | Doctor | `task deliver:doctor` checks hooks, roles, plugin copies, skill links and `.worktreeinclude` |
 
+### Ticket factory (in development)
+
+The `factory` plugin runs an opt-in ticket factory from GitHub issue labels (ADR-0032, Proposed).
+Stage S1 ships the deterministic controller, `plugins/factory/skills/factory/scripts/factory.py`.
+It calls no model. Agent stages arrive in S2.
+
+| Feature | Details |
+| --- | --- |
+| Configuration | `factory.toml`: limits, repair cycles, daily and sprint caps in USD, protected paths, trusted bots; unknown keys and wrong types are errors |
+| Label states | Seven `factory:*` labels and the transition table of ADR-0032; `factory.py labels` creates them idempotently |
+| Admission | `factory:ready` counts only when a user with write access added it last; unadmitted issues are skipped and listed by `status` |
+| Dispatch | `tick --dry-run` prints one action in the order repair, verify, implement, triage; `priority:` labels, then issue number; limits on work in progress and waiting verified PRs |
+| Claim | The first non-forced push of `feat/<issue>-<slug>` wins |
+| Protected paths | `touches_protected` checks a diff, renames included |
+| Spend ledger | Cost markers in ticket comments; the daily or sprint cap turns the tick into idle |
+
 ### Codex app
 
 `.codex/environments/environment.toml` sets up new worktrees with `task deliver:setup` and adds
