@@ -17,6 +17,9 @@ htmlcov/
 # Agent worktrees
 .worktrees/
 
+# Skill eval results (`claude plugin eval`)
+plugins/*/evals/results/
+
 # Docs
 docs/_build/
 

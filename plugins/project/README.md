@@ -4,10 +4,12 @@ Workflows for projects built with Claude Code and Codex.
 
 | Skill | Purpose |
 | --- | --- |
-| `deliver` | Execute an approved plan end to end. A completion guard (Stop hook) keeps the session working until every plan item is ticked, the check passes, an optional cross-vendor review passed and, with `--publish-pr`, a PR exists for the verified branch. Unattended runs work in a worktree within cost, turn and time budgets, and can be resumed |
+| `deliver` | Execute an approved plan end to end. A completion guard (Stop hook) keeps the session working until every plan item is ticked, the check passes, an optional cross-vendor review passed and, with `--publish-pr`, a PR exists for the verified branch. Unattended runs work in a worktree within cost, turn and time budgets, and can be resumed. `fix-pr` repairs Codex review findings on an existing PR in one bounded cycle |
 | `cross-review` | Have the other vendor's CLI review the change, headless and read-only, with structured findings. Required findings are fixed and verified without another review |
 | `github-create-pr` | Validate a PR description against `.github/pull_request_template.md`, then push and create or update the PR idempotently. Never requests human reviewers |
 | `mermaid` | House style for Mermaid diagrams: when to draw, which type, stroke-only palette, required style lines. `scripts/check_mermaid.py` checks Markdown files against it |
+| `template-update` | Update a generated project to a newer template version: run `task update-template`, merge conflicts by file ownership, regenerate `uv.lock`, run `task check`, report without committing |
+| `agents-md` | Audit or update AGENTS.md against `task --list`, `pyproject.toml`, the source tree and accepted ADRs; keeps project rules in the project-owned section |
 | `brainstorm` | Alias for `superpowers:brainstorming`: explore requirements and design tradeoffs |
 | `write-plan` | Alias for `superpowers:writing-plans`: write an implementation plan in `docs/plans/` |
 | `execute-plan` | Alias for `superpowers:executing-plans`: execute a plan step by step with review checkpoints |
@@ -25,7 +27,8 @@ uv run --script <plugin>/skills/deliver/scripts/deliver.py install
 This adds, without touching other settings:
 
 - `scripts/agent/deliver.py`: the project copy the hooks call, with `cross_review.py`,
-  `create_pr.py` and `prices.toml` beside it, so the project runs without the plugin
+  `create_pr.py`, `prices.toml` and `pr_findings.py` beside it, so the project runs without the
+  plugin
 - a Stop hook in `.claude/settings.json` and `.codex/hooks.json`
 - `implementer` and `reviewer` roles in `.claude/agents/` and `.codex/agents/`. The reviewer is
   read-only and runs at high effort. Models default to `sonnet` and `opus` for Claude. The Codex

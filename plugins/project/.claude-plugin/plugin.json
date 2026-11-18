@@ -1,7 +1,7 @@
 {
   "name": "project",
   "version": "0.1.0",
-  "description": "Plan delivery to a verified pull request, implementer and reviewer roles, cross-vendor review",
+  "description": "Plan delivery to a verified pull request, cross-vendor review, template updates and AGENTS.md upkeep",
   "author": {
     "name": "Florian Drawitsch"
   },

@@ -52,6 +52,17 @@ tasks:
       PLUGINS:
         sh: find plugins -mindepth 1 -maxdepth 1 -type d
 
+  eval:
+    desc: Score the project plugin's skills against a no-plugin baseline (spends model tokens)
+    summary: |
+      Runs plugins/project/evals/ with `claude plugin eval`, three runs per case and arm.
+      Pass options after `--`, for example `task eval -- --case '03-*' --max-cost-usd 5`.
+    preconditions:
+      - sh: command -v claude
+        msg: Claude Code CLI is required for skill evals
+    cmds:
+      - claude plugin eval plugins/project --ablation with-without --no-publish {{.CLI_ARGS}}
+
   check:
     desc: 'Merge gate: generated files current, lint, types, tests, manifests'
     cmds:
