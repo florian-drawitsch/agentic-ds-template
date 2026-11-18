@@ -109,9 +109,14 @@ integration (S4).
   snapshot grows fields, the rule stays.
 - The skill ships in S1 without evals and marked as in development: evals need the triage
   role from S2; if wrong, S1 must not be tagged in a release before S2 lands.
-- Open-claim detection: the claim checks `git ls-remote` for any `feat/<issue>-*` branch before a
-  plain push, so a retitled issue cannot claim twice; two clients that pass the check at the same
-  instant on the same commit can both succeed. If wrong, a later stage uses a lease push.
+- Claim: a create-only push of a unique lock commit to `refs/factory/claims/<issue>` decides the
+  winner on the server, then the branch is pushed without force. If wrong, a later stage moves
+  the lock to a GitHub-side mechanism.
+- Verify fails closed: with `required_checks` unset every check run must have succeeded (skipped
+  does not count); with it set each named check must have succeeded. PRs from forks are never
+  linked to a ticket. `controller` in `factory.toml` names the comment author for GitHub App
+  tokens, which cannot call `GET /user`.
+- S1 `tick` writes no issue labels; the claim push is its only write. Labels move in S2.
 - Repair and verify are derived from review state and check runs on the PR; the repair counter
   counts `<!-- factory:repair -->` comments by the controller login only. Reaching
   `max_repair_cycles` makes the ticket idle in S1; the move to Needs human arrives with S2.

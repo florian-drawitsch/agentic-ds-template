@@ -41,7 +41,7 @@ class FakeGitHub:
         sha = sha or f"sha{number}"
         branch = f"feat/{issue}-x"
         self.pulls[branch] = {"number": number, "branch": branch, "sha": sha}
-        self.runs[sha] = [{"conclusion": checks}]
+        self.runs[sha] = [{"name": "ci", "conclusion": checks}]
 
     # GitHub interface
     def viewer(self) -> str:

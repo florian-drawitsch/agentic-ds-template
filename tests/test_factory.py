@@ -573,11 +573,12 @@ def test_tick_idle_exits_0(capsys):
     assert "idle" in capsys.readouterr().out
 
 
-def test_tick_implement_claims_and_relabels(clone, capsys):
+def test_tick_implement_claims_without_label_writes(clone, capsys):
     gh = FakeGitHub()
     gh.add_issue(7, ["factory:accepted"], title="Add a thing")
     assert run_main(["tick"], gh, root=clone[0]) == 0
-    assert gh.issues[7]["labels"] == ["factory:in-progress"]
+    assert gh.issues[7]["labels"] == ["factory:accepted"]
+    assert "claimed #7" in capsys.readouterr().err
     assert run_main(["tick", "--dry-run"], gh, root=clone[0]) == 0
 
 
@@ -597,3 +598,65 @@ def test_github_error_exits_1(capsys):
 
     assert run_main(["status"], Broken()) == 1
     assert "no auth" in capsys.readouterr().err
+
+
+def test_claim_lock_blocks_a_different_slug_and_a_deleted_branch(clone):
+    first, second = clone
+    assert factory.claim(first, 7, "Add a thing")
+    subprocess.run(
+        ["git", "-C", str(first), "push", "origin", ":refs/heads/feat/7-add-a-thing"], check=True
+    )
+    assert not factory.claim(second, 7, "Other title")
+
+
+def test_skipped_check_does_not_verify():
+    gh = FakeGitHub()
+    gh.add_issue(2, ["factory:in-review"])
+    gh.add_pull(20, 2, checks="skipped")
+    assert not factory.snapshot(gh, cfg()).pulls[2].checks_passed
+
+
+def test_missing_required_check_fails_closed():
+    gh = FakeGitHub()
+    gh.add_issue(2, ["factory:in-review"])
+    gh.add_pull(20, 2)
+    assert factory.snapshot(gh, cfg()).pulls[2].checks_passed
+    assert not factory.snapshot(gh, cfg(required_checks=("ci", "tests"))).pulls[2].checks_passed
+    assert factory.snapshot(gh, cfg(required_checks=("ci",))).pulls[2].checks_passed
+
+
+def test_one_failing_run_among_successes_does_not_verify():
+    gh = FakeGitHub()
+    gh.add_issue(2, ["factory:in-review"])
+    gh.add_pull(20, 2)
+    gh.runs["sha20"].append({"name": "lint", "conclusion": None})
+    assert not factory.snapshot(gh, cfg()).pulls[2].checks_passed
+
+
+def test_fork_pull_request_is_not_linked():
+    def pull(head_repo):
+        return {
+            "number": 1,
+            "head": {"ref": "feat/5-x", "sha": "s", "repo": {"full_name": head_repo}},
+            "base": {"repo": {"full_name": "o/r"}},
+        }
+
+    gh = RecordingGitHub([json.dumps([[pull("evil/r")]])])
+    assert gh.pull_for_branch("feat/5-") is None
+    gh = RecordingGitHub([json.dumps([[pull("evil/r"), pull("o/r")]])])
+    assert gh.pull_for_branch("feat/5-")["number"] == 1
+
+
+def test_configured_controller_avoids_user_endpoint(tmp_path):
+    (tmp_path / "factory.toml").write_text('controller = "factory-app[bot]"\n')
+    config = factory.load_config(tmp_path)
+
+    class NoUser(FakeGitHub):
+        def viewer(self):
+            raise AssertionError("GET /user must not be called")
+
+    gh = NoUser()
+    gh.add_issue(1, ["factory:verified"], state="closed")
+    gh.add_comment(1, cost_comment(4.0, NOW)["body"], login="factory-app[bot]")
+    snap = factory.snapshot(gh, config)
+    assert factory.spend(snap, NOW, config).day == 4.0

@@ -25,6 +25,7 @@ import sys
 import tomllib
 import unicodedata
 import urllib.parse
+import uuid
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -81,6 +82,8 @@ class Config:
     sprint_days: int = 14
     protected_paths: tuple[str, ...] = DEFAULT_PROTECTED
     trusted_bots: tuple[str, ...] = ()
+    controller: str | None = None
+    required_checks: tuple[str, ...] = ()
     project: str | None = None
     holdout: str | None = None
     deliver: DeliverConfig = field(default_factory=DeliverConfig)
@@ -125,6 +128,8 @@ _KINDS = {
     "sprint_days": "int",
     "protected_paths": "strs",
     "trusted_bots": "strs",
+    "controller": "str",
+    "required_checks": "strs",
     "project": "str",
     "holdout": "str",
 }
@@ -322,9 +327,11 @@ class GitHub:
             raise
 
     def pull_for_branch(self, prefix: str) -> dict[str, Any] | None:
-        """Return the open pull request whose head branch starts with prefix."""
+        """Return the open same-repository pull request whose head branch starts with prefix."""
         for pull in self._pages("repos/{owner}/{repo}/pulls?state=open"):
-            if pull["head"]["ref"].startswith(prefix):
+            head_repo = (pull["head"].get("repo") or {}).get("full_name")
+            base_repo = (pull["base"].get("repo") or {}).get("full_name")
+            if head_repo and head_repo == base_repo and pull["head"]["ref"].startswith(prefix):
                 return {
                     "number": pull["number"],
                     "branch": pull["head"]["ref"],
@@ -463,7 +470,7 @@ def _parse_costs(
     return costs
 
 
-def _pull_facts(github: GitHub, pr: dict[str, Any]) -> Pull:
+def _pull_facts(github: GitHub, pr: dict[str, Any], required_checks: Sequence[str]) -> Pull:
     latest: dict[str, str] = {}
     for review in sorted(github.reviews(pr["number"]), key=lambda r: r.get("submitted_at") or ""):
         if review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
@@ -473,9 +480,11 @@ def _pull_facts(github: GitHub, pr: dict[str, Any]) -> Pull:
         r.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}
         for r in runs
     )
-    passed = bool(runs) and all(
-        r.get("conclusion") in {"success", "neutral", "skipped"} for r in runs
-    )
+    done = {r.get("name"): r.get("conclusion") == "success" for r in runs}
+    if required_checks:
+        passed = all(done.get(name) is True for name in required_checks)
+    else:
+        passed = bool(runs) and all(done.values()) and len(done) == len(runs)
     return Pull(
         number=pr["number"],
         branch=pr["branch"],
@@ -486,7 +495,7 @@ def _pull_facts(github: GitHub, pr: dict[str, Any]) -> Pull:
 
 def snapshot(github: GitHub, config: Config) -> Snapshot:
     """Collect factory issues per state, linked pull requests, repair counts and spend."""
-    controller = github.viewer()
+    controller = config.controller or github.viewer()
     seen: dict[int, dict[str, Any]] = {}
     for state in State:
         for issue in github.issues_with_label(state.value):
@@ -521,7 +530,7 @@ def snapshot(github: GitHub, config: Config) -> Snapshot:
         if state is State.IN_REVIEW:
             pr = github.pull_for_branch(f"feat/{number}-")
             if pr:
-                pulls[number] = _pull_facts(github, pr)
+                pulls[number] = _pull_facts(github, pr, config.required_checks)
     return Snapshot(states, unadmitted, conflicts, pulls, repairs, costs)
 
 
@@ -640,8 +649,23 @@ def claim(root: Path, issue: int, title: str) -> bool:
     taken = _git(root, "ls-remote", "--heads", "origin", f"refs/heads/feat/{int(issue)}-*")
     if taken.returncode != 0 or taken.stdout.strip():
         return False
-    pushed = _git(root, "push", "origin", f"{base}:refs/heads/{branch}")
-    return pushed.returncode == 0
+    # The lock commit is unique per caller, so a create-only push of it cannot succeed as a no-op
+    # when the lock exists. An empty expected value makes the server refuse an existing ref.
+    tree = _git(root, "rev-parse", f"{base}^{{tree}}")
+    if tree.returncode != 0:
+        return False
+    nonce = f"factory claim #{int(issue)} {uuid.uuid4()}"
+    identity = ["-c", "user.name=factory", "-c", "user.email=factory@localhost"]
+    made = _git(root, *identity, "commit-tree", tree.stdout.strip(), "-p", base, "-m", nonce)
+    if made.returncode != 0:
+        return False
+    lock = f"refs/factory/claims/{int(issue)}"
+    locked = _git(
+        root, "push", f"--force-with-lease={lock}:", "origin", f"{made.stdout.strip()}:{lock}"
+    )
+    if locked.returncode != 0:
+        return False
+    return _git(root, "push", "origin", f"{base}:refs/heads/{branch}").returncode == 0
 
 
 # --- protected paths ---------------------------------------------------------------------
@@ -722,10 +746,7 @@ def _tick(
     if not claim(root, action.issue, title):
         print(f"claim lost for #{action.issue}", file=sys.stderr)
         return EXIT_OK
-    transition(State.ACCEPTED, State.IN_PROGRESS)
-    github.add_labels(action.issue, [State.IN_PROGRESS.value])
-    github.remove_label(action.issue, State.ACCEPTED.value)
-    print(f"claimed #{action.issue}; agent stages arrive in S2", file=sys.stderr)
+    print(f"claimed #{action.issue}; labels and agent stages arrive in S2", file=sys.stderr)
     return EXIT_OK
 
 
