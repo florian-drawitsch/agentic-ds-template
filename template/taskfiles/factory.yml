@@ -55,3 +55,13 @@ tasks:
     dir: '{{.ROOT_DIR}}'
     cmds:
       - uv run --script scripts/agent/factory.py sync
+
+  secrets:
+    interactive: true
+    desc: Set the GitHub Actions secrets step by step (`-- --check` only lists missing ones)
+    summary: |
+      Opens the token pages in the browser, can run `claude setup-token`, and stores each value
+      with `gh secret set` from stdin. Running locally with `task factory:loop` needs no secrets.
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/factory.py secrets {{.CLI_ARGS}}

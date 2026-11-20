@@ -1,8 +1,10 @@
 name: Factory
 
 # Ticket factory (ADR-0033). The controller moves labeled issues to verified pull requests.
-# All GitHub writes use FACTORY_GH_TOKEN (a GitHub App or fine-grained token) so that the
-# pull requests it opens start CI. The workflow's own token stays read-only.
+# All GitHub writes use FACTORY_GH_TOKEN so that the pull requests it opens start CI; the
+# workflow's own token stays read-only. `task factory:secrets` sets the secrets. A board
+# owned by a personal account needs a classic token with the repo and project scopes.
+# Claude signs in with ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`).
 
 on:
   schedule:
@@ -34,32 +36,53 @@ jobs:
     # off, the next tick resumes the saved run.
     timeout-minutes: 360
     steps:
+      # Until `task factory:secrets` has run, skip quietly instead of failing every run.
+      - name: Check secrets
+        id: ready
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+          CLAUDE: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CODEX: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$CODEX" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Factory secrets are missing; run task factory:secrets. Skipped."
+          fi
+
       - name: Check out
+        if: steps.ready.outputs.ok == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Set up uv
+        if: steps.ready.outputs.ok == 'true'
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Set up Task
+        if: steps.ready.outputs.ok == 'true'
         uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
 
       # Checkout keeps no credentials; this lets plain git commands push with the same token.
       - name: Set up git credentials
+        if: steps.ready.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
         run: gh auth setup-git
 
       - name: Install agent CLIs
+        if: steps.ready.outputs.ok == 'true'
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
         run: npm install --global @anthropic-ai/claude-code@2.1.329 @openai/codex@0.171.0 # zizmor: ignore[adhoc-packages]
 
       - name: Tick
+        if: steps.ready.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SCHEDULED: ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
         run: task factory:tick -- $SCHEDULED
@@ -70,29 +93,49 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
+      # Until `task factory:secrets` has run, skip quietly instead of failing every run.
+      - name: Check secrets
+        id: ready
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+          CLAUDE: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CODEX: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$CODEX" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Factory secrets are missing; run task factory:secrets. Skipped."
+          fi
+
       - name: Check out
+        if: steps.ready.outputs.ok == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Set up uv
+        if: steps.ready.outputs.ok == 'true'
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Set up Task
+        if: steps.ready.outputs.ok == 'true'
         uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
 
       # Checkout keeps no credentials; this lets plain git commands push with the same token.
       - name: Set up git credentials
+        if: steps.ready.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
         run: gh auth setup-git
 
       - name: Install agent CLIs
+        if: steps.ready.outputs.ok == 'true'
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
         run: npm install --global @anthropic-ai/claude-code@2.1.329 @openai/codex@0.171.0 # zizmor: ignore[adhoc-packages]
 
       - name: Daily report
+        if: steps.ready.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
         run: task factory:report -- daily
@@ -100,9 +143,11 @@ jobs:
       # Runs the retrospective only when `retro_every` pull requests merged since the last
       # one; otherwise the controller prints the count and exits.
       - name: Retrospective
+        if: steps.ready.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: task factory:report -- retro
 
@@ -112,19 +157,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      # Until `task factory:secrets` has run, skip quietly instead of failing every run.
+      - name: Check secrets
+        id: ready
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+          CLAUDE: set
+          CODEX: set
+        run: |
+          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$CODEX" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Factory secrets are missing; run task factory:secrets. Skipped."
+          fi
+
       - name: Check out
+        if: steps.ready.outputs.ok == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Set up uv
+        if: steps.ready.outputs.ok == 'true'
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Set up Task
+        if: steps.ready.outputs.ok == 'true'
         uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
 
       - name: Weekly report
+        if: steps.ready.outputs.ok == 'true'
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
         run: task factory:report -- weekly

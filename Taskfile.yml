@@ -91,14 +91,39 @@ tasks:
       - uv run --script {{.FACTORY}} status {{.CLI_ARGS}}
 
   factory:tick:
-    desc: Print the next factory action without changing anything
+    desc: Take the next factory action (`-- --dry-run` prints it instead)
+    summary: |
+      One tick triages, implements, repairs or verifies at most one issue. CI passes
+      `--scheduled`, which also takes cards moved to Ready and mirrors every card.
     cmds:
-      - uv run --script {{.FACTORY}} tick --dry-run {{.CLI_ARGS}}
+      - uv run --script {{.FACTORY}} tick {{.CLI_ARGS}}
+
+  factory:loop:
+    desc: Run the tick locally every N seconds (default 600) until interrupted
+    summary: |
+      Uses your gh, claude and codex logins; needs no Actions secrets. Stops with Ctrl-C.
+    cmds:
+      - |
+        while true; do
+          uv run --script {{.FACTORY}} tick --scheduled || true
+          sleep {{.CLI_ARGS | default "600"}}
+        done
+
+  factory:report:
+    desc: Post the `daily` or `weekly` report, or run the `retro` check
+    cmds:
+      - uv run --script {{.FACTORY}} report {{.CLI_ARGS}}
 
   factory:sync:
     desc: Mirror the label state of open factory issues into the board
     cmds:
       - uv run --script {{.FACTORY}} sync
+
+  factory:secrets:
+    interactive: true
+    desc: Set the GitHub Actions secrets step by step (`-- --check` only lists missing ones)
+    cmds:
+      - uv run --script {{.FACTORY}} secrets {{.CLI_ARGS}}
 
   dev:
     desc: Register this working copy as the marketplace in both CLIs
