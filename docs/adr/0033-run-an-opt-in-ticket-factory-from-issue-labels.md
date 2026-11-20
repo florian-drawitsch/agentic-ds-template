@@ -20,7 +20,10 @@ Research in November 2026 on public factories and incident reports found:
   [coleam00/dark-factory-experiment](https://github.com/coleam00/dark-factory-experiment))
 - **No board trigger.** Project board events (`projects_v2_item`) are webhook-only. They cannot
   start a GitHub Actions workflow
-  ([gh-aw #25336](https://github.com/github/gh-aw/issues/25336)).
+  ([gh-aw #25336](https://github.com/github/gh-aw/issues/25336)). The issue timeline does
+  record each Status change on a board as `ProjectV2ItemStatusChangedEvent`, with the actor,
+  the old and new status and whether a board workflow made it (GraphQL schema, checked
+  2026-11-20). A scheduled job can read these events without webhooks, on any account type.
 - **The writer never grades its own work.** Verifiers run in a fresh context and do not read the
   implementer's plan. StrongDM keeps acceptance scenarios outside the codebase as a holdout set,
   after agents learned to pass narrow tests
@@ -68,7 +71,8 @@ primary disclosures before this record is accepted.
 
 ### State machine
 
-Labels hold the state. The board only displays it.
+Labels hold the state. The board displays it and accepts one human input: moving a card into
+Ready, which the controller turns into the `factory:ready` label.
 
 ```mermaid
 ---
@@ -85,10 +89,10 @@ stateDiagram-v2
   classDef base fill:none,stroke:#868e96,color:#868e96
   classDef blue fill:none,stroke:#2f81f7,stroke-width:2px,color:#2f81f7
   classDef red fill:none,stroke:#e5534b,stroke-width:2px,color:#e5534b
-  [*] --> Ready: maintainer labels
+  [*] --> Ready: maintainer labels or moves card
   Ready --> Accepted: triage
   Ready --> NeedsInfo: triage
-  NeedsInfo --> Ready: maintainer relabels
+  NeedsInfo --> Ready: maintainer relabels or moves card
   Accepted --> InProgress: claim
   InProgress --> InReview: PR published
   InProgress --> NeedsHuman: budget or gate
@@ -105,7 +109,7 @@ Blue states need a human action. Red states stop the factory for that ticket.
 
 | State | Label | Set by |
 | --- | --- | --- |
-| Ready | `factory:ready` | a user with write access |
+| Ready | `factory:ready` | a user with write access, by label or by moving the card to Ready |
 | Accepted, Needs info | `factory:accepted`, `factory:needs-info` | triage |
 | In progress | `factory:in-progress` | controller, on claim |
 | In review | `factory:in-review` | controller, after publishing the PR |
@@ -114,7 +118,9 @@ Blue states need a human action. Red states stop the factory for that ticket.
 
 ### Dispatch
 
-- `task factory:tick` makes at most one state change and exits. No model chooses work.
+- `task factory:tick` makes at most one state change and exits. No model chooses work. Board
+  intake runs first and does not count toward that limit, because it records a human's
+  decision rather than making one.
 - Order: repair a PR in review, verify a PR, implement an accepted issue, triage a ready issue.
   Within a state, a `priority:` label orders the issues, then the issue number.
 - **Claim.** The first non-forced push of `feat/<issue>-<slug>` wins. A later tick that loses
@@ -122,8 +128,14 @@ Blue states need a human action. Red states stop the factory for that ticket.
 - **Limits** in `factory.toml`: `max_in_progress` (default 1) and `max_verified` (default 3).
   When the number of verified PRs waiting for a human reaches `max_verified`, implementation
   does not start.
-- **Triggers.** A scheduled workflow, `workflow_dispatch` and `issues: labeled` run the tick in
-  Actions. `task factory:loop` runs it locally on an interval. Board events are not used.
+- **Triggers.** A workflow scheduled every 10 minutes, `workflow_dispatch` and
+  `issues: labeled` run the tick in Actions. `task factory:loop` runs it locally on an
+  interval. Board webhooks are not used: the scheduled tick polls the board instead.
+- **Board intake.** At the start of each tick the controller reads the cards in the board's
+  Ready column. For an open issue whose label state is none or Needs info, it sets
+  `factory:ready` when admission (see Security) accepts the move. A label added this way works
+  like one added by hand. A card moved by hand into any other column goes back to its label's
+  column at the next mirror. To withdraw a ticket, remove its label.
 - **Board.** `factory.py init` creates the labels and a GitHub project named
   `<repository> factory`, links it to the repository, gives its Status field one column per
   state plus Done, and adds the Kanban views Board, Backlog and Needs attention. It finds the
@@ -131,8 +143,8 @@ Blue states need a human action. Red states stop the factory for that ticket.
   forks get their own board; `project` in `factory.toml` overrides the lookup. It never
   rewrites the columns or views of a board someone arranged. The board has no sprint or
   estimate fields: tickets flow continuously under the work-in-progress limits. The
-  controller mirrors each label into the Status field (`factory.py sync`). Labels stay the
-  source of truth.
+  controller mirrors each label into the Status field (`factory.py sync`), and each scheduled
+  tick runs a full mirror after intake. Labels stay the source of truth.
 - **Setup.** In generated projects, `copier copy` and `task setup` run `init` and skip it with a
   note while the GitHub repository, the `project` token scope or write access is missing.
 
@@ -173,8 +185,12 @@ Blue states need a human action. Red states stop the factory for that ticket.
 
 ### Security
 
-- **Admission.** The controller accepts `factory:ready` only when the timeline shows that a
-  user with write access added it. Other users' issues are never triaged.
+- **Admission.** The controller accepts Ready only when the latest Ready signal on the issue
+  timeline comes from a user with write access. A Ready signal is a `labeled` event for
+  `factory:ready` or a `ProjectV2ItemStatusChangedEvent` into Ready on the factory board. Moves
+  on other boards and moves made by board workflows (`wasAutomated`) are not signals. The
+  controller's own identity counts as admitted, because it sets Ready only after an admitted
+  signal. Other users' issues are never triaged.
 - **Rule of Two.** Workers handle untrusted text and change files in their sandbox. They get no
   GitHub credentials and no network access beyond `deliver.toml`. Only the outer controller
   writes to GitHub (ADR-0028).
@@ -204,8 +220,11 @@ Blue states need a human action. Red states stop the factory for that ticket.
 - **Separate factory repository:** versions would drift from `deliver.py`, the coupling that
   ADR-0018 removed.
 - **Inside the `project` plugin:** every project would carry factory machinery it does not use.
-- **Board columns as the trigger:** Actions cannot receive board events, and a hosted webhook
-  receiver is out of scope for a template.
+- **Board webhooks as the trigger:** Actions cannot receive board events, and a hosted webhook
+  receiver is out of scope for a template. Polling every 10 minutes gives the same result with
+  a delay.
+- **Every board column as input:** a human could skip triage, verification or the
+  work-in-progress limits by dragging a card. Only Ready is a human state that starts work.
 - **GitHub Agent HQ assignment or an issue-triggered agent action:** gives up `deliver`'s
   budgets, sandbox, cross-vendor verification and separate GitHub writes.
 - **GitHub agentic workflows (gh-aw):** a strong security model, but Actions-only and a second
@@ -224,6 +243,13 @@ Blue states need a human action. Red states stop the factory for that ticket.
 - Throughput is bounded by human merges through `max_verified`. This is intended.
 - Holdout checks need a storage place outside the repository, which the template cannot
   provide. Without one, verification relies on the gate and the independent verifier.
+- A card moved to Ready starts work at the next scheduled tick, up to 10 minutes later plus
+  GitHub's schedule delay. Adding the label by hand starts it within seconds.
+- The schedule starts 144 runs a day. Public repositories pay nothing for them. On the Free
+  plan, private repositories exceed the 2,000 included minutes a month at this rate, so they
+  need a longer interval or `task factory:loop` on a local machine.
+- GitHub turns off scheduled workflows in a public repository after 60 days without activity.
+  Board intake then stops until someone re-enables the workflow.
 - The triage role is a new skill surface and needs evals (AGENTS.md).
 - ADR-0027 and ADR-0028 remain. The factory adds a caller, not a new delivery path.
 
@@ -232,9 +258,12 @@ Blue states need a human action. Red states stop the factory for that ticket.
 Planned, required before this record is accepted:
 
 - `tests/test_factory.py`: transitions, dispatch order, claim races, limits, admission by actor
-  permission, protected paths, budget refusal and holdout output reduced to pass or fail.
-- `tests/template/`: rendering with `factory=true` and `false`, the workflow's pinned actions
-  and permissions, and the `scripts/agent/factory.py` project copy.
+  permission for labels and board moves, board intake, protected paths, budget refusal and
+  holdout output reduced to pass or fail.
+- `tests/template/`: rendering with `factory=true` and `false`, the workflow's pinned actions,
+  permissions and 10-minute schedule, and the `scripts/agent/factory.py` project copy.
+- A live check on a board owned by a personal account: a card moved to Ready by the maintainer
+  appears as a `ProjectV2ItemStatusChangedEvent` with that actor and becomes `factory:ready`.
 - `plugins/factory/evals/`: triage accepts a clear issue, returns needs-info for a vague one and
   ignores instructions embedded in an issue body.
 - A live run in the `energy-forecasting` showcase from a labeled issue to a verified PR.

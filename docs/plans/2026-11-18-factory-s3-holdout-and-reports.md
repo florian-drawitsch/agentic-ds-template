@@ -4,8 +4,8 @@ Status: Approved for implementation on 2026-11-20.
 
 ## Goal and scope
 
-Add the sealed holdout checks, the daily and weekly reports, the retrospective PR and the
-optional board mirror from ADR-0033.
+Add the sealed holdout checks, the daily and weekly reports, the retrospective PR, the
+optional board mirror and board intake from ADR-0033.
 
 Non-goals: template integration (S4). Automatic merge.
 
@@ -57,8 +57,24 @@ Non-goals: template integration (S4). Automatic merge.
   after every label change, the controller mirrors that one issue with the same code. Errors
   are logged and never fail the tick. Tests: mirror called once per label change, `gh` error
   tolerated.
+- [ ] **Board intake.** New `GitHub` method `status_changes(issue)` reads the issue's
+  `ProjectV2ItemStatusChangedEvent` timeline items through GraphQL: actor, project, status,
+  `wasAutomated`, time. Extend admission from S1: the latest Ready signal, either a
+  `factory:ready` label event or a move into Ready on the factory board, must come from an
+  admitted user. Moves on other boards and automated moves are ignored; the controller's own
+  identity counts as admitted. `intake(github, board, config)` runs before the snapshot in
+  `tick`: for each card in Ready whose issue is open with label state none or Needs info and
+  an admitted move, it sets `factory:ready` (removing `factory:needs-info`). After intake, a
+  tick with `--scheduled` runs the full `sync`, which moves hand-placed cards in other columns
+  back. Intake errors are logged and never fail the tick. Tests with the fake GitHub: a
+  maintainer's move sets the label, a read-only user's move does not, an automated move does
+  not, a move on another board does not, Needs info moved to Ready becomes Ready, an issue
+  already Accepted is left alone, a later outsider label after an admitted move is rejected,
+  the controller's own label passes admission, a card dragged to Verified returns to its
+  label's column.
 - [ ] **Docs and gate.** Document holdouts (with the data science example from ADR-0033),
-  reports and the board mirror in the skill and `docs/features.md`. Run `task check`.
+  reports, the board mirror and board intake in the skill and `docs/features.md`. Run
+  `task check`.
 
 ## Acceptance and verification
 
@@ -66,7 +82,8 @@ Non-goals: template integration (S4). Automatic merge.
 - A holdout test proves that only check names and pass or fail reach the comment.
 - Final gate (run by the delivery controller): `task check`.
 - External checks, not part of this run: posting reports and updating a real board need `gh`
-  with project scope and the user's approval of the repository.
+  with project scope and the user's approval of the repository. The same applies to the live
+  check that a card moved on a board owned by a personal account becomes `factory:ready`.
 
 ## Rulings
 
