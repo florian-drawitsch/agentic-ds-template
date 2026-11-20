@@ -70,7 +70,9 @@ _message_after_copy: |
   {%- if factory %}
 
   Ticket factory: after pushing to GitHub, run `gh auth refresh -s project` once, then
-  `task factory:init` creates the labels and the board. See docs/guides/factory.md.
+  `task factory:init` creates the labels and the board. Then either run it locally with
+  `task factory:loop` (uses your gh, claude and codex logins) or set the GitHub Actions
+  secrets with `task factory:secrets`. See docs/guides/factory.md.
   {%- endif %}
 
 # --- Identity ---------------------------------------------------------------------------------

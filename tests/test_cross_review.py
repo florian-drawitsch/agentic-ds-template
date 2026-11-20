@@ -380,3 +380,23 @@ def test_excluded_plans_are_hidden_from_status_and_untracked_inputs(tmp_path: Pa
     context = (input_dir / "context.md").read_text()
     assert "secret-plan" not in context
     assert "other.txt" in context
+
+
+@pytest.mark.parametrize(
+    ("reviewer", "own"), [("claude", "ANTHROPIC_API_KEY"), ("codex", "OPENAI_API_KEY")]
+)
+def test_reviewer_keeps_only_its_own_login(
+    monkeypatch: pytest.MonkeyPatch, reviewer: str, own: str
+) -> None:
+    for name in review.CREDENTIAL_ENV:
+        monkeypatch.setenv(name, "secret")
+    env = review.reviewer_env(reviewer)
+    assert env[own] == "secret"
+    others = set(review.CREDENTIAL_ENV) - set(review.VENDOR_ENV[reviewer])
+    assert not others & set(env)
+
+
+def test_codex_reviewer_shell_never_sees_credentials() -> None:
+    command = review.codex_command("Review", None, Path("schema"), Path("output"))
+    exclude = next(c for c in command if c.startswith("shell_environment_policy.exclude="))
+    assert set(json.loads(exclude.split("=", 1)[1])) == set(review.CREDENTIAL_ENV)

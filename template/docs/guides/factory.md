@@ -28,20 +28,61 @@ model tokens and Actions minutes: set the spend caps in `factory.toml` before th
    fork or transferred repository gets its own board. `copier copy` and `task setup` run the
    same step and skip it with a note while the repository or the scope is missing.
 
-4. Create the token. The workflow's own token is read-only, so all writes use the secret
-   `FACTORY_GH_TOKEN`: a GitHub App installation token or a fine-grained token with
-   read and write access to contents, issues, pull requests and projects. Pull requests it
-   opens then start CI, which the default token never does.
-5. Add the secrets under Settings, Secrets and variables, Actions: `FACTORY_GH_TOKEN`,
-   `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`. The model keys reach only the steps that run
-   the factory tasks.
-6. Protect `main` under Settings, Branches: require a pull request with one human approval,
-   require the CI check, and do not let the token's account bypass these rules. The factory
-   never merges; a human does.
-7. Enable Codex code review for the repository. The factory waits for its review before it
+4. Choose where the factory runs. Both modes use the same labels, board and limits.
+
+   | Mode | Runs on | Credentials | Cost |
+   | --- | --- | --- | --- |
+   | Local | your machine, while `task factory:loop` runs | your `gh`, `claude` and `codex` logins (browser, app or CLI) | your subscriptions; no Actions minutes |
+   | GitHub Actions | GitHub's runners, every 10 minutes, with your machine off | repository secrets | Actions minutes (free for public repositories) and model usage |
+
+   **Local:** sign in once, then start the loop. It needs no secrets.
+
+   ```bash
+   gh auth login
+   ```
+
+   ```bash
+   claude
+   ```
+
+   ```bash
+   codex login
+   ```
+
+   ```bash
+   task factory:loop
+   ```
+
+   **GitHub Actions:** set the three secrets step by step. The command shows what is missing,
+   opens each page in the browser, and stores each value with `gh secret set` without
+   printing it:
+
+   ```bash
+   task factory:secrets
+   ```
+
+   - `FACTORY_GH_TOKEN`: a classic token with the `repo` and `project` scopes. The command
+     opens the token page with both scopes selected. Fine-grained tokens cannot reach a board
+     owned by a personal account. You can instead reuse the token of your `gh` login, which
+     carries every scope `gh` was granted. The workflow's own token is read-only, and pull
+     requests it opened would not start CI.
+   - Claude: `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, which uses your Claude
+     subscription through a browser login, or an `ANTHROPIC_API_KEY` billed per token.
+   - Codex: `OPENAI_API_KEY`, billed per token.
+
+   Until the secrets exist, each workflow run skips its steps with a notice instead of
+   failing. `task factory:secrets -- --check` lists what is missing.
+
+5. Protect `main` under Settings, Branches: require a pull request and the CI check, and do
+   not allow force pushes. The factory never merges; a human does. GitHub does not let you
+   approve your own pull requests, so if `FACTORY_GH_TOKEN` belongs to your account, either
+   require no approvals or create a separate machine account for the token and require one
+   approval.
+6. Enable Codex code review for the repository. The factory waits for its review before it
    marks a pull request verified.
-8. Private repositories on the Free plan have limited Actions minutes. Lengthen the cron
-   interval in the workflow, or run `task factory:loop` on your machine instead.
+7. Private repositories on the Free plan have limited Actions minutes: about 4,300 a month
+   are spent on idle polling every 10 minutes. Lengthen the cron interval in the workflow,
+   or use the local mode.
 
 ## Use
 

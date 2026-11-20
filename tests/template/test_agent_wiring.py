@@ -220,9 +220,48 @@ def test_factory_workflow_is_safe_and_calls_existing_tasks(factory_project: Path
             assert "github.event.issue" not in command and "${{" not in command, command
             if command.startswith("task "):
                 assert command.split()[1] in tasks, command
+            if step.get("id") == "ready":
+                # Only tests whether the secrets are set; it never prints them.
+                assert "echo \"$" not in command
+                continue
             if "secrets.ANTHROPIC_API_KEY" in str(step.get("env", {})):
                 assert command.startswith("task factory:"), command
     assert "ANTHROPIC_API_KEY" not in str(workflow["jobs"]["report-weekly"])
     tick = workflow["jobs"]["tick"]["steps"]
-    assert tick[0]["with"]["fetch-depth"] == 0
+    checkout = next(step for step in tick if step["name"] == "Check out")
+    assert checkout["with"]["fetch-depth"] == 0
     assert any(step.get("run") == "gh auth setup-git" for step in tick)
+
+
+def test_factory_workflow_skips_until_secrets_exist_and_accepts_both_claude_logins(
+    factory_project: Path,
+) -> None:
+    workflow = yaml.safe_load((factory_project / ".github/workflows/factory.yml").read_text())
+    for name, job in workflow["jobs"].items():
+        first, *rest = job["steps"]
+        assert first["id"] == "ready", name
+        for step in rest:
+            assert step["if"] == "steps.ready.outputs.ok == 'true'", (name, step["name"])
+    for step in workflow["jobs"]["tick"]["steps"] + workflow["jobs"]["report-daily"]["steps"]:
+        if step["name"] in {"Tick", "Retrospective"}:
+            assert {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY"} <= set(
+                step["env"]
+            )
+
+
+def test_this_repository_runs_the_same_factory_workflow() -> None:
+    source = (ROOT / "template/.github/workflows/factory.yml").read_text()
+    assert (ROOT / ".github/workflows/factory.yml").read_text() == source
+    workflow = yaml.safe_load(source)
+    commands = [s.get("run", "") for j in workflow["jobs"].values() for s in j["steps"]]
+    tasks = set(yaml.safe_load((ROOT / "Taskfile.yml").read_text())["tasks"])
+    for command in commands:
+        if command.startswith("task "):
+            assert command.split()[1] in tasks, command
+
+
+def test_secrets_task_exists_in_both_taskfiles(factory_project: Path) -> None:
+    assert "factory:secrets" in task_names(factory_project)
+    root = yaml.safe_load((ROOT / "Taskfile.yml").read_text())["tasks"]
+    assert {"factory:secrets", "factory:loop", "factory:report", "factory:tick"} <= set(root)
+    assert "--dry-run" not in str(root["factory:tick"]["cmds"])

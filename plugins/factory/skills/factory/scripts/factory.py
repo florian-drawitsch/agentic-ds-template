@@ -11,6 +11,7 @@ Commands:
     init      Create the labels and a Kanban board for this repository, mirror issues.
     sync      Mirror the label state of open issues into the board's Status field.
     report    Post the daily or weekly report on the tracking issue, or run the retrospective.
+    secrets   Set the GitHub Actions secrets step by step; --check only lists missing ones.
 
 All state lives in GitHub issue labels and comments. No model chooses work, and issue text
 never reaches a shell.
@@ -22,6 +23,7 @@ import argparse
 import contextlib
 import enum
 import fnmatch
+import getpass
 import importlib.util
 import json
 import os
@@ -36,6 +38,7 @@ import tomllib
 import unicodedata
 import urllib.parse
 import uuid
+import webbrowser
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
@@ -516,6 +519,20 @@ class GitHub:
             for n in nodes
             if (n.get("content") or {}).get("number")
         ]
+
+    # Actions secrets. Values go to `gh` on stdin, never as arguments.
+
+    def secret_names(self) -> list[str]:
+        """Return the names of the repository's Actions secrets."""
+        return [s["name"] for s in self._pages("repos/{owner}/{repo}/actions/secrets")]
+
+    def set_secret(self, name: str, value: str) -> None:
+        """Create or replace one Actions secret; the value is read by gh from stdin."""
+        self._call(["secret", "set", name], input=value)
+
+    def gh_token(self) -> str:
+        """Return the token of the current gh login."""
+        return self._call(["auth", "token"]).strip()
 
     # Projects (the board). `gh project` needs the token scope `project`.
 
@@ -1063,6 +1080,14 @@ def run_command(
     )
 
 
+SECRET_ENV = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+)
 SECRET_NAME = re.compile(
     r"(^GH_|^GITHUB_|TOKEN|SECRET|PASSWORD|API_KEY|^AWS_|^SSH_)", re.IGNORECASE
 )
@@ -1076,9 +1101,21 @@ TRIAGE_ESTIMATE_USD = 0.25
 VERIFY_ESTIMATE_USD = 1.0
 
 
-def agent_env() -> dict[str, str]:
-    """Return the environment without GitHub tokens or other credential variables."""
-    return {k: v for k, v in os.environ.items() if not SECRET_NAME.search(k)}
+# Each vendor CLI authenticates from these when it has no stored login, as in CI; the CLI keeps
+# them from the commands it runs.
+VENDOR_ENV = {
+    "claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
+    "codex": ("OPENAI_API_KEY", "CODEX_API_KEY"),
+}
+
+
+def agent_env(vendor: str | None = None) -> dict[str, str]:
+    """Return the environment without GitHub tokens or other credentials.
+
+    With a vendor, that vendor's own login stays so its CLI can authenticate.
+    """
+    keep = set(VENDOR_ENV.get(vendor or "", ()))
+    return {k: v for k, v in os.environ.items() if k in keep or not SECRET_NAME.search(k)}
 
 
 @dataclass(frozen=True)
@@ -1200,9 +1237,11 @@ def run_triage(config: Config, path: Path, run: Runner = run_command) -> TriageR
         command += ["--disallowedTools", *(f"Read({path}/**)" for path in DENIED_READS)]
     else:
         command = ["codex", "exec", "--json", "-c", 'sandbox_mode="read-only"']
-        command += ["-c", 'approval_policy="never"', "--ephemeral", "--skip-git-repo-check", prompt]
+        command += ["-c", 'approval_policy="never"', "--ephemeral", "--skip-git-repo-check"]
+        command += ["-c", f"shell_environment_policy.exclude={json.dumps(list(SECRET_ENV))}"]
+        command += [prompt]
     try:
-        done = run(command, path.parent, 600, agent_env())
+        done = run(command, path.parent, 600, agent_env(vendor))
         if done.returncode != 0:
             return replace(INVALID, cost=TRIAGE_ESTIMATE_USD)
         text, cost = _agent_text(vendor, done.stdout)
@@ -1626,7 +1665,7 @@ def do_verify(env: Env, number: int) -> None:
         script = _script(env.root, "cross-review", "cross_review.py")
         command = ["uv", "run", "--no-project", "python", str(script), "--reviewer", reviewer]
         command += ["--acceptance", str(criteria)]
-        done = env.run(command, workdir, 1800, agent_env())
+        done = env.run(command, workdir, 1800, agent_env(reviewer))
     reported = re.search(r"^Cost: ([0-9.]+)", done.stdout or "", re.MULTILINE)
     cost = float(reported.group(1)) if reported else VERIFY_ESTIMATE_USD
     record_cost(github, number, "verify", cost, env.now)
@@ -2240,6 +2279,198 @@ def _tick(
     return EXIT_OK
 
 
+# --- secrets for GitHub Actions ---------------------------------------------------------
+
+TOKEN_URL = (
+    "https://github.com/settings/tokens/new?scopes=repo,project&description=factory%20controller"
+)
+GH_LOGIN = "gh-login"  # a choice whose value is the current gh login token
+
+
+@dataclass(frozen=True)
+class SecretChoice:
+    """One way to provide a secret: what it is, where to get it, how it is stored."""
+
+    label: str
+    name: str
+    url: str | None = None
+    command: tuple[str, ...] = ()
+    source: str = "paste"
+
+
+@dataclass(frozen=True)
+class SecretSpec:
+    """A credential the workflow needs; any one of its names satisfies it."""
+
+    purpose: str
+    choices: tuple[SecretChoice, ...]
+
+    @property
+    def names(self) -> set[str]:
+        """Return the secret names that satisfy this spec."""
+        return {choice.name for choice in self.choices}
+
+
+def required_secrets(config: Config) -> list[SecretSpec]:
+    """Return the secrets the factory workflow needs for this configuration."""
+    specs = [
+        SecretSpec(
+            "GitHub token for labels, the board, pushes and pull requests",
+            (
+                SecretChoice(
+                    "Create a classic token in the browser, with the repo and project scopes "
+                    "pre-selected (needed for a board owned by a personal account)",
+                    "FACTORY_GH_TOKEN",
+                    url=TOKEN_URL,
+                ),
+                SecretChoice(
+                    "Reuse the token of your gh login (no browser step, but it carries every "
+                    "scope gh was granted)",
+                    "FACTORY_GH_TOKEN",
+                    source=GH_LOGIN,
+                ),
+            ),
+        )
+    ]
+    vendors = set(_vendors(config))
+    if "claude" in vendors:
+        specs.append(
+            SecretSpec(
+                "Claude Code login",
+                (
+                    SecretChoice(
+                        "Claude subscription token: runs `claude setup-token`, which opens the "
+                        "browser login and prints the token to paste here",
+                        "CLAUDE_CODE_OAUTH_TOKEN",
+                        command=("claude", "setup-token"),
+                    ),
+                    SecretChoice(
+                        "Anthropic API key, billed per token",
+                        "ANTHROPIC_API_KEY",
+                        url="https://console.anthropic.com/settings/keys",
+                    ),
+                ),
+            )
+        )
+    if "codex" in vendors:
+        specs.append(
+            SecretSpec(
+                "Codex login",
+                (
+                    SecretChoice(
+                        "OpenAI API key, billed per token",
+                        "OPENAI_API_KEY",
+                        url="https://platform.openai.com/api-keys",
+                    ),
+                ),
+            )
+        )
+    return specs
+
+
+@dataclass
+class Console:
+    """Terminal interaction for `secrets`; tests replace every part."""
+
+    ask: Callable[[str], str] = input
+    secret: Callable[[str], str] = field(default_factory=lambda: _getpass)
+    open: Callable[[str], object] = field(default_factory=lambda: _open_browser)
+    run: Callable[[Sequence[str]], int] = field(default_factory=lambda: _run_interactive)
+    interactive: bool = field(default_factory=lambda: sys.stdin.isatty())
+
+
+def _getpass(prompt: str) -> str:
+    return getpass.getpass(prompt)
+
+
+def _open_browser(url: str) -> object:
+    return webbrowser.open(url)
+
+
+def _run_interactive(command: Sequence[str]) -> int:
+    try:
+        return subprocess.run(list(command), check=False).returncode
+    except OSError as exc:
+        print(f"cannot run {command[0]}: {exc}", file=sys.stderr)
+        return 1
+
+
+def missing_secrets(github: GitHub, config: Config) -> list[SecretSpec]:
+    """Return the required secrets that are not set on the repository."""
+    present = set(github.secret_names())
+    return [spec for spec in required_secrets(config) if not spec.names & present]
+
+
+def _describe_choices(spec: SecretSpec) -> None:
+    print(f"\n{spec.purpose}:")
+    for index, choice in enumerate(spec.choices, 1):
+        where = f" ({choice.url})" if choice.url else ""
+        print(f"  {index}. {choice.label}{where} -> secret {choice.name}")
+
+
+def _secrets(github: GitHub, config: Config, check: bool, console: Console) -> int:
+    repo = _repository(github)
+    missing = missing_secrets(github, config)
+    if not missing:
+        print(f"{repo['name']}: every factory secret is set.")
+        return EXIT_OK
+    print(f"{repo['name']}: {len(missing)} factory secret(s) missing for GitHub Actions.")
+    print("Running locally (`task factory:loop`) needs none: it uses your existing logins.")
+    if check or not console.interactive:
+        for spec in missing:
+            _describe_choices(spec)
+        print("\nRun `task factory:secrets` in a terminal to set them step by step.")
+        return EXIT_ERROR if check else EXIT_OK
+    for spec in missing:
+        _describe_choices(spec)
+        answer = console.ask(f"Choose 1-{len(spec.choices)}, or s to skip [1]: ").strip().lower()
+        if answer == "s":
+            print("skipped")
+            continue
+        index = int(answer) - 1 if answer.isdigit() else 0
+        if not 0 <= index < len(spec.choices):
+            print("skipped: no such choice")
+            continue
+        choice = spec.choices[index]
+        if choice.source == GH_LOGIN:
+            value = github.gh_token()
+        else:
+            if choice.url:
+                print(f"Opening {choice.url}")
+                console.open(choice.url)
+            if choice.command:
+                print(f"Running {' '.join(choice.command)}")
+                console.run(choice.command)
+            value = console.secret(f"Paste the value for {choice.name} (hidden, empty skips): ")
+        value = value.strip()
+        if not value:
+            print("skipped")
+            continue
+        if choice.name == "FACTORY_GH_TOKEN" and value.startswith("github_pat_"):
+            print(
+                "note: fine-grained tokens cannot reach a board owned by a personal account; "
+                "use a classic token unless an organization owns the board"
+            )
+        github.set_secret(choice.name, value)
+        print(f"set {choice.name}")
+    left = missing_secrets(github, config)
+    print("\nAll factory secrets are set." if not left else f"\n{len(left)} still missing.")
+    return EXIT_OK
+
+
+def _secrets_hint(github: GitHub, config: Config) -> None:
+    """After init, say what GitHub Actions still needs; never fail init over it."""
+    try:
+        missing = missing_secrets(github, config)
+    except GhError:
+        return
+    if missing:
+        print(
+            "next: `task factory:secrets` sets the GitHub Actions secrets; "
+            "`task factory:loop` runs locally without them"
+        )
+
+
 def _repository(github: GitHub) -> dict[str, str]:
     try:
         return github.repository()
@@ -2273,6 +2504,7 @@ def _init(github: GitHub, config: Config, board: bool) -> int:
     print(f"board: {found.url} ({'created' if new else 'found'}, {columns})")
     print("views added: " + (", ".join(views) or "none, all present"))
     print(f"mirrored: {mirrored} issues")
+    _secrets_hint(github, config)
     return EXIT_OK
 
 
@@ -2326,6 +2558,12 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("sync", help="mirror the label state of open issues into the board")
     report = sub.add_parser("report", help="post a report on the tracking issue, or run retro")
     report.add_argument("kind", choices=["daily", "weekly", "retro"])
+    secrets = sub.add_parser(
+        "secrets", help="set the GitHub Actions secrets step by step (browser, app or paste)"
+    )
+    secrets.add_argument(
+        "--check", action="store_true", help="only list missing secrets; exit 1 if any"
+    )
     return parser
 
 
@@ -2335,6 +2573,7 @@ def main(
     root: Path | None = None,
     now: datetime | None = None,
     run: Runner | None = None,
+    console: Console | None = None,
 ) -> int:
     """Run the command line; github, root, now and run are injected by tests."""
     args = _parser().parse_args(argv)
@@ -2353,6 +2592,8 @@ def main(
             return _sync(github, config)
         if args.command == "status":
             return _status(github, config, now, args.json)
+        if args.command == "secrets":
+            return _secrets(github, config, args.check, console or Console())
         env = Env(github, config, root, now, run or run_command)
         if args.command == "report":
             return _report(env, args.kind)

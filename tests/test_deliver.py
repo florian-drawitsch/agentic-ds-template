@@ -214,6 +214,38 @@ def test_codex_rounds_have_no_claude_tool_list() -> None:
     assert not any(item.startswith("--allowedTools") for item in command)
 
 
+@pytest.mark.parametrize(
+    ("harness", "kept", "dropped"),
+    [
+        ("claude", {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}, {"OPENAI_API_KEY"}),
+        ("codex", {"OPENAI_API_KEY", "CODEX_API_KEY"}, {"ANTHROPIC_API_KEY"}),
+        (None, set(), {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"}),
+    ],
+)
+def test_each_harness_keeps_only_its_own_login(
+    monkeypatch: pytest.MonkeyPatch, harness: str | None, kept: set[str], dropped: set[str]
+) -> None:
+    for name in deliver.CREDENTIAL_ENV:
+        monkeypatch.setenv(name, "secret")
+    env = deliver.sandbox_environment(harness)
+    assert kept <= set(env)
+    assert not dropped & set(env)
+    assert "GH_TOKEN" not in env
+    assert "GITHUB_TOKEN" not in env
+
+
+def test_codex_rounds_keep_credentials_out_of_shell_commands() -> None:
+    command = deliver.agent_command("codex", "prompt", None, True, None, "acceptEdits", writable=[])
+    exclude = next(c for c in command if c.startswith("shell_environment_policy.exclude="))
+    assert set(json.loads(exclude.split("=", 1)[1])) == set(deliver.CREDENTIAL_ENV)
+
+
+def test_claude_sandbox_denies_every_credential_variable() -> None:
+    settings = json.loads(deliver.claude_sandbox_settings([], Path.cwd()))
+    denied = {entry["name"] for entry in settings["sandbox"]["credentials"]["envVars"]}
+    assert denied == set(deliver.CREDENTIAL_ENV)
+
+
 def test_round_timeout_sends_sigint_and_is_recorded(tmp_path: Path) -> None:
     script = "import signal,time; signal.signal(signal.SIGINT, lambda *_: exit(0)); time.sleep(5)"
     result = deliver.run_round(
