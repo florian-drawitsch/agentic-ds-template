@@ -105,3 +105,16 @@ automatic merge (ADR-0033 forbids it).
 - The generated issue plan quotes acceptance criteria instead of turning them into checkboxes:
   issue text must not steer the completion guard; if wrong, the worker still adds its own
   items while expanding the plan.
+- Repair limit became a fifth dispatch action, `escalate`: `next_action` used to go idle at the
+  limit, which left the issue stuck in review; the S1 test now expects `escalate`; if wrong,
+  revert to idle and let a human relabel.
+- Verify and repair share one review step: a verify action with open findings runs repair, and
+  both check protected paths first; if wrong, split them.
+- "Codex reviewed the head commit" means a review by `chatgpt-codex-connector` whose
+  `commit_id` equals the head sha, and the wait starts at the head commit date; if Codex posts
+  only issue comments, the live test will show it and the timeout will escalate.
+- Verification cost is not recorded: `cross_review.py` prints no cost without `--token`; if
+  wrong, print it as JSON and record it.
+- The final gate and `task eval PLUGIN=factory` were not run here: the outer controller owns
+  `task check`; the eval and a live tick need approval and credentials. Both are pending, not
+  passed. Focused ruff, ty and `pytest tests --ignore=tests/template` passed (380 tests).
