@@ -258,11 +258,11 @@ def test_order_repair_before_verify_before_implement_before_triage():
     assert act(build({})).kind == "idle"
 
 
-def test_repair_stops_at_cycle_limit():
+def test_repair_limit_escalates():
     snap = build(
         {"in_review": [issue(1)]}, pulls={1: pull(11, changes=True, passed=False)}, repairs={1: 2}
     )
-    assert act(snap).kind == "idle"
+    assert act(snap).kind == "escalate"
 
 
 def test_pending_checks_do_not_verify():
@@ -323,42 +323,6 @@ def test_limits_never_violated():
 
 
 # --- claim ---
-
-
-@pytest.fixture
-def clone(tmp_path):
-    def git(cwd, *args):
-        subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
-
-    probe = subprocess.run(
-        ["git", "init", "-q", str(tmp_path / "probe")], capture_output=True, check=False
-    )
-    if probe.returncode != 0:
-        pytest.skip("git cannot write repositories under this temporary directory")
-    bare = tmp_path / "origin.git"
-    subprocess.run(
-        ["git", "init", "--template=", "--bare", "-b", "main", str(bare)],
-        check=True,
-        capture_output=True,
-    )
-    seed = tmp_path / "seed"
-    subprocess.run(
-        ["git", "clone", "--template=", str(bare), str(seed)], check=True, capture_output=True
-    )
-    git(seed, "config", "user.email", "a@b.c")
-    git(seed, "config", "user.name", "a")
-    (seed / "f").write_text("x")
-    git(seed, "add", "f")
-    git(seed, "commit", "-m", "init")
-    git(seed, "push", "origin", "HEAD:main")
-    clones = []
-    for name in ("one", "two"):
-        path = tmp_path / name
-        subprocess.run(
-            ["git", "clone", "--template=", str(bare), str(path)], check=True, capture_output=True
-        )
-        clones.append(path)
-    return clones
 
 
 def test_first_claim_wins_second_loses(clone):
@@ -583,29 +547,16 @@ def test_tick_dry_run_json_prints_one_action_and_changes_nothing(capsys):
     assert gh.issues[1]["labels"] == ["factory:ready"]
 
 
-def test_tick_agent_action_exits_3(capsys):
-    assert run_main(["tick"], seeded()) == 3
-    assert "agent stages arrive in S2" in capsys.readouterr().err
-
-
 def test_tick_idle_exits_0(capsys):
     assert run_main(["tick"], FakeGitHub()) == 0
     assert "idle" in capsys.readouterr().out
-
-
-def test_tick_implement_claims_without_label_writes(clone, capsys):
-    gh = FakeGitHub()
-    gh.add_issue(7, ["factory:accepted"], title="Add a thing")
-    assert run_main(["tick"], gh, root=clone[0]) == 0
-    assert gh.issues[7]["labels"] == ["factory:accepted"]
-    assert "claimed #7" in capsys.readouterr().err
-    assert run_main(["tick", "--dry-run"], gh, root=clone[0]) == 0
 
 
 def test_lost_claim_changes_no_labels(clone, capsys):
     assert factory.claim(clone[1], 7, "Add a thing")
     gh = FakeGitHub()
     gh.add_issue(7, ["factory:accepted"], title="Add a thing")
+    gh.add_comment(7, '<!-- factory:triage {"acceptance": ["a"]} -->')
     assert run_main(["tick"], gh, root=clone[0]) == 0
     assert gh.issues[7]["labels"] == ["factory:accepted"]
     assert "claim lost" in capsys.readouterr().err

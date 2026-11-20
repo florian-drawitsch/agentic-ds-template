@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,3 +20,39 @@ def fake_ssh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{Path('/usr/bin')}:{Path('/bin')}")
+
+
+@pytest.fixture
+def clone(tmp_path):
+    def git(cwd, *args):
+        subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
+
+    probe = subprocess.run(
+        ["git", "init", "-q", str(tmp_path / "probe")], capture_output=True, check=False
+    )
+    if probe.returncode != 0:
+        pytest.skip("git cannot write repositories under this temporary directory")
+    bare = tmp_path / "origin.git"
+    subprocess.run(
+        ["git", "init", "--template=", "--bare", "-b", "main", str(bare)],
+        check=True,
+        capture_output=True,
+    )
+    seed = tmp_path / "seed"
+    subprocess.run(
+        ["git", "clone", "--template=", str(bare), str(seed)], check=True, capture_output=True
+    )
+    git(seed, "config", "user.email", "a@b.c")
+    git(seed, "config", "user.name", "a")
+    (seed / "f").write_text("x")
+    git(seed, "add", "f")
+    git(seed, "commit", "-m", "init")
+    git(seed, "push", "origin", "HEAD:main")
+    clones = []
+    for name in ("one", "two"):
+        path = tmp_path / name
+        subprocess.run(
+            ["git", "clone", "--template=", str(bare), str(path)], check=True, capture_output=True
+        )
+        clones.append(path)
+    return clones
