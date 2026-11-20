@@ -113,9 +113,13 @@ def base_ref(root: Path, explicit: str | None) -> str:
 
 
 def build_prompt(
-    base: str, plan: str | None, input_dir: Path | None = None, acceptance: str | None = None
+    base: str,
+    plan: str | None,
+    input_dir: Path | None = None,
+    acceptance: str | None = None,
+    reviewer: str = "claude",
 ) -> str:
-    """Return the review instructions."""
+    """Return the review instructions; how to read files depends on the reviewer's tools."""
     if acceptance:
         spec = (
             f"There is no plan. The acceptance criteria are in {acceptance}; read them. Judge "
@@ -130,11 +134,18 @@ def build_prompt(
         )
     else:
         spec = "Infer the intent from the commits and the diff."
+    if reviewer == "codex":
+        # Codex reads files through its read-only shell; it has no Read, Grep or Glob tools.
+        how = (
+            "with read-only shell commands such as `cat`, `sed -n`, `rg` and `git show`. Do not "
+            "run commands that write files, install packages or reach the network."
+        )
+    else:
+        how = "with Read, Grep, and Glob. Do not run shell commands."
     inputs = (
         f"The controller prepared read-only review inputs at {input_dir}. Read `context.md` and "
-        "`diff.patch` there with the Read tool, then inspect every untracked file listed in the "
-        "context and any referenced source files with Read, Grep, and Glob. Do not run shell "
-        "commands."
+        "`diff.patch` there, then inspect every untracked file listed in the context and any "
+        f"referenced source files {how}"
         if input_dir
         else "The controller supplies the change through read-only input files."
     )
@@ -268,6 +279,10 @@ def normalize(review: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Review does not match the schema: {review}")
     if any(finding.get("severity") in BLOCKING for finding in findings):
         review["verdict"] = "changes_requested"
+    if review["verdict"] == "changes_requested" and not findings:
+        # A reviewer that could not inspect the change says so without findings. That is a
+        # failed review, not one the implementer can resolve.
+        raise ValueError(f"Review requested changes without findings: {review.get('summary')}")
     return review
 
 
@@ -498,7 +513,7 @@ def main(argv: list[str] | None = None) -> int:
 
     signature = state_signature(root)
     input_dir = write_review_inputs(root, base, args.token, hidden)
-    prompt = build_prompt(base, args.plan, input_dir, args.acceptance)
+    prompt = build_prompt(base, args.plan, input_dir, args.acceptance, args.reviewer)
     review_started = time.monotonic()
     review_started_at = datetime.now(UTC).isoformat(timespec="seconds")
     try:

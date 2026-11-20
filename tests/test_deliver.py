@@ -16,6 +16,8 @@ from typing import Any, cast
 
 import pytest
 
+from tests.helpers import checkout
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "plugins/project/skills/deliver/scripts/deliver.py"
 SPEC = importlib.util.spec_from_file_location("deliver", SCRIPT)
@@ -28,30 +30,7 @@ SPEC.loader.exec_module(deliver)
 
 @pytest.fixture
 def delivery_repo(tmp_path: Path) -> Path:
-    root = tmp_path / "checkout"
-    root.mkdir()
-    subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(root),
-            "-c",
-            "user.name=test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "--allow-empty",
-            "-qm",
-            "initial",
-        ],
-        check=True,
-    )
-    subprocess.run(
-        ["git", "-C", str(root), "remote", "add", "origin", "git@github.com:example/project.git"],
-        check=True,
-    )
-    return root
+    return checkout(tmp_path / "checkout")
 
 
 @pytest.mark.parametrize(
@@ -1159,6 +1138,72 @@ def test_controller_announces_the_silent_final_review(
     text = out.out + out.err
     assert "Running the final review with codex (gpt-6.1-sol)" in text
     assert "Final review ended after" in text
+
+
+def test_worker_prompt_leaves_the_final_review_to_the_controller(delivery_repo: Path) -> None:
+    run = deliver.Run(
+        "prompt", "plan.md", "exit 0", headless=True, cross_review="final", reviewer="codex"
+    )
+    prompt = deliver.headless_prompt(run, run.plan, delivery_repo)
+    assert "cross_review.py" not in prompt
+    assert "do not run or wait for the reviewer yourself" in prompt
+
+
+def test_publication_staged_before_review_runs_the_review(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit_plan(delivery_repo)
+    (delivery_repo / "plan.md").write_text("- [x] Implement\n")
+    run = deliver.Run(
+        "early-publish",
+        "plan.md",
+        "exit 0",
+        headless=True,
+        publish_pr=True,
+        cross_review="final",
+        reviewer="codex",
+        status="publishing",
+        pr_title="feat: x",
+        pr_description_file="body.md",
+    )
+    run.save(delivery_repo)
+    reviews = []
+    monkeypatch.setattr(
+        deliver,
+        "review_command",
+        lambda run: reviews.append(run.token) or [sys.executable, "-c", "print('reviewed')"],
+    )
+    monkeypatch.setattr(
+        deliver, "publication_environment", lambda *args: pytest.fail("published without review")
+    )
+    saved, verdict = deliver.advance_handoff(delivery_repo, run)
+    assert reviews == ["early-publish"]
+    assert verdict.action != "release"
+    assert saved.pr_url is None
+
+
+def test_failing_review_is_retried_once_then_blocks_the_run(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit_plan(delivery_repo)
+    run = deliver.Run(
+        "failing-review",
+        "plan.md",
+        "exit 0",
+        headless=True,
+        cross_review="final",
+        reviewer="codex",
+        status="reviewing",
+    )
+    run.save(delivery_repo)
+    runs = delivery_repo / "review-runs.txt"
+    script = f"open({str(runs)!r}, 'a').write('x'); raise SystemExit(1)"
+    monkeypatch.setattr(deliver, "review_command", lambda run: [sys.executable, "-c", script])
+    saved, verdict = deliver.advance_handoff(delivery_repo, run)
+    assert runs.read_text() == "xx"
+    assert verdict.action == "release"
+    assert saved.status == "blocked"
+    assert "unreviewed" in saved.note
 
 
 def test_outer_gate_failure_returns_to_agent_without_publication(

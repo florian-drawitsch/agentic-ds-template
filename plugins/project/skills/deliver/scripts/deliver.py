@@ -1241,7 +1241,8 @@ def headless_prompt(run: Run, plan: str, root: Path | None = None) -> str:
             f"{protocol(run)}"
         )
     review = (
-        f" Finish with `{shlex.join(review_command(run))}`."
+        " The outer controller runs the final review outside your sandbox after you stage "
+        "publication; do not run or wait for the reviewer yourself."
         if run.cross_review == "final" and not latest_review(root or Path.cwd(), run)
         else ""
     )
@@ -2978,7 +2979,8 @@ def advance_handoff(root: Path, run: Run) -> tuple[Run, Verdict]:
             run.verified_signature != state_signature(root) or run.verified_check != run.check
         ):
             return run, Verdict("continue", run.note or "Fix the failed final gate.")
-    elif run.status == "reviewing":
+    # Publication staged before any review turns into a review handoff: run it now.
+    if run.status == "reviewing":
         command = review_command(run)
         model = f" ({run.reviewer_model})" if run.reviewer_model else ""
         note(
@@ -2986,17 +2988,23 @@ def advance_handoff(root: Path, run: Run) -> tuple[Run, Verdict]:
             "ends, usually after several minutes.",
             "dim",
         )
-        started = time.monotonic()
-        result = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
-        note(f"Final review ended after {(time.monotonic() - started) / 60:.1f} min.", "dim")
+        for attempt in (1, 2):
+            started = time.monotonic()
+            result = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
+            minutes = (time.monotonic() - started) / 60
+            note(f"Final review ended after {minutes:.1f} min.", "dim")
+            if result.returncode in {0, 2}:
+                break
+            note(f"The review failed (attempt {attempt} of 2): {result.stderr[-500:]}", "red")
         if result.returncode not in {0, 2}:
-            run.status = ACTIVE
+            # The worker cannot repair a reviewer that fails; a person must look at it.
+            run.status = "blocked"
             run.note = (
-                "Outer cross-review failed with exit code "
-                f"{result.returncode}:\n{result.stdout}{result.stderr}"
+                "The final review failed twice, so the change is unreviewed and not published:\n"
+                f"{result.stdout}{result.stderr}"
             )
             run.save(root)
-            return run, Verdict("continue", run.note)
+            return run, Verdict("release", run.note)
         run.status = ACTIVE
         run.note = (result.stdout or "Outer cross-review finished.").strip()
     elif run.status == "verifying":

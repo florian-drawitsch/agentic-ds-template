@@ -36,6 +36,20 @@ outrank code and tests, which outrank plans. The design overview is in
 - Third-party bumps change `catalog.toml` only, after reading the upstream release notes.
 - Conventional Commits, in responsibility-sized chunks. No agent attribution in commits or PRs.
 
+## Tests
+
+- `task test` stays under about 30 s. Each fast test gets 10 s for setup and 10 s for its call;
+  `tests/conftest.py` fails tests over that. Longer tests are marked `slow` and run in
+  `task test-e2e`.
+- Render projects only through `tests/template/helpers.render`. It renders each set of answers
+  once per process. Add assertions to a test that already renders the answers you need before
+  adding a new answer combination.
+- Extend an existing parametrize table or test before adding a new test function.
+- Test logic with in-memory inputs and fakes. Use a real git repository only for git behaviour,
+  and start it from `tests/helpers.checkout`.
+- While working, run the affected file with `uv run pytest tests/<file> -q`. Run `task check`
+  once before handing off.
+
 ## Writing style
 
 Applies to everything you write here: replies, docs, docstrings, comments, commit messages.
