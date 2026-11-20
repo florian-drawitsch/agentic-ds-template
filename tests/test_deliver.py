@@ -1610,6 +1610,65 @@ def test_outer_evaluation_requests_headless_review_handoff(delivery_repo: Path) 
     assert verdict.action == "handoff"
 
 
+def test_agent_environment_drops_the_controllers_virtualenv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VIRTUAL_ENV", "/cache/uv/builds-v0/.tmpabc")
+    monkeypatch.setenv("VIRTUAL_ENV_PROMPT", "tmpabc")
+    monkeypatch.setenv("GH_TOKEN", "secret")
+    env = deliver.sandbox_environment()
+    assert "VIRTUAL_ENV" not in env
+    assert "VIRTUAL_ENV_PROMPT" not in env
+    assert "GH_TOKEN" not in env
+    assert env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] == "1"
+
+
+def test_worker_stop_hook_hands_headless_review_to_the_controller(delivery_repo: Path) -> None:
+    _commit_plan(delivery_repo)
+    (delivery_repo / "plan.md").write_text("- [x] Implement\n")
+    run = deliver.Run(
+        token="inner-handoff",
+        plan="plan.md",
+        check="exit 0",
+        headless=True,
+        cross_review="final",
+        reviewer="codex",
+    )
+    verdict = deliver.evaluate(delivery_repo, run)  # the worker's stop hook: outer=False
+    assert run.status == "reviewing"
+    assert verdict.action == "handoff"
+    assert "Run the final review" not in verdict.message
+
+
+def test_headless_next_review_round_is_also_handed_off(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit_plan(delivery_repo)
+    run = deliver.Run(
+        "rounds",
+        "plan.md",
+        "final gate",
+        headless=True,
+        cross_review="final",
+        reviewer="claude",
+        review_rounds=2,
+    )
+    directory = run.directory(delivery_repo) / "reviews"
+    directory.mkdir(parents=True)
+    record = {
+        "reviewer": "claude",
+        "verdict": "changes_requested",
+        "signature": "old",
+        "findings": [{"severity": "major"}],
+        "resolution": {"signature": deliver.state_signature(delivery_repo)},
+    }
+    (directory / "1.json").write_text(json.dumps(record))
+    monkeypatch.setattr(deliver, "run_check", lambda *args, **kwargs: (0, "passed"))
+    verdict = deliver.evaluate(delivery_repo, run)
+    assert verdict.action == "handoff"
+    assert run.status == "reviewing"
+
+
 def test_agent_credential_policy_covers_active_linked_worktree(
     delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
