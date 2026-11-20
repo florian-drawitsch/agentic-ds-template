@@ -1,0 +1,115 @@
+name: Factory
+
+# Ticket factory (ADR-0033). The controller moves labeled issues to verified pull requests.
+# All GitHub writes use FACTORY_GH_TOKEN (a GitHub App or fine-grained token) so that the
+# pull requests it opens start CI. The workflow's own token stays read-only.
+
+on:
+  schedule:
+    # Every 10 minutes; this also polls the board for cards moved to Ready. Private
+    # repositories on the Free plan have few Actions minutes: lengthen this interval there.
+    - cron: '*/10 * * * *'
+    - cron: '0 6 * * *'
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    name: Tick
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'issues' && github.event.label.name == 'factory:ready')
+      || (github.event_name == 'schedule' && github.event.schedule == '*/10 * * * *')
+    runs-on: ubuntu-latest
+    # The hosted-runner maximum. One tick runs at most one delivery; if the job is cut
+    # off, the next tick resumes the saved run.
+    timeout-minutes: 360
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Set up Task
+        uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      - name: Install agent CLIs
+        # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
+        run: npm install --global @anthropic-ai/claude-code@2.1.329 @openai/codex@0.171.0 # zizmor: ignore[adhoc-packages]
+
+      - name: Tick
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SCHEDULED: ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
+        run: task factory:tick -- $SCHEDULED
+
+  report-daily:
+    name: Daily report
+    if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Set up Task
+        uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      - name: Install agent CLIs
+        # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
+        run: npm install --global @anthropic-ai/claude-code@2.1.329 @openai/codex@0.171.0 # zizmor: ignore[adhoc-packages]
+
+      - name: Daily report
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+        run: task factory:report -- daily
+
+      # Runs the retrospective only when `retro_every` pull requests merged since the last
+      # one; otherwise the controller prints the count and exits.
+      - name: Retrospective
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: task factory:report -- retro
+
+  report-weekly:
+    name: Weekly report
+    if: github.event_name == 'schedule' && github.event.schedule == '0 7 * * 1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Set up Task
+        uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      - name: Weekly report
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+        run: task factory:report -- weekly

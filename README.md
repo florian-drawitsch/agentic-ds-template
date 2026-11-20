@@ -85,7 +85,7 @@ Every feature is listed in the [feature index](docs/features.md).
    the data.
 
 6. **Optionally run the ticket factory:** answer `factory=yes` in step 2, push the project to
-   GitHub and run `task factory:init`. See [Ticket factory](#ticket-factory-from-issue-to-pull-request).
+   GitHub and run `task factory:init`, then add the secrets from `docs/guides/factory.md`. See [Ticket factory](#ticket-factory-from-issue-to-pull-request).
 
 ## Ticket factory: from issue to pull request
 

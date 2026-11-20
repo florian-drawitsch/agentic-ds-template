@@ -34,7 +34,7 @@ branch protection.
   text names the cost and the GitHub App or token it needs. Exclude the factory files below
   when it is false. Tests in `tests/template/test_render.py`: question hidden without GitHub CI
   or with one harness; no factory files when false.
-- [ ] **Rendered files.**
+- [x] **Rendered files.**
   - `template/factory.toml`: the defaults from S1 with a comment per key; template-owned.
   - `template/taskfiles/factory.yml`: `factory:status`, `factory:tick`, `factory:labels`,
     `factory:loop` (interval argument), `factory:report`.
@@ -45,7 +45,7 @@ branch protection.
 
   Tests: files present when true, symlink resolves and matches the plugin
   (`test_vendored_plugin_files_match_the_plugin`), plugin enabled in both harness configs.
-- [ ] **Workflow.** `template/.github/workflows/factory.yml`: triggers `schedule` (every
+- [x] **Workflow.** `template/.github/workflows/factory.yml`: triggers `schedule` (every
   10 minutes, which also polls the board for cards moved to Ready), `workflow_dispatch` and
   `issues: [labeled]` filtered to `factory:ready`. The scheduled run passes `--scheduled` so
   the tick runs the full board mirror. A comment above the cron line says that private
@@ -65,7 +65,7 @@ branch protection.
   credentials.
 - [x] **Pairwise matrix.** Add `factory` to the pairwise parameters in
   `tests/template/test_e2e.py` so at least one rendered project runs `task check` with it on.
-- [ ] **Docs.**
+- [x] **Docs.**
   - `template/docs/guides/factory.md` (rendered only when true): setup steps (labels, token,
     secrets, branch protection with required human approval, Codex review), the label states,
     the caps, how to write a factory-ready issue, how to start a ticket (add the label, or
@@ -73,7 +73,7 @@ branch protection.
   - Repository docs: `docs/features.md`, `docs/design/architecture.md` (Copier question table
     and rendered project tree), `README.md` quick start mention, root `AGENTS.md` layout line
     for `plugins/*/`.
-- [ ] **Gate.** Run `task check` and `task test-e2e -- -k factory`.
+- [x] **Gate.** Run `task check` and `task test-e2e -- -k factory`. In the agent sandbox: `tests/template` (79 passed) and the two factory e2e cases (pass, incl. zizmor); `task check` is run by the outer controller.
 
 ## Acceptance and verification
 
@@ -91,3 +91,16 @@ branch protection.
   wrong, a single-harness project would verify with its own vendor, which ADR-0033 rejects.
 - The workflow's own token stays read-only: all writes go through `FACTORY_GH_TOKEN` so PRs
   start CI; if wrong, CI never runs on factory PRs.
+- One workflow, three cron entries (`*/10 * * * *`, daily 06:00, Monday 07:00 UTC), with each
+  job selected by `github.event.schedule`: GitHub allows one workflow file per trigger set;
+  if wrong, a report runs at the wrong time.
+- `factory:tick` runs the real tick (`-- --dry-run` previews): the workflow needs it; the old
+  dry-run behaviour moved to `status` and the flag.
+- Job `timeout-minutes: 360` (hosted maximum) and no `--max-wait` change in the controller: one
+  tick runs one delivery and the next tick resumes a cut-off run; if wrong, a very long
+  delivery restarts its round.
+- Agent CLIs installed with exact npm versions and a `zizmor: ignore[adhoc-packages]`
+  comment: no lockfile exists in the rendered project; the versions need manual bumps.
+- Retro runs in the daily report job: the controller itself skips it below `retro_every`.
+- Acceptance pending, not passed: the live run in `energy-forecasting` and `task eval
+  PLUGIN=factory` (skill text unchanged here).

@@ -118,6 +118,7 @@ FACTORY_FILES = (
     "taskfiles/factory.yml",
     "scripts/agent/factory.py",
     "docs/guides/factory.md",
+    ".github/workflows/factory.yml",
 )
 FACTORY_INIT = "uv run --script scripts/agent/factory.py init --skip-unavailable"
 
@@ -158,9 +159,15 @@ def test_factory_copy_matches_the_plugin_and_reads_its_config(factory_project: P
 def test_factory_tasks_plugins_and_lint_excludes_are_wired(
     project: Path, factory_project: Path
 ) -> None:
-    assert {"factory:init", "factory:status", "factory:tick", "factory:sync"} <= task_names(
-        factory_project
-    )
+    assert {
+        "factory:init",
+        "factory:status",
+        "factory:tick",
+        "factory:labels",
+        "factory:loop",
+        "factory:report",
+        "factory:sync",
+    } <= task_names(factory_project)
     setup = yaml.safe_load((factory_project / "Taskfile.yml").read_text())["tasks"]["setup"]
     assert FACTORY_INIT in setup["cmds"]
     copier = yaml.safe_load((ROOT / "copier.yml").read_text())
@@ -188,3 +195,29 @@ def test_factory_init_skips_before_the_repository_exists(factory_project: Path) 
     assert result.returncode == 0, result.stderr
     assert "skipped" in result.stderr
     assert "project =" not in (factory_project / "factory.toml").read_text().replace("# project", "")
+
+
+def test_factory_workflow_is_safe_and_calls_existing_tasks(factory_project: Path) -> None:
+    text = (factory_project / ".github/workflows/factory.yml").read_text()
+    workflow = yaml.safe_load(text)
+    triggers = workflow[True]  # YAML reads the key `on` as a boolean
+    assert "*/10 * * * *" in [item["cron"] for item in triggers["schedule"]]
+    assert {"workflow_dispatch", "issues"} <= set(triggers)
+    assert triggers["issues"]["types"] == ["labeled"]
+    assert "pull_request_target" not in text
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"] == {"group": "factory", "cancel-in-progress": False}
+    tasks = task_names(factory_project)
+    for job in workflow["jobs"].values():
+        assert job["timeout-minutes"] > 0
+        for step in job["steps"]:
+            uses = step.get("uses")
+            if uses:
+                assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", uses), uses
+            command = step.get("run", "")
+            assert "github.event.issue" not in command and "${{" not in command, command
+            if command.startswith("task "):
+                assert command.split()[1] in tasks, command
+            if "secrets.ANTHROPIC_API_KEY" in str(step.get("env", {})):
+                assert command.startswith("task factory:"), command
+    assert "ANTHROPIC_API_KEY" not in str(workflow["jobs"]["report-weekly"])
