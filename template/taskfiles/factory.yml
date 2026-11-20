@@ -5,7 +5,7 @@ version: '3'
 
 tasks:
   init:
-    desc: Create the factory labels and the project board, and record the board in factory.toml
+    desc: Create the factory labels and the Kanban board for this repository
     summary: |
       Idempotent. Needs the GitHub repository and gh with the project scope
       (`gh auth refresh -s project`). `--no-board` creates the labels only.

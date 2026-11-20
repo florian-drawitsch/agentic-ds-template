@@ -1,8 +1,9 @@
 # Ticket factory controller (ADR-0033 of agentic-ds-template). Omitted keys use the defaults
 # shown in comments. Changes to this file always need a human merge (protected path).
 
-# GitHub project board that mirrors the label states. `task factory:init` creates one and
-# writes its URL here.
+# GitHub project board that mirrors the label states. By default `task factory:init` uses
+# the board named "<repository> factory" under the repository's owner and creates it when
+# missing. Set a URL only to use another board.
 # project = "https://github.com/users/<owner>/projects/<number>"
 
 # Work in progress: issues being implemented at once, and verified PRs waiting for a merge.

@@ -11,7 +11,9 @@ name = "{{ package_name }}"
 version = "0.1.0"
 description = {{ description | tojson }}
 requires-python = ">={{ python_version }}"
-authors = [{ name = {{ author_name | tojson }}, email = {{ author_email | tojson }} }]
+{%- if author_name or author_email %}
+authors = [{ {% if author_name %}name = {{ author_name | tojson }}{% endif %}{% if author_name and author_email %}, {% endif %}{% if author_email %}email = {{ author_email | tojson }}{% endif %} }]
+{%- endif %}
 dependencies = [
 {%- for dep in deps | unique | sort %}
     "{{ dep }}",

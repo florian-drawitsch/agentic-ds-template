@@ -126,9 +126,13 @@ Blue states need a human action. Red states stop the factory for that ticket.
   Actions. `task factory:loop` runs it locally on an interval. Board events are not used.
 - **Board.** `factory.py init` creates the labels and a GitHub project named
   `<repository> factory`, links it to the repository, gives its Status field one column per
-  state plus Done, and records its URL in `factory.toml`. It reuses a board found by URL or
-  title and never rewrites the columns of a board someone arranged. The controller mirrors
-  each label into the Status field (`factory.py sync`). Labels stay the source of truth.
+  state plus Done, and adds the Kanban views Board, Backlog and Needs attention. It finds the
+  board by that title under the repository's owner, so no account-specific URL is stored and
+  forks get their own board; `project` in `factory.toml` overrides the lookup. It never
+  rewrites the columns or views of a board someone arranged. The board has no sprint or
+  estimate fields: tickets flow continuously under the work-in-progress limits. The
+  controller mirrors each label into the Status field (`factory.py sync`). Labels stay the
+  source of truth.
 - **Setup.** In generated projects, `copier copy` and `task setup` run `init` and skip it with a
   note while the GitHub repository, the `project` token scope or write access is missing.
 

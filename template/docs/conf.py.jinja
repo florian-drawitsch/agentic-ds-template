@@ -3,7 +3,7 @@
 from pathlib import Path
 
 project = "{{ project_name }}"
-author = "{{ author_name }}"
+author = {{ (author_name or project_name) | tojson }}
 
 extensions = [
     "myst_parser",
