@@ -1,6 +1,6 @@
 import json
 import subprocess
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -53,17 +53,17 @@ def test_config_defaults_without_file(tmp_path):
     assert config.max_verified == 3
     assert config.daily_cap_usd == 20.0
     assert "AGENTS.md" in config.protected_paths
-    assert config.sprint_start is None
+    assert config.weekly_cap_usd == 100.0
 
 
 def test_config_overrides(tmp_path):
     (tmp_path / "factory.toml").write_text(
-        'max_verified = 5\nsprint_start = 2026-11-01\ntrusted_bots = ["renovate[bot]"]\n'
+        'max_verified = 5\nweekly_cap_usd = 60\ntrusted_bots = ["renovate[bot]"]\n'
         'daily_cap_usd = 7\n[deliver]\nharness = "codex"\nmax_cost = 4\n'
     )
     config = factory.load_config(tmp_path)
     assert config.max_verified == 5
-    assert config.sprint_start == date(2026, 11, 1)
+    assert config.weekly_cap_usd == 60.0
     assert config.trusted_bots == ("renovate[bot]",)
     assert config.daily_cap_usd == 7.0
     assert config.deliver.harness == "codex"
@@ -83,7 +83,7 @@ def test_config_unknown_deliver_key(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "text", ["max_verified = 'x'", "max_in_progress = true", "sprint_start = 5"]
+    "text", ["max_verified = 'x'", "max_in_progress = true", "weekly_cap_usd = 'x'"]
 )
 def test_config_wrong_type(tmp_path, text):
     (tmp_path / "factory.toml").write_text(text + "\n")
@@ -457,26 +457,34 @@ def test_day_boundary():
     yesterday = NOW.replace(hour=0, minute=0) - timedelta(seconds=1)
     snap = build({}, costs=[(yesterday, 9.0), (NOW, 3.0)])
     assert factory.spend(snap, NOW, config).day == 3.0
-    assert factory.spend(snap, NOW, config).sprint == 12.0
+    assert factory.spend(snap, NOW, config).week == 12.0
 
 
-def test_sprint_boundary():
-    config = cfg(sprint_start=date(2026, 11, 4), sprint_days=14, sprint_cap_usd=50.0)
-    before = datetime(2026, 11, 17, 23, 59, tzinfo=UTC)
-    after = datetime(2026, 11, 18, 0, 0, tzinfo=UTC)
-    snap = build({}, costs=[(before, 40.0), (after, 5.0)])
-    assert factory.spend(snap, NOW, config).sprint == 5.0
-    assert factory.spend(snap, before, config).sprint == 40.0
+def test_week_boundary_is_monday_utc():
+    config = cfg()
+    sunday = datetime(2026, 11, 15, 23, 59, tzinfo=UTC)
+    monday = datetime(2026, 11, 16, 0, 0, tzinfo=UTC)
+    snap = build({}, costs=[(sunday, 40.0), (monday, 5.0)])
+    assert factory.spend(snap, NOW, config).week == 5.0  # NOW is Wednesday 2026-11-18
+    assert factory.spend(snap, sunday, config).week == 40.0
+    assert factory.week_window(NOW) == (monday, monday + timedelta(days=7))
+
+
+def test_sprint_keys_are_gone(tmp_path):
+    for key in ("sprint_cap_usd = 1", "sprint_start = 2026-11-02", "sprint_days = 7"):
+        (tmp_path / "factory.toml").write_text(key + "\n")
+        with pytest.raises(SystemExit, match="unknown key"):
+            factory.load_config(tmp_path)
 
 
 def test_cap_reached_is_idle_with_cap_name():
     snap = build({"accepted": [issue(1)]}, costs=[(NOW, 25.0)])
     assert "daily_cap_usd" in act(snap).reason
-    old = NOW - timedelta(days=3)
-    snap = build({"accepted": [issue(1)]}, costs=[(old, 150.0)])
+    earlier_this_week = NOW - timedelta(days=1)
+    snap = build({"accepted": [issue(1)]}, costs=[(earlier_this_week, 150.0)])
     result = act(snap)
     assert result.kind == "idle"
-    assert "sprint_cap_usd" in result.reason
+    assert "weekly_cap_usd" in result.reason
 
 
 def test_malformed_and_foreign_markers_ignored():

@@ -174,7 +174,7 @@ settings. Labels drive the factory: moving a card does not change its label, so 
 label instead.
 
 `factory.toml` limits the work: one issue in progress, at most three verified pull requests
-waiting for a merge, USD 20 per day and USD 100 per sprint. Pull requests that touch protected
+waiting for a merge, USD 20 per day and USD 100 per calendar week. Pull requests that touch protected
 paths, such as agent settings, CI or `factory.toml`, always go to a human. The generated
 `docs/guides/factory.md` describes every label and board column.
 
