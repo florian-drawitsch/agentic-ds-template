@@ -1787,7 +1787,8 @@ def test_deny_path_reaches_claude_settings_and_codex_profile(
         "codex", "Run", None, True, None, "acceptEdits", root=delivery_repo, deny=[secret]
     )
     table = next(c for c in codex if c.startswith("permissions.deliver.filesystem="))
-    assert f'"{secret}"' in table and "deny" in table
+    assert f'"{secret}"' in table
+    assert "deny" in table
 
 
 def test_headless_parser_accepts_repeated_deny_path() -> None:

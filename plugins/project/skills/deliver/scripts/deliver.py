@@ -55,9 +55,9 @@ import tomllib
 import tty
 import urllib.parse
 import uuid
+from collections.abc import Sequence
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, field, replace
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
