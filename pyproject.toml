@@ -8,6 +8,7 @@ requires-python = ">=3.11"
 dev = [
     "copier>=9.18.2",
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.16.10",
     "ty>=0.0.84",
@@ -35,7 +36,8 @@ convention = "google"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-ra -m 'not slow'"
+# Parallel workers; pass `-n0` to debug a single test in one process.
+addopts = "-ra -m 'not slow' -n auto --dist load --durations=10"
 strict_markers = true
 markers = ["slow: renders projects and runs their full merge gate (minutes)"]
 filterwarnings = ["ignore::copier.errors.DirtyLocalWarning"]

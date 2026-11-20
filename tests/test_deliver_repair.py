@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from tests.helpers import checkout
 from tests.test_deliver import deliver
 
 FIXTURES = Path(__file__).with_name("fixtures")
@@ -24,12 +25,7 @@ def commit(root: Path, message: str, *extra: str) -> None:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    root = tmp_path / "checkout"
-    root.mkdir()
-    deliver.git(root, "init", "-q", "-b", "main")
-    commit(root, "test: initial", "--allow-empty")
-    deliver.git(root, "remote", "add", "origin", "git@github.com:example/project.git")
-    return root
+    return checkout(tmp_path / "checkout", "test: initial")
 
 
 @pytest.fixture
