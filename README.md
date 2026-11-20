@@ -4,6 +4,17 @@
 ![Codex](https://img.shields.io/badge/Codex-412991?style=flat-square&logo=openai&logoColor=white)
 ![Copier](https://img.shields.io/badge/Copier-333333?style=flat-square)
 ![uv](https://img.shields.io/badge/uv-262626?style=flat-square&logo=python&logoColor=white)
+![Task](https://img.shields.io/badge/Task-29BEB0?style=flat-square)
+![Ruff](https://img.shields.io/badge/Ruff-E5A00D?style=flat-square)
+![ty](https://img.shields.io/badge/ty-333333?style=flat-square)
+![prek](https://img.shields.io/badge/prek-333333?style=flat-square)
+![Polars](https://img.shields.io/badge/Polars-0033A0?style=flat-square)
+![Hydra](https://img.shields.io/badge/Hydra-89B8CD?style=flat-square)
+![MLflow](https://img.shields.io/badge/MLflow-0194E2?style=flat-square&logo=mlflow&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
+![Sphinx](https://img.shields.io/badge/Sphinx-0A507A?style=flat-square&logo=sphinx&logoColor=white)
+![Pulumi](https://img.shields.io/badge/Pulumi-8A3391?style=flat-square&logo=pulumi&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
 Copier template for agentic development of production-grade AI and ML solutions.
@@ -12,17 +23,18 @@ It combines:
 
 - **Agent harness:** context, skills, guardrail hooks and quality gates that Claude Code and
   Codex share, so agents can work on the project unsupervised.
+- **Lit factory with spec-driven development:** you shape the design with an agent in your
+  IDE, then a Ralph loop implements the plan until every item is done and `task check`
+  passes, followed by a cross-vendor review and a pull request.
 - **Dark factory with GitHub board integration:** labeled issues move across a project board
   through triage, implementation and cross-vendor verification to a pull request you merge.
-- **Spec-driven development:** a Ralph loop implements a written plan until every item is
-  done and `task check` passes, then a cross-vendor review and a pull request follow.
 - **Modern Python scaffolding:** a uv workspace with Ruff, ty, pytest and import contracts,
   checked by one `task check` gate.
 - **Production path:** MLflow tracking, FastAPI, Streamlit, Docker and Azure via Pulumi, each
   optional.
 - **Template updates:** pull new template versions without touching your code.
 
-## How it fits together
+## Template features
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/harness-and-factory-dark.svg">
@@ -44,7 +56,7 @@ The terms follow Addy Osmani's
 harness engineering as described by [OpenAI](https://openai.com/index/harness-engineering/)
 and [Birgitta Böckeler](https://www.martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html).
 
-## Lit factory and dark factory
+## Factory modes
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/lit-and-dark-factory-dark.svg">
@@ -53,9 +65,9 @@ and [Birgitta Böckeler](https://www.martinfowler.com/articles/exploring-gen-ai/
 
 - **Lit factory, interactive mode:** you work with Claude Code or Codex in your IDE or app and
   shape the design with the skills. The harness then builds it unattended.
-  [How interactive mode works](#interactive-mode-spec-driven-development).
+  [Lit factory](#lit-factory).
 - **Dark factory, board mode:** agents run from the issue to the pull request. You write the
-  issue and merge the result. [How board mode works](#board-mode-the-dark-factory).
+  issue and merge the result. [Dark factory](#dark-factory).
 
 Both modes end at the same gate: nothing merges without you.
 
@@ -101,12 +113,12 @@ Both modes end at the same gate: nothing merges without you.
 
 6. **Optionally turn on board mode:** answer `factory=yes` in step 2, push the project to
    GitHub, run `task factory:init`, then `task factory:loop` locally or `task factory:secrets`
-   for GitHub Actions. See [Board mode](#board-mode-the-dark-factory).
+   for GitHub Actions. See [Dark factory](#dark-factory).
 
-## Interactive mode: spec-driven development
+## Lit factory
 
-Open the project in Claude Code or Codex, in the terminal, your IDE or the desktop app. The
-skills load from the pinned marketplace.
+Interactive mode follows spec-driven development. Open the project in Claude Code or Codex,
+in the terminal, your IDE or the desktop app. The skills load from the pinned marketplace.
 
 1. **Brainstorm:** ask the agent to use the `brainstorm` skill. It explores requirements and
    design options. Durable decisions become decision records in `docs/adr/`.
@@ -129,7 +141,7 @@ hours, and continue with `task deliver:resume`. `task deliver:status -- --all-wo
 every run with token usage and estimated cost. Inside an agent session, the `deliver` skill
 does the same without leaving the chat.
 
-## Board mode: the dark factory
+## Dark factory
 
 Board mode turns GitHub issues into verified pull requests without a person driving each
 step. Issue labels hold the state, and a GitHub project board shows it. A deterministic
@@ -220,7 +232,7 @@ waiting for a merge, USD 20 per day and USD 100 per calendar week. Pull requests
 protected paths, such as agent settings, CI or `factory.toml`, always go to a person. The
 generated `docs/guides/factory.md` describes every label and column.
 
-## The harness
+## Harness
 
 The same harness runs in Claude Code and Codex.
 
@@ -256,7 +268,7 @@ The same harness runs in Claude Code and Codex.
 Unattended runs also scrub provider tokens, restrict network access to package registries, and
 scan published commits for secrets with gitleaks.
 
-## The scaffold
+## Scaffold
 
 The most important questions:
 
@@ -315,7 +327,7 @@ development guide explains how to add another app.
 
 The [feature index](docs/features.md#tasks) lists every task, including Docker and Azure.
 
-## Deploy to Azure
+## Deployment
 
 With `infrastructure=azure`, `infra/` holds a Pulumi stack: container registry, managed
 identity, Container Apps environment, and optionally a scheduled pipeline job, an API app, a
@@ -336,7 +348,7 @@ task infra:init && task infra:up && task infra:release
 `infra:test` needs no Azure account. The generated `docs/guides/deployment.md` covers the
 one-time setup and the GitHub Actions deployment with OpenID Connect.
 
-## Keep projects current
+## Updates
 
 ```bash
 task update-template
