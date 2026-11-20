@@ -1769,3 +1769,29 @@ def test_codex_only_projects_need_no_skill_links(tmp_path: Path) -> None:
     (tmp_path / ".agents/skills/solo").mkdir(parents=True)
     (tmp_path / ".agents/skills/solo/SKILL.md").write_text("---\nname: solo\n---\n")
     assert deliver.unlinked_skills(tmp_path) == []
+
+
+def test_deny_path_reaches_claude_settings_and_codex_profile(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(delivery_repo)
+    secret = "/data/holdout"
+    claude = deliver.agent_command(
+        "claude", "Run", "session", True, None, "acceptEdits", root=delivery_repo, deny=[secret]
+    )
+    sandbox = json.loads(claude[claude.index("--settings") + 1])["sandbox"]
+    assert secret in sandbox["filesystem"]["denyRead"]
+    assert secret in sandbox["filesystem"]["denyWrite"]
+    monkeypatch.setattr(deliver, "codex_profile_mode", lambda: True)
+    codex = deliver.agent_command(
+        "codex", "Run", None, True, None, "acceptEdits", root=delivery_repo, deny=[secret]
+    )
+    table = next(c for c in codex if c.startswith("permissions.deliver.filesystem="))
+    assert f'"{secret}"' in table and "deny" in table
+
+
+def test_headless_parser_accepts_repeated_deny_path() -> None:
+    args = deliver.parser().parse_args(
+        ["headless", "--plan", "p.md", "--deny-path", "/a", "--deny-path", "/b"]
+    )
+    assert args.deny_path == ["/a", "/b"]

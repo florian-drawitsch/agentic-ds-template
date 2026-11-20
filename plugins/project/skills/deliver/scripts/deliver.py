@@ -57,6 +57,7 @@ import urllib.parse
 import uuid
 from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, field, replace
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -1381,12 +1382,15 @@ def codex_profile_mode() -> bool:
     return bool(match and tuple(map(int, match.groups())) >= MIN_CODEX_PROFILE_VERSION)
 
 
-def claude_sandbox_settings(writable: list[str], root: Path | None = None) -> str:
+def claude_sandbox_settings(
+    writable: list[str], root: Path | None = None, deny: Sequence[str] = ()
+) -> str:
     """Return session settings that confine Claude's shell commands to the worktree.
 
     Shell commands run in the operating-system sandbox and are approved automatically; they can
     write to the worktree, the temp directory and the given paths, and reach package hosts only.
-    File edits are approved by the acceptEdits permission mode.
+    File edits are approved by the acceptEdits permission mode. Paths in `deny` can be neither
+    read nor written.
     """
     sandbox = {
         "enabled": True,
@@ -1394,7 +1398,8 @@ def claude_sandbox_settings(writable: list[str], root: Path | None = None) -> st
         "allowUnsandboxedCommands": False,
         "filesystem": {
             "allowWrite": writable,
-            "denyWrite": protected_git_paths(root or Path.cwd()),
+            "denyWrite": [*protected_git_paths(root or Path.cwd()), *deny],
+            "denyRead": list(deny),
         },
         "network": {"allowedDomains": allowed_hosts(root or Path.cwd())},
         # Claude Code 2.1.303 expects one entry per path or variable, each with its own mode.
@@ -1432,6 +1437,7 @@ def agent_command(
     round_cost: float | None = None,
     round_turns: int | None = None,
     root: Path | None = None,
+    deny: Sequence[str] = (),
 ) -> list[str]:
     """Return the CLI invocation for one headless round.
 
@@ -1447,7 +1453,7 @@ def agent_command(
         if cli_supports_argument("claude", "--permission-prompts"):
             command += ["--permission-prompts", "none"]
         command += ["--session-id" if first else "--resume", str(session)]
-        command += ["--settings", claude_sandbox_settings(writable or [], root)]
+        command += ["--settings", claude_sandbox_settings(writable or [], root, deny)]
         command += ["--output-format", "stream-json", "--verbose"]
         command += ["--model", model] if model else []
         command += ["--effort", effort] if effort else []
@@ -1467,7 +1473,7 @@ def agent_command(
             .get("deliver", {})
             .get("filesystem", {})
         )
-        filesystem |= dict.fromkeys(credential_file_paths(root), "deny")
+        filesystem |= dict.fromkeys([*credential_file_paths(root), *deny], "deny")
         filesystem |= dict.fromkeys(protected_git_paths(root), "read")
         for table, values in (
             ("workspace_roots", dict.fromkeys(writable or [], True)),
@@ -2949,6 +2955,7 @@ def cmd_headless(args: argparse.Namespace) -> int:
                 args.effort,
                 writable,
                 root=workdir,
+                deny=getattr(args, "deny_path", None) or (),
             )
             say(" ".join(command))
             return 0
@@ -3046,6 +3053,7 @@ def continue_run(
                 round_cap,
                 run.round_turns,
                 root=workdir,
+                deny=getattr(args, "deny_path", None) or (),
             )
             protected_before = protected_git_hashes(workdir)
             result = run_round(command, workdir, log, run.round_minutes * 60)
@@ -3759,6 +3767,12 @@ def parser() -> argparse.ArgumentParser:
     head.add_argument("--model")
     head.add_argument("--effort", choices=["low", "medium", "high"], help="reasoning effort")
     head.add_argument("--in-place", action="store_true", help="use this worktree")
+    head.add_argument(
+        "--deny-path",
+        action="append",
+        default=[],
+        help="path the agent can neither read nor write (repeatable)",
+    )
     head.add_argument("--branch", help="branch for the new worktree")
     head.add_argument(
         "--claude-permission-mode",
