@@ -215,6 +215,29 @@ def write_review_inputs(
     return input_dir
 
 
+# Credentials a reviewer must not see, except its own vendor login, which the CLI needs when it
+# has no stored login (as in CI) and keeps from the commands it runs.
+CREDENTIAL_ENV = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+)
+VENDOR_ENV = {
+    "claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
+    "codex": ("OPENAI_API_KEY", "CODEX_API_KEY"),
+}
+
+
+def reviewer_env(reviewer: str) -> dict[str, str]:
+    """Return the environment for the reviewer CLI: its own login, no other credentials."""
+    keep = set(VENDOR_ENV.get(reviewer, ()))
+    env = {k: v for k, v in os.environ.items() if k not in CREDENTIAL_ENV or k in keep}
+    return env | {NESTED_ENV: "1"}
+
+
 def codex_command(
     prompt: str, model: str | None, schema: Path, output: Path, binary: str = "codex"
 ) -> list[str]:
@@ -227,6 +250,8 @@ def codex_command(
         'sandbox_mode="read-only"',
         "-c",
         'approval_policy="never"',
+        "-c",
+        f"shell_environment_policy.exclude={json.dumps(list(CREDENTIAL_ENV))}",
     ]
     command += ["-c", 'model_reasoning_effort="high"']
     command += ["--ephemeral", "--output-schema", str(schema), "-o", str(output)]
@@ -296,7 +321,7 @@ def run_review(
     budget: float = 2.0,
 ) -> dict[str, Any]:
     """Run the reviewer CLI and return its normalized review."""
-    env = os.environ | {NESTED_ENV: "1"}
+    env = reviewer_env(reviewer)
     if reviewer == "claude":
         result = subprocess.run(
             claude_command(prompt, model, budget),

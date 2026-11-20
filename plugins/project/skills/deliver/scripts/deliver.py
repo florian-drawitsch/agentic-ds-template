@@ -97,7 +97,21 @@ CREDENTIAL_PATHS = [
     "~/.codex/auth.json",
     "~/.claude/.credentials.json",
 ]
-CREDENTIAL_ENV = ["GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+CREDENTIAL_ENV = [
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+]
+# Without a stored login, as in CI, each vendor CLI authenticates from these variables. The
+# CLI keeps them from the commands it runs: Claude through CLAUDE_CODE_SUBPROCESS_ENV_SCRUB and
+# its sandbox's credential rules, Codex through shell_environment_policy.exclude.
+VENDOR_ENV = {
+    "claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
+    "codex": ("OPENAI_API_KEY", "CODEX_API_KEY"),
+}
 # Tools a headless Claude round may use without a prompt. Claude Code forces the default
 # permission mode when CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set unless tools are listed, and a
 # headless round cannot answer prompts. Bash stays confined by the sandbox settings.
@@ -1359,9 +1373,15 @@ def protected_git_hashes(root: Path) -> dict[str, str]:
     return hashes
 
 
-def sandbox_environment() -> dict[str, str]:
-    """Return an environment for model-controlled processes without common credentials."""
-    env = {key: value for key, value in os.environ.items() if key not in CREDENTIAL_ENV}
+def sandbox_environment(harness: str | None = None) -> dict[str, str]:
+    """Return an environment for model-controlled processes without common credentials.
+
+    The harness keeps its own vendor login only; GitHub tokens never reach an agent.
+    """
+    keep = set(VENDOR_ENV.get(harness or "", ()))
+    env = {
+        key: value for key, value in os.environ.items() if key not in CREDENTIAL_ENV or key in keep
+    }
     env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1"
     # The controller runs from uv's throwaway script environment; the agent must use the
     # project's own environment, so a plain `python` or `uv run` does not pick up the controller's.
@@ -1472,6 +1492,7 @@ def agent_command(
         return [*command, prompt]
     command = ["codex", "exec"] if first else ["codex", "exec", "resume", str(session)]
     command += ["--json", "-c", 'approval_policy="never"']
+    command += ["-c", f"shell_environment_policy.exclude={json.dumps(CREDENTIAL_ENV)}"]
     if codex_profile_mode():
         command += ["-c", 'default_permissions="deliver"', "-c", "features.network_proxy=true"]
         # Overriding a table replaces it, so keep the project's own filesystem rules.
@@ -1622,7 +1643,7 @@ def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            env=sandbox_environment() | {NESTED_ENV: "1"},
+            env=sandbox_environment(Path(command[0]).name) | {NESTED_ENV: "1"},
             start_new_session=True,
         ) as process,
     ):

@@ -455,3 +455,28 @@ def test_worktree_must_match_pr_head(clone):
     factory._git(clone[0], "fetch", "origin")
     with pytest.raises(RuntimeError, match="head"):
         factory.issue_worktree(e, 5, "feat/5-x", "0" * 40)
+
+
+@pytest.mark.parametrize(("reviewer", "own", "other"), [
+    ("codex", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"),
+    ("claude", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"),
+])  # fmt: skip
+def test_triage_keeps_only_the_reviewer_login(tmp_path, monkeypatch, reviewer, own, other):
+    for name in factory.SECRET_ENV:
+        monkeypatch.setenv(name, "secret")
+    seen = {}
+
+    def run(args, cwd, timeout=None, env=None):
+        seen["args"], seen["env"] = list(args), env
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    path = tmp_path / "issue.txt"
+    path.write_text("x")
+    harness = "claude" if reviewer == "codex" else "codex"
+    config = factory.Config(deliver=factory.DeliverConfig(harness=harness, reviewer=reviewer))
+    factory.run_triage(config, path, run)
+    assert seen["env"][own] == "secret"
+    assert other not in seen["env"]
+    assert "GH_TOKEN" not in seen["env"]
+    if reviewer == "codex":
+        assert any(a.startswith("shell_environment_policy.exclude=") for a in seen["args"])

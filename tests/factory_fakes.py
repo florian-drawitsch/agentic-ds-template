@@ -23,6 +23,8 @@ class FakeGitHub:
         self.created: list[str] = []
         # board
         self.repo = {"owner": "acme", "name": "acme/widgets"}
+        self.secrets: dict[str, str] = {}
+        self.secrets_error: str | None = None
         self.repo_error: str | None = None
         self.project_error: str | None = None
         self.error_type: type[Exception] = RuntimeError  # tests set the script's GhError
@@ -201,6 +203,17 @@ class FakeGitHub:
 
     def board_items(self, project_id: str) -> list[dict[str, Any]]:
         return [dict(c) for c in self.cards]
+
+    def secret_names(self) -> list[str]:
+        if self.secrets_error:
+            raise self.error_type(self.secrets_error)
+        return sorted(self.secrets)
+
+    def set_secret(self, name: str, value: str) -> None:
+        self.secrets[name] = value
+
+    def gh_token(self) -> str:
+        return "gho_logintoken"
 
     def repository(self) -> dict[str, str]:
         if self.repo_error:
