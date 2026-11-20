@@ -1,11 +1,37 @@
+import atexit
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 
 # Tests import scripts from template/; never leave bytecode there for Copier to pick up.
 sys.dont_write_bytecode = True
+
+
+def _isolate_git() -> None:
+    """Run git without the developer's global and system config.
+
+    Personal settings such as LFS filters, hooks or commit signing slow tests down and can
+    change their results. Tests get a fixed identity and default branch instead.
+    """
+    home = Path(tempfile.mkdtemp(prefix="tests-git-"))
+    atexit.register(shutil.rmtree, home, ignore_errors=True)
+    config = home / "gitconfig"
+    config.write_text(
+        "[user]\n\tname = test\n\temail = test@example.com\n"
+        "[init]\n\tdefaultBranch = main\n"
+        "[commit]\n\tgpgsign = false\n"
+        "[tag]\n\tgpgsign = false\n"
+    )
+    os.environ["GIT_CONFIG_GLOBAL"] = str(config)
+    os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
+
+
+_isolate_git()
 
 
 @pytest.fixture

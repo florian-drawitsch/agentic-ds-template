@@ -16,6 +16,8 @@ from typing import Any, cast
 
 import pytest
 
+from tests.helpers import checkout
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "plugins/project/skills/deliver/scripts/deliver.py"
 SPEC = importlib.util.spec_from_file_location("deliver", SCRIPT)
@@ -28,30 +30,7 @@ SPEC.loader.exec_module(deliver)
 
 @pytest.fixture
 def delivery_repo(tmp_path: Path) -> Path:
-    root = tmp_path / "checkout"
-    root.mkdir()
-    subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(root),
-            "-c",
-            "user.name=test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "--allow-empty",
-            "-qm",
-            "initial",
-        ],
-        check=True,
-    )
-    subprocess.run(
-        ["git", "-C", str(root), "remote", "add", "origin", "git@github.com:example/project.git"],
-        check=True,
-    )
-    return root
+    return checkout(tmp_path / "checkout")
 
 
 @pytest.mark.parametrize(
