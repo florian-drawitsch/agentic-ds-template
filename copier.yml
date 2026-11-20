@@ -41,7 +41,9 @@ _exclude:
   - "{% if not factory %}factory.toml{% endif %}"
   - "{% if not factory %}taskfiles/factory.yml{% endif %}"
   - "{% if not factory %}scripts/agent/factory.py{% endif %}"
+  - "{% if not factory %}scripts/assets{% endif %}"
   - "{% if not factory %}docs/guides/factory.md{% endif %}"
+  - "{% if not factory %}.github/workflows/factory.yml{% endif %}"
 
 _tasks:
   - command: git init --quiet --initial-branch=main

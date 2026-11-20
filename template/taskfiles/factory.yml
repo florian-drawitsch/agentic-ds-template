@@ -20,10 +20,35 @@ tasks:
       - uv run --script scripts/agent/factory.py status {{.CLI_ARGS}}
 
   tick:
-    desc: Print the next factory action without changing anything
+    desc: Take the next factory action (`-- --dry-run` prints it instead)
+    summary: |
+      One tick claims, implements or verifies at most one issue. CI passes `--scheduled`,
+      which also mirrors every card with its label.
     dir: '{{.ROOT_DIR}}'
     cmds:
-      - uv run --script scripts/agent/factory.py tick --dry-run {{.CLI_ARGS}}
+      - uv run --script scripts/agent/factory.py tick {{.CLI_ARGS}}
+
+  labels:
+    desc: Create the missing factory labels without touching the board
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/factory.py labels
+
+  loop:
+    desc: Run the tick locally every N seconds (default 600) until interrupted
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - |
+        while true; do
+          uv run --script scripts/agent/factory.py tick --scheduled || true
+          sleep {{.CLI_ARGS | default "600"}}
+        done
+
+  report:
+    desc: Post the `daily` or `weekly` report, or run the `retro` check
+    dir: '{{.ROOT_DIR}}'
+    cmds:
+      - uv run --script scripts/agent/factory.py report {{.CLI_ARGS}}
 
   sync:
     desc: Mirror the label state of open factory issues into the board

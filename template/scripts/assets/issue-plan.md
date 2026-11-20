@@ -1,0 +1,1 @@
+../../../plugins/factory/skills/factory/assets/issue-plan.md

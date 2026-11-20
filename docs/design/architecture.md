@@ -52,7 +52,8 @@ The marketplace is curated (ADR-0016) and vendor-independent (ADR-0017):
   issues through triage, `deliver`, independent verification and `fix-pr` to a verified PR
   that a human merges. `init` creates the labels and a project board that mirrors the states.
   Generated projects opt in with the `factory` question; this repository uses it through
-  `task factory:*` and the root `factory.toml`.
+  `task factory:*` and the root `factory.toml`. The rendered project adds `factory.toml`,
+  `taskfiles/factory.yml`, the script copy, `.github/workflows/factory.yml` and the guide.
   - S1 (in development): `plugins/factory/skills/factory/scripts/factory.py`, a stdlib-only
     controller with configuration, label states, admission, a GitHub snapshot, a pure dispatch
     function, the claim, protected paths and a spend ledger. It calls no model.
@@ -144,6 +145,7 @@ never changes, so later updates cannot conflict with edits there.
 ├── .worktreeinclude             git-ignored files for new worktrees, never credentials
 ├── deliver.toml                 extra network hosts and gate isolation for headless delivery
 ├── .github/workflows/ci.yml     task check, actions pinned by SHA
+├── .github/workflows/factory.yml  with `factory`: tick, reports and retro, read-only token
 ├── .pre-commit-config.yaml      prek
 ├── .vscode/extensions.json      Mermaid preview
 ├── Taskfile.yml                 root tasks; includes taskfiles/*.yml
