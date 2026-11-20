@@ -1140,6 +1140,72 @@ def test_controller_announces_the_silent_final_review(
     assert "Final review ended after" in text
 
 
+def test_worker_prompt_leaves_the_final_review_to_the_controller(delivery_repo: Path) -> None:
+    run = deliver.Run(
+        "prompt", "plan.md", "exit 0", headless=True, cross_review="final", reviewer="codex"
+    )
+    prompt = deliver.headless_prompt(run, run.plan, delivery_repo)
+    assert "cross_review.py" not in prompt
+    assert "do not run or wait for the reviewer yourself" in prompt
+
+
+def test_publication_staged_before_review_runs_the_review(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit_plan(delivery_repo)
+    (delivery_repo / "plan.md").write_text("- [x] Implement\n")
+    run = deliver.Run(
+        "early-publish",
+        "plan.md",
+        "exit 0",
+        headless=True,
+        publish_pr=True,
+        cross_review="final",
+        reviewer="codex",
+        status="publishing",
+        pr_title="feat: x",
+        pr_description_file="body.md",
+    )
+    run.save(delivery_repo)
+    reviews = []
+    monkeypatch.setattr(
+        deliver,
+        "review_command",
+        lambda run: reviews.append(run.token) or [sys.executable, "-c", "print('reviewed')"],
+    )
+    monkeypatch.setattr(
+        deliver, "publication_environment", lambda *args: pytest.fail("published without review")
+    )
+    saved, verdict = deliver.advance_handoff(delivery_repo, run)
+    assert reviews == ["early-publish"]
+    assert verdict.action != "release"
+    assert saved.pr_url is None
+
+
+def test_failing_review_is_retried_once_then_blocks_the_run(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit_plan(delivery_repo)
+    run = deliver.Run(
+        "failing-review",
+        "plan.md",
+        "exit 0",
+        headless=True,
+        cross_review="final",
+        reviewer="codex",
+        status="reviewing",
+    )
+    run.save(delivery_repo)
+    runs = delivery_repo / "review-runs.txt"
+    script = f"open({str(runs)!r}, 'a').write('x'); raise SystemExit(1)"
+    monkeypatch.setattr(deliver, "review_command", lambda run: [sys.executable, "-c", script])
+    saved, verdict = deliver.advance_handoff(delivery_repo, run)
+    assert runs.read_text() == "xx"
+    assert verdict.action == "release"
+    assert saved.status == "blocked"
+    assert "unreviewed" in saved.note
+
+
 def test_outer_gate_failure_returns_to_agent_without_publication(
     delivery_repo: Path, monkeypatch
 ) -> None:
