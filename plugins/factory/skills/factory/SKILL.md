@@ -17,8 +17,10 @@ uv run --script <skill-dir>/scripts/factory.py status
 uv run --script <skill-dir>/scripts/factory.py tick --dry-run
 ```
 
-- `init` creates the labels and the project board, records the board in `factory.toml` and
-  mirrors the issues. It needs `gh` with the `project` scope (`gh auth refresh -s project`);
+- `init` creates the state and priority labels and a Kanban board with the views Board,
+  Backlog and Needs attention, and mirrors the issues. The board is found by its name,
+  `<repository> factory`, under the repository's owner; `project` in `factory.toml` only
+  overrides it. It needs `gh` with the `project` scope (`gh auth refresh -s project`), and
   `--skip-unavailable` turns GitHub refusals into a note.
 - `labels` creates the factory labels only.
 - `sync` mirrors the label state of open issues into the board.

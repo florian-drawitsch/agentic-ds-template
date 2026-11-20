@@ -8,7 +8,7 @@ Commands:
     status    Show counts per state, unadmitted issues, spend, caps and the next action.
     tick      Print (--dry-run) or take the next action.
     labels    Create the factory labels that are missing.
-    init      Create the labels and the board, record the board in factory.toml, mirror issues.
+    init      Create the labels and a Kanban board for this repository, mirror issues.
     sync      Mirror the label state of open issues into the board's Status field.
 
 All state lives in GitHub issue labels and comments. No model chooses work, and issue text
@@ -228,15 +228,22 @@ def transition(current: State | None, target: State) -> State:
     )
 
 
+PRIORITY_STYLE: dict[str, tuple[str, str]] = {
+    "priority:high": ("e5534b", "Factory: picked first within a state"),
+    "priority:medium": ("d29922", "Factory: picked after high"),
+    "priority:low": ("8b949e", "Factory: picked last"),
+}
+
+
 def ensure_labels(github: GitHub) -> list[str]:
-    """Create the factory labels that are missing and return their names."""
+    """Create the missing state and priority labels and return their names."""
     existing = set(github.labels())
+    styles = {state.value: LABEL_STYLE[state] for state in State} | PRIORITY_STYLE
     created = []
-    for state in State:
-        if state.value not in existing:
-            color, description = LABEL_STYLE[state]
-            github.create_label(state.value, color, description)
-            created.append(state.value)
+    for name, (color, description) in styles.items():
+        if name not in existing:
+            github.create_label(name, color, description)
+            created.append(name)
     return created
 
 
@@ -405,13 +412,35 @@ class GitHub:
         args = ["project", "field-list", str(int(number)), "--owner", owner, "--format", "json"]
         return (self._json(args) or {}).get("fields", [])
 
+    def _graphql_input(self, query: str, variables: dict[str, Any]) -> Any:
+        """Run GraphQL with typed variables sent as JSON on stdin."""
+        body = {"query": query, "variables": variables}
+        data = self._json(["api", "graphql", "--input", "-"], input=json.dumps(body))
+        if data and data.get("errors"):
+            raise GhError("; ".join(e.get("message", "GraphQL error") for e in data["errors"]))
+        return (data or {}).get("data")
+
     def set_field_options(self, field_id: str, options: Sequence[dict[str, str]]) -> None:
         """Replace the options of a single-select field."""
-        body = {
-            "query": UPDATE_FIELD_MUTATION,
-            "variables": {"field": field_id, "options": list(options)},
-        }
-        self._json(["api", "graphql", "--input", "-"], input=json.dumps(body))
+        self._graphql_input(UPDATE_FIELD_MUTATION, {"field": field_id, "options": list(options)})
+
+    def project_views(self, project_id: str) -> list[dict[str, Any]]:
+        """Return the project's views with `id`, `name` and `layout`."""
+        data = self._graphql_input(VIEWS_QUERY, {"p": project_id})
+        return data["node"]["views"]["nodes"]
+
+    def create_view(self, project_id: str, name: str, layout: str, field_ids: Sequence[str]) -> str:
+        """Create a view showing the given fields and return its id."""
+        variables = {"p": project_id, "n": name, "l": layout, "f": list(field_ids)}
+        data = self._graphql_input(CREATE_VIEW_MUTATION, variables)
+        return data["createProjectV2View"]["projectV2View"]["id"]
+
+    def update_view(
+        self, view_id: str, name: str, layout: str, query: str, field_ids: Sequence[str]
+    ) -> None:
+        """Set a view's name, layout, filter and visible fields."""
+        variables = {"v": view_id, "n": name, "l": layout, "q": query, "f": list(field_ids)}
+        self._graphql_input(UPDATE_VIEW_MUTATION, variables)
 
     def add_item(self, owner: str, number: int, url: str) -> str:
         """Add an issue to the project (a no-op when present) and return the item id."""
@@ -440,6 +469,30 @@ UPDATE_FIELD_MUTATION = """
 mutation($field: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]) {
   updateProjectV2Field(input: {fieldId: $field, singleSelectOptions: $options}) {
     projectV2Field { ... on ProjectV2SingleSelectField { id } }
+  }
+}
+""".strip()
+
+VIEWS_QUERY = """
+query($p: ID!) {
+  node(id: $p) { ... on ProjectV2 { views(first: 50) { nodes { id name layout } } } }
+}
+""".strip()
+
+CREATE_VIEW_MUTATION = """
+mutation($p: ID!, $n: String!, $l: ProjectV2ViewLayout!, $f: [ID!]) {
+  createProjectV2View(input: {projectId: $p, name: $n, layout: $l,
+                              configuration: {visibleFieldIds: $f}}) {
+    projectV2View { id }
+  }
+}
+""".strip()
+
+UPDATE_VIEW_MUTATION = """
+mutation($v: ID!, $n: String!, $l: ProjectV2ViewLayout!, $q: String, $f: [ID!]) {
+  updateProjectV2View(input: {viewId: $v, name: $n, layout: $l, filter: $q,
+                              configuration: {visibleFieldIds: $f}}) {
+    projectV2View { id }
   }
 }
 """.strip()
@@ -808,6 +861,9 @@ def find_board(
 ) -> tuple[Board | None, bool]:
     """Return the configured board, else the one titled after the repository.
 
+    The title lookup runs under the current repository's owner, so every clone and fork finds
+    its own board without an account-specific URL in `factory.toml`.
+
     With create, a missing board is created and linked to the repository. The second value
     tells whether it was created.
     """
@@ -854,6 +910,49 @@ def ensure_columns(github: GitHub, board: Board, created: bool) -> bool:
     return True
 
 
+DEFAULT_VIEW = "View 1"
+# Kanban views: name, layout, filter and the fields shown. The board's columns are the Status
+# field. Work flows continuously; there are no sprints or estimates to plan.
+BOARD_VIEWS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
+    ("Board", "BOARD_LAYOUT", "", ("Title", "Assignees", "Labels", "Linked pull requests")),
+    (
+        "Backlog",
+        "TABLE_LAYOUT",
+        'status:Ready,"Needs info",Accepted',
+        ("Title", "Status", "Labels", "Assignees", "Updated"),
+    ),
+    (
+        "Needs attention",
+        "TABLE_LAYOUT",
+        'status:"Needs info","Needs human",Verified',
+        ("Title", "Status", "Labels", "Linked pull requests", "Assignees", "Updated"),
+    ),
+)
+
+
+def ensure_views(github: GitHub, board: Board) -> list[str]:
+    """Add the Kanban views that are missing and return their names.
+
+    Existing views are never changed, except GitHub's untouched default view, which becomes
+    the board.
+    """
+    ids = {f["name"]: f["id"] for f in github.project_fields(board.owner, board.number)}
+    views = {v["name"]: v for v in github.project_views(board.id)}
+    added = []
+    for name, layout, query, shown in BOARD_VIEWS:
+        if name in views:
+            continue
+        fields = [ids[field] for field in shown if field in ids]
+        default = views.pop(DEFAULT_VIEW, None)
+        if default is not None:
+            view_id = default["id"]
+        else:
+            view_id = github.create_view(board.id, name, layout, fields)
+        github.update_view(view_id, name, layout, query, fields)
+        added.append(name)
+    return added
+
+
 def factory_issues(github: GitHub) -> list[dict[str, Any]]:
     """Return every issue with a factory label, once each, by number."""
     seen: dict[int, dict[str, Any]] = {}
@@ -882,23 +981,6 @@ def sync_board(github: GitHub, board: Board, issues: Sequence[dict[str, Any]]) -
         github.set_item_option(board.id, item, field["id"], options[column])
         mirrored += 1
     return mirrored
-
-
-def write_project(root: Path, url: str) -> None:
-    """Set the top-level `project` key of `factory.toml`, creating the file if needed."""
-    path = root / "factory.toml"
-    text = path.read_text(encoding="utf-8") if path.is_file() else ""
-    line = f'project = "{url}"'
-    header = re.search(r"^\[", text, re.MULTILINE)
-    top, rest = (text[: header.start()], text[header.start() :]) if header else (text, "")
-    key = re.compile(r"^project\s*=.*$", re.MULTILINE)
-    if key.search(top):
-        top = key.sub(lambda _: line, top, count=1)
-    else:
-        top = top + ("\n" if top and not top.endswith("\n") else "") + line + "\n"
-        top += "\n" if rest else ""
-    path.write_text(top + rest, encoding="utf-8")
-    load_config(root)
 
 
 # --- commands ----------------------------------------------------------------------------
@@ -977,7 +1059,7 @@ def _board_step(exc: GhError) -> Exception:
     return exc
 
 
-def _init(github: GitHub, config: Config, root: Path, board: bool) -> int:
+def _init(github: GitHub, config: Config, board: bool) -> int:
     repo = _repository(github)
     created = ensure_labels(github)
     print(f"labels: {repo['name']}, created " + (", ".join(created) or "none"))
@@ -987,14 +1069,13 @@ def _init(github: GitHub, config: Config, root: Path, board: bool) -> int:
         found, new = find_board(github, config, repo, create=True)
         assert found is not None
         changed = ensure_columns(github, found, new)
+        views = ensure_views(github, found)
         mirrored = sync_board(github, found, factory_issues(github))
     except GhError as exc:
         raise _board_step(exc) from exc
-    if config.project != found.url:
-        write_project(root, found.url)
-        print(f"factory.toml: project = {found.url}")
     columns = "columns set" if changed else "columns present"
     print(f"board: {found.url} ({'created' if new else 'found'}, {columns})")
+    print("views added: " + (", ".join(views) or "none, all present"))
     print(f"mirrored: {mirrored} issues")
     return EXIT_OK
 
@@ -1023,9 +1104,7 @@ def _parser() -> argparse.ArgumentParser:
     tick.add_argument("--dry-run", action="store_true", help="print the action, change nothing")
     tick.add_argument("--json", action="store_true")
     sub.add_parser("labels", help="create the missing factory labels")
-    init = sub.add_parser(
-        "init", help="create the labels and the board, record it in factory.toml, mirror issues"
-    )
+    init = sub.add_parser("init", help="create the labels and the Kanban board, mirror issues")
     init.add_argument("--no-board", action="store_true", help="create the labels only")
     init.add_argument(
         "--skip-unavailable",
@@ -1054,7 +1133,7 @@ def main(
             print("created: " + (", ".join(created) or "none"))
             return EXIT_OK
         if args.command == "init":
-            return _init(github, config, root, not args.no_board)
+            return _init(github, config, not args.no_board)
         if args.command == "sync":
             return _sync(github, config)
         if args.command == "status":

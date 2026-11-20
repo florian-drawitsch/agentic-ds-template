@@ -143,11 +143,12 @@ Blue steps run unattended. Red columns wait for a person.
    task factory:init
    ```
 
-   `init` creates the seven `factory:*` labels and a board named `<repository> factory` with
-   one Status column per state, links it to the repository and writes its URL to
-   `factory.toml`. Commit that change. `copier copy` and `task setup` run the same step and
-   skip it with a note while the repository, the scope or write access is missing, so copying
-   into a clone of an existing GitHub repository sets everything up at once.
+   `init` creates the `factory:*` and `priority:*` labels and a Kanban board named
+   `<repository> factory` with one Status column per state and three views, and links it to
+   the repository. The board is found by that name under the repository's owner, so no URL is
+   stored and every fork gets its own board. `copier copy` and `task setup` run the same step
+   and skip it with a note while the repository, the scope or write access is missing, so
+   copying into a clone of an existing GitHub repository sets everything up at once.
 
 **Work with it:**
 
@@ -156,6 +157,21 @@ Blue steps run unattended. Red columns wait for a person.
 3. `task factory:status` shows the issues per state, spend against the caps and the next
    action. `task factory:tick` prints that action without changing anything.
 4. `task factory:sync` mirrors manual label changes into the board.
+
+The board is a Kanban board: work flows continuously, one ticket at a time, with no sprints
+or estimates. `init` adds three views:
+
+| View | Shows |
+| --- | --- |
+| Board | One column per factory state, from Ready to Done |
+| Backlog | Tickets not started yet: Ready, Needs info, Accepted |
+| Needs attention | Tickets waiting for a person: Needs info, Needs human, Verified |
+
+Order the queue with the labels `priority:high`, `priority:medium` and `priority:low`; the
+factory picks higher priority first, then the lower issue number. To show the factory's
+limits on the board, set a column limit of 1 on In progress and 3 on Verified in the board
+settings. Labels drive the factory: moving a card does not change its label, so change the
+label instead.
 
 `factory.toml` limits the work: one issue in progress, at most three verified pull requests
 waiting for a merge, USD 20 per day and USD 100 per sprint. Pull requests that touch protected

@@ -23,11 +23,11 @@ implementation and verification by agents follow in the next template releases.
    task factory:init
    ```
 
-   `init` is idempotent. It creates the seven `factory:*` labels and a board named
-   `<repository> factory`, links the board to the repository, sets its Status columns and
-   writes the board URL to `factory.toml`. Commit that change. `copier copy` and
-   `task setup` run the same step and skip it with a note while the repository or the scope
-   is missing.
+   `init` is idempotent. It creates the `factory:*` and `priority:*` labels and a Kanban board
+   named `<repository> factory`, links the board to the repository, sets its Status columns
+   and adds its views. The board is found by that name under the repository's owner, so a
+   fork or transferred repository gets its own board. `copier copy` and `task setup` run the
+   same step and skip it with a note while the repository or the scope is missing.
 
 ## Use
 
@@ -37,6 +37,23 @@ implementation and verification by agents follow in the next template releases.
 3. `task factory:status` shows the issues per state, spend against the caps and the next
    action. `task factory:tick` prints that action without changing anything.
 4. `task factory:sync` mirrors the labels into the board after manual label changes.
+
+## Board
+
+The board is a Kanban board: work flows continuously, one ticket at a time, with no sprints
+or estimates. `init` adds three views:
+
+| View | Shows |
+| --- | --- |
+| Board | One column per factory state, from Ready to Done |
+| Backlog | Tickets not started yet: Ready, Needs info, Accepted |
+| Needs attention | Tickets waiting for a person: Needs info, Needs human, Verified |
+
+Order the queue with the labels `priority:high`, `priority:medium` and `priority:low`; the
+factory picks higher priority first, then the lower issue number. To show the factory's
+limits on the board, set a column limit of 1 on In progress and 3 on Verified in the board
+settings. Labels drive the factory: moving a card does not change its label, so change the
+label instead.
 
 | Label | Board column | Meaning |
 | --- | --- | --- |

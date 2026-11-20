@@ -354,7 +354,8 @@ It calls no model. Agent stages arrive in S2.
 | --- | --- |
 | Configuration | `factory.toml`: limits, repair cycles, daily and sprint caps in USD, protected paths, trusted bots; unknown keys and wrong types are errors |
 | Label states | Seven `factory:*` labels and the transition table of ADR-0033; `factory.py labels` creates them idempotently |
-| Board | `factory.py init` creates and links a project board with one Status column per state, records it in `factory.toml`; `sync` mirrors labels into it |
+| Board | `factory.py init` creates and links a Kanban board with one Status column per state and the views Board, Backlog and Needs attention, found by name under the repository's owner so forks get their own; `sync` mirrors labels into it |
+| Priority | `priority:high`, `priority:medium`, `priority:low` labels, created by `init`, order the queue within a state |
 | Generated projects | Copier question `factory` (needs GitHub CI and both harnesses); renders `factory.toml`, `taskfiles/factory.yml`, the script copy and `docs/guides/factory.md`; copy and `task setup` run `init` and skip it with a note while GitHub is not ready |
 | This repository | `task factory:init`, `factory:status`, `factory:tick`, `factory:sync` with the root `factory.toml` |
 | Admission | `factory:ready` counts only when a user with write access added it last; unadmitted issues are skipped and listed by `status` |

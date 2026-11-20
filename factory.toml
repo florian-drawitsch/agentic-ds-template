@@ -1,5 +1,6 @@
 # Ticket factory for developing this repository (ADR-0033). `task factory:init` creates the
-# labels and the board and records the board URL here.
+# labels and the board "<repository> factory" under the repository's owner, so each fork gets
+# its own board. Nothing here is tied to one account.
 
 # Check runs that must pass before a PR counts as verified: the CI job.
 required_checks = ["Build check, lint, types, tests and manifests"]

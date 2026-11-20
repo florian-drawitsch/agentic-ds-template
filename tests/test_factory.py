@@ -11,6 +11,7 @@ from tests.helpers import load_script
 SCRIPT = Path("plugins/factory/skills/factory/scripts/factory.py")
 factory = load_script(SCRIPT, "factory")
 State = factory.State
+ALL_LABELS = {s.value for s in State} | set(factory.PRIORITY_STYLE)
 NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 
 
@@ -117,9 +118,9 @@ def test_state_of():
 def test_labels_command_is_idempotent():
     gh = FakeGitHub()
     assert run_main(["labels"], gh) == 0
-    assert len(gh.created) == 7
+    assert set(gh.created) == ALL_LABELS
     assert run_main(["labels"], gh) == 0
-    assert len(gh.created) == 7
+    assert len(gh.created) == len(ALL_LABELS)
 
 
 # --- github access ---
@@ -684,14 +685,14 @@ def board_gh():
     return gh
 
 
-def test_init_creates_labels_board_and_records_it(tmp_path, capsys):
+def test_init_creates_labels_and_board_and_mirrors_issues(tmp_path, capsys):
     gh = board_gh()
     gh.add_issue(1, ["factory:ready"])
     gh.add_issue(2, ["factory:in-review"])
     gh.add_issue(3, ["factory:verified"], state="closed")
     gh.add_issue(4, ["bug"])
     assert run_main(["init"], gh, root=tmp_path) == 0
-    assert set(gh.created) == {s.value for s in State}
+    assert set(gh.created) == ALL_LABELS
     board = gh.boards["acme"][0]
     assert board["title"] == "widgets factory"
     assert gh.links == [("acme", board["number"], "acme/widgets")]
@@ -699,7 +700,7 @@ def test_init_creates_labels_board_and_records_it(tmp_path, capsys):
     assert {o["color"] for o in gh.option_updates[0]} <= {
         "GRAY", "BLUE", "GREEN", "YELLOW", "ORANGE", "RED", "PINK", "PURPLE"
     }  # fmt: skip
-    assert factory.load_config(tmp_path).project == board["url"]
+    assert not (tmp_path / "factory.toml").exists(), "no account-specific URL is written"
     url = "https://github.com/acme/widgets/issues/{}"
     assert gh.item_values == {
         gh.items[url.format(1)]: "O-Ready",
@@ -711,12 +712,10 @@ def test_init_creates_labels_board_and_records_it(tmp_path, capsys):
 def test_init_is_idempotent(tmp_path):
     gh = board_gh()
     assert run_main(["init"], gh, root=tmp_path) == 0
-    first = (tmp_path / "factory.toml").read_text()
     assert run_main(["init"], gh, root=tmp_path) == 0
     assert len(gh.boards["acme"]) == 1
     assert len(gh.option_updates) == 1
     assert len(gh.links) == 1
-    assert (tmp_path / "factory.toml").read_text() == first
 
 
 def test_init_reuses_a_board_found_by_title_before_the_url_was_saved(tmp_path):
@@ -725,7 +724,7 @@ def test_init_reuses_a_board_found_by_title_before_the_url_was_saved(tmp_path):
     assert run_main(["init"], gh, root=tmp_path) == 0
     assert gh.option_updates == []
     assert gh.links == []
-    assert factory.load_config(tmp_path).project.endswith("/projects/7")
+    assert not (tmp_path / "factory.toml").exists()
 
 
 def test_init_never_rewrites_an_arranged_board(tmp_path, capsys):
@@ -751,7 +750,7 @@ def test_init_names_the_missing_project_scope(tmp_path, capsys):
     gh = board_gh()
     gh.project_error = "your authentication token is missing required scopes [read:project]"
     assert run_main(["init", "--skip-unavailable"], gh, root=tmp_path) == 0
-    assert set(gh.created) == {s.value for s in State}
+    assert set(gh.created) == ALL_LABELS
     assert "gh auth refresh -s project" in capsys.readouterr().err
 
 
@@ -759,7 +758,7 @@ def test_init_without_board_creates_labels_only(tmp_path):
     gh = board_gh()
     assert run_main(["init", "--no-board"], gh, root=tmp_path) == 0
     assert gh.boards == {}
-    assert len(gh.created) == len(State)
+    assert set(gh.created) == ALL_LABELS
 
 
 def test_sync_mirrors_open_issues_and_skips_conflicts(tmp_path):
@@ -783,22 +782,14 @@ def test_every_state_has_a_board_column():
     assert COLUMNS[-1] == "Done"
 
 
-@pytest.mark.parametrize(
-    ("before", "after"),
-    [
-        ("", 'project = "U"\n'),
-        ("max_verified = 2\n", 'max_verified = 2\nproject = "U"\n'),
-        ('project = "old"\nmax_verified = 2\n', 'project = "U"\nmax_verified = 2\n'),
-        ("max_verified = 2\n\n[deliver]\nharness = \"claude\"\n",
-         "max_verified = 2\n\nproject = \"U\"\n\n[deliver]\nharness = \"claude\"\n"),
-        ('# project = "x"\n[deliver]\n', '# project = "x"\nproject = "U"\n\n[deliver]\n'),
-    ],
-)  # fmt: skip
-def test_write_project_sets_only_the_top_level_key(tmp_path, before, after):
-    if before:
-        (tmp_path / "factory.toml").write_text(before)
-    factory.write_project(tmp_path, "U")
-    assert (tmp_path / "factory.toml").read_text() == after
+def test_a_fork_finds_its_own_board_by_title(tmp_path):
+    gh = board_gh()
+    gh.add_board("upstream", 1, "widgets factory", COLUMNS)
+    gh.repo = {"owner": "forker", "name": "forker/widgets"}
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    assert [b["title"] for b in gh.boards["forker"]] == ["widgets factory"]
+    assert gh.links == [("forker", 2, "forker/widgets")]
+    assert len(gh.boards["upstream"]) == 1
 
 
 def test_project_calls_pass_values_as_arguments():
@@ -833,3 +824,59 @@ def test_init_skip_also_covers_refused_writes(tmp_path, capsys):
     assert run_main(["init", "--skip-unavailable"], gh, root=tmp_path) == 0
     assert "403" in capsys.readouterr().err
     assert run_main(["init"], gh, root=tmp_path) == 1
+
+
+# --- board views ---
+
+VIEW_NAMES = [name for name, _, _, _ in factory.BOARD_VIEWS]
+
+
+def test_init_adds_the_kanban_views(tmp_path, capsys):
+    gh = board_gh()
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    views = gh.views[gh.boards["acme"][0]["id"]]
+    assert [v["name"] for v in views] == VIEW_NAMES
+    board, backlog, attention = views
+    assert board["id"].endswith("-1"), "the default view becomes the board"
+    assert board["layout"] == "BOARD_LAYOUT"
+    assert {"F-Labels", "F-Linked pull requests"} <= set(board["f"])
+    assert backlog["query"] == 'status:Ready,"Needs info",Accepted'
+    assert "Needs human" in attention["query"]
+    assert "Board, Backlog, Needs attention" in capsys.readouterr().out
+
+
+def test_kanban_board_has_no_sprint_fields():
+    shown = {field for _, _, _, fields in factory.BOARD_VIEWS for field in fields}
+    assert not {"Sprint", "Iteration", "Estimate"} & shown
+
+
+def test_views_are_idempotent_and_never_touch_arranged_views(tmp_path):
+    gh = board_gh()
+    gh.add_board("acme", 4, "widgets factory", COLUMNS)
+    project = gh.boards["acme"][0]["id"]
+    mine = {"id": "Vx", "name": "Mine", "layout": "TABLE_LAYOUT", "query": "x", "f": []}
+    gh.views[project] = [dict(mine)]
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    assert gh.views[project][0] == mine
+    assert [v["name"] for v in gh.views[project]] == ["Mine", *VIEW_NAMES]
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    assert len(gh.views[project]) == 1 + len(VIEW_NAMES)
+
+
+def test_graphql_errors_raise():
+    gh = RecordingGitHub([json.dumps({"errors": [{"message": "bad view"}]})])
+    with pytest.raises(factory.GhError, match="bad view"):
+        gh.project_views("P1")
+
+
+def test_view_calls_send_typed_variables_on_stdin():
+    gh = RecordingGitHub(
+        [json.dumps({"data": {"createProjectV2View": {"projectV2View": {"id": "V9"}}}}), "{}"]
+    )
+    assert gh.create_view("P1", "Board", "BOARD_LAYOUT", ["F1", "F2"]) == "V9"
+    gh.update_view("V9", "Board", "BOARD_LAYOUT", "-status:Done", ["F1"])
+    for args, _sent in gh.calls:
+        assert args == ["api", "graphql", "--input", "-"]
+    created = json.loads(gh.calls[0][1])["variables"]
+    assert created == {"p": "P1", "n": "Board", "l": "BOARD_LAYOUT", "f": ["F1", "F2"]}
+    assert json.loads(gh.calls[1][1])["variables"]["q"] == "-status:Done"

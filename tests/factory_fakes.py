@@ -30,6 +30,7 @@ class FakeGitHub:
         self.option_updates: list[list[dict[str, str]]] = []
         self.items: dict[str, str] = {}
         self.item_values: dict[str, str] = {}
+        self.views: dict[str, list[dict[str, Any]]] = {}
 
     # test setup helpers
     def add_issue(
@@ -50,14 +51,18 @@ class FakeGitHub:
         board = {"id": f"P{number}", "number": number, "title": title, "url": url}
         self.boards.setdefault(owner, []).append(board)
         names = ["Todo", "In Progress", "Done"] if options is None else options
+        builtin = ["Title", "Assignees", "Labels", "Linked pull requests", "Updated"]
         self.fields[number] = [
-            {"id": "F-title", "name": "Title", "type": "ProjectV2Field"},
+            *({"id": f"F-{n}", "name": n, "type": "ProjectV2Field"} for n in builtin),
             {
                 "id": f"F{number}",
                 "name": "Status",
                 "type": "ProjectV2SingleSelectField",
                 "options": [{"id": f"O-{n}", "name": n} for n in names],
             },
+        ]
+        self.views[board["id"]] = [
+            {"id": f"V{number}-1", "name": "View 1", "layout": "TABLE_LAYOUT", "query": "", "f": []}
         ]
 
     def label_event(self, number: int, label: str, login: str, bot: bool = False) -> None:
@@ -159,3 +164,21 @@ class FakeGitHub:
 
     def set_item_option(self, project_id: str, item_id: str, field_id: str, option: str) -> None:
         self.item_values[item_id] = option
+
+    def _number(self, project_id: str) -> int:
+        return next(b["number"] for bs in self.boards.values() for b in bs if b["id"] == project_id)
+
+    def project_views(self, project_id: str) -> list[dict[str, Any]]:
+        return [dict(v) for v in self.views[project_id]]
+
+    def create_view(self, project_id: str, name: str, layout: str, field_ids: list[str]) -> str:
+        view_id = f"V{len(self.views[project_id]) + 1}-{name}"
+        view = {"id": view_id, "name": name, "layout": layout, "query": "", "f": list(field_ids)}
+        self.views[project_id].append(view)
+        return view_id
+
+    def update_view(
+        self, view_id: str, name: str, layout: str, query: str, field_ids: list[str]
+    ) -> None:
+        view = next(v for vs in self.views.values() for v in vs if v["id"] == view_id)
+        view.update(name=name, layout=layout, query=query, f=list(field_ids))
