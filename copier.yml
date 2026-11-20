@@ -97,13 +97,13 @@ description:
 
 author_name:
   type: str
-  help: Author name
-  default: Florian Drawitsch
+  help: Author name for package metadata; leave empty to omit it
+  default: ""
 
 author_email:
   type: str
-  help: Author email
-  default: florian.drawitsch@gmail.com
+  help: Author email for package metadata; leave empty to omit it
+  default: ""
 
 github_owner:
   type: str

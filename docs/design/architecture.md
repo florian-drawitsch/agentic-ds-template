@@ -68,7 +68,7 @@ Questions appear in four groups. `when:` hides questions that do not apply.
 | `project_name` | str | |
 | `package_name` | str | derived, with validator |
 | `description` | str | |
-| `author_name`, `author_email` | str | personal identity |
+| `author_name`, `author_email` | str | empty; omitted from package metadata when empty |
 | `github_owner` | str | personal account |
 | `python_version` | choice | 3.14 (3.13 available) |
 

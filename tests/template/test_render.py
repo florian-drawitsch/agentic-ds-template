@@ -323,3 +323,21 @@ def test_workspace_tooling_covers_every_member(default: Path) -> None:
     assert 'lint-imports --config "$config"' in contract["entry"]
     assert "apps/*/pyproject.toml packages/*/pyproject.toml" in contract["entry"]
     assert "api/*/index" in (default / "docs/index.md").read_text()
+
+
+def test_defaults_carry_no_personal_identity(default: Path) -> None:
+    copier = yaml.safe_load((ROOT / "copier.yml").read_text())
+    assert copier["author_name"]["default"] == ""
+    assert copier["author_email"]["default"] == ""
+    app = tomllib.loads((default / "apps/demo_project/pyproject.toml").read_text())
+    assert "authors" not in app["project"]
+    assert 'author = "demo-project"' in (default / "docs/conf.py").read_text()
+
+
+def test_given_authors_reach_the_package_metadata(tmp_path: Path) -> None:
+    root = render(tmp_path / "project", author_name="Ada", author_email="ada@example.com")
+    app = tomllib.loads((root / "apps/demo_project/pyproject.toml").read_text())
+    assert app["project"]["authors"] == [{"name": "Ada", "email": "ada@example.com"}]
+    only_email = render(tmp_path / "email", author_email="ada@example.com")
+    app = tomllib.loads((only_email / "apps/demo_project/pyproject.toml").read_text())
+    assert app["project"]["authors"] == [{"email": "ada@example.com"}]
