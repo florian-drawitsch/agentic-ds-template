@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import time
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -967,6 +969,47 @@ def test_run_round_saves_session_before_stream_finishes(delivery_repo: Path, mon
     assert result.thread == "thread-new"
 
 
+def _agent_with_background_child(pid_file: Path, *, linger: bool) -> list[str]:
+    """A fake agent that starts a long background command, reports its result, then waits."""
+    script = (
+        "import json, subprocess, sys, time\n"
+        "child = subprocess.Popen(['sleep', '300'])\n"  # inherits the agent's output pipe
+        f"open({str(pid_file)!r}, 'w').write(str(child.pid))\n"
+        "print(json.dumps({'type': 'result', 'subtype': 'success'}), flush=True)\n"
+        f"time.sleep({300 if linger else 0})\n"
+    )
+    return [sys.executable, "-c", script]
+
+
+def _gone(pid: int, seconds: float = 10) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+@pytest.mark.parametrize("linger", [True, False], ids=["agent-lingers", "agent-exits"])
+def test_round_ends_at_the_result_and_stops_background_commands(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch, linger: bool
+) -> None:
+    monkeypatch.setattr(deliver, "RESULT_GRACE_SECONDS", 0.5)
+    pid_file = delivery_repo / "child.pid"
+    started = time.monotonic()
+    result = deliver.run_round(
+        _agent_with_background_child(pid_file, linger=linger),
+        delivery_repo,
+        delivery_repo / "headless.jsonl",
+        timeout=120,
+    )
+    assert time.monotonic() - started < 30
+    assert result.subtype == "success"
+    assert _gone(int(pid_file.read_text()))
+
+
 @pytest.mark.parametrize("harness", ["claude", "codex"])
 def test_fresh_vendor_session_uses_launch_not_resume(
     delivery_repo: Path, monkeypatch, harness: str
@@ -1091,6 +1134,31 @@ def test_unbound_run_binds_from_assistant_message_or_transcript_tail(
         }
     )
     assert deliver.find_run(delivery_repo, run.token).session_id == "bound-session"
+
+
+def test_controller_announces_the_silent_final_review(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _commit_plan(delivery_repo)
+    run = deliver.Run(
+        "announce",
+        "plan.md",
+        "exit 0",
+        headless=True,
+        cross_review="final",
+        reviewer="codex",
+        reviewer_model="gpt-6.1-sol",
+        status="reviewing",
+    )
+    run.save(delivery_repo)
+    monkeypatch.setattr(
+        deliver, "review_command", lambda run: [sys.executable, "-c", "print('Saved to x')"]
+    )
+    deliver.advance_handoff(delivery_repo, run)
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "Running the final review with codex (gpt-6.1-sol)" in text
+    assert "Final review ended after" in text
 
 
 def test_outer_gate_failure_returns_to_agent_without_publication(
