@@ -1203,6 +1203,30 @@ def test_publication_staged_before_review_runs_the_review(
     assert saved.pr_url is None
 
 
+def test_failing_review_is_retried_once_then_blocks_the_run(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _commit_plan(delivery_repo)
+    run = deliver.Run(
+        "failing-review",
+        "plan.md",
+        "exit 0",
+        headless=True,
+        cross_review="final",
+        reviewer="codex",
+        status="reviewing",
+    )
+    run.save(delivery_repo)
+    runs = delivery_repo / "review-runs.txt"
+    script = f"open({str(runs)!r}, 'a').write('x'); raise SystemExit(1)"
+    monkeypatch.setattr(deliver, "review_command", lambda run: [sys.executable, "-c", script])
+    saved, verdict = deliver.advance_handoff(delivery_repo, run)
+    assert runs.read_text() == "xx"
+    assert verdict.action == "release"
+    assert saved.status == "blocked"
+    assert "unreviewed" in saved.note
+
+
 def test_outer_gate_failure_returns_to_agent_without_publication(
     delivery_repo: Path, monkeypatch
 ) -> None:
