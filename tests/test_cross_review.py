@@ -85,6 +85,38 @@ def test_reviewer_prompt_covers_shared_library_rules_without_cosmetic_findings()
     assert "PoC" not in prompt
 
 
+def test_each_reviewer_is_told_to_read_with_the_tools_it_has(tmp_path: Path) -> None:
+    claude = review.build_prompt("base", "plan.md", tmp_path, reviewer="claude")
+    codex = review.build_prompt("base", "plan.md", tmp_path, reviewer="codex")
+    assert "with Read, Grep, and Glob. Do not run shell commands." in claude
+    assert "read-only shell commands" in codex
+    assert "Read, Grep" not in codex
+    assert "Do not run shell commands" not in codex
+
+
+@pytest.mark.parametrize(
+    ("verdict", "findings", "ok"),
+    [
+        ("pass", [], True),
+        ("changes_requested", [{"severity": "major", "file": "a.py", "issue": "x"}], True),
+        ("changes_requested", [], False),
+    ],
+)
+def test_changes_requested_without_findings_is_a_failed_review(
+    verdict: str, findings: list[dict[str, str]], ok: bool
+) -> None:
+    record = {
+        "verdict": verdict,
+        "summary": "Review blocked: tools unavailable",
+        "findings": findings,
+    }
+    if ok:
+        assert review.normalize(record)["verdict"] == verdict
+    else:
+        with pytest.raises(ValueError, match="without findings"):
+            review.normalize(record)
+
+
 def test_claude_reviewer_has_only_read_tools() -> None:
     command = review.claude_command("Review", "sonnet")
     assert command[command.index("--tools") + 1] == "Read,Grep,Glob"
