@@ -24,7 +24,7 @@ class Fake:
         self.calls: list[list[str]] = []
         self.answers = answers or {}
 
-    def __call__(self, args, cwd, timeout=None):
+    def __call__(self, args, cwd, timeout=None, env=None):
         self.calls.append(list(args))
         text = " ".join(args)
         for key, (code, out) in self.answers.items():
@@ -358,3 +358,100 @@ def test_tick_dry_run_has_no_side_effects(tmp_path):
     assert factory.main(["tick", "--dry-run"], github=gh, root=tmp_path, now=NOW, run=run) == 0
     assert not run.calls
     assert gh.comment_log == {}
+
+
+# --- review fixes ---
+
+
+def test_triage_env_has_no_credentials_and_codex_skips_repo_check(tmp_path, monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "x")
+    monkeypatch.setenv("MY_API_TOKEN", "x")
+    monkeypatch.setenv("KEEP_ME", "1")
+    seen = {}
+
+    def run(args, cwd, timeout=None, env=None):
+        seen["args"], seen["env"] = list(args), env
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    path = tmp_path / "issue.txt"
+    path.write_text("x")
+    config = factory.Config(deliver=factory.DeliverConfig(harness="claude"))
+    factory.run_triage(config, path, run)
+    assert "--skip-git-repo-check" in seen["args"]
+    assert "GH_TOKEN" not in seen["env"]
+    assert "MY_API_TOKEN" not in seen["env"]
+    assert seen["env"]["KEEP_ME"] == "1"
+
+
+def test_triage_answer_with_secret_is_invalid_but_costs(tmp_path):
+    path = tmp_path / "issue.txt"
+    path.write_text("x")
+    leak = triage_answer(reason="ghp_" + "a" * 30)
+    config = factory.Config(deliver=factory.DeliverConfig(reviewer="claude"))
+    result = factory.run_triage(config, path, run_with(claude_out(leak, cost=0.4)))
+    assert result.reason == "triage output invalid"
+    assert result.cost == 0.4
+
+
+def test_unreported_triage_cost_is_estimated(tmp_path):
+    path = tmp_path / "issue.txt"
+    path.write_text("x")
+    result = factory.run_triage(factory.Config(), path, Fake({"codex": (0, "")}))
+    assert result.cost == factory.TRIAGE_ESTIMATE_USD
+
+
+def test_codex_review_with_bot_suffix_counts():
+    gh = review_setup()
+    gh.review_log[30] = [
+        {"user": {"login": factory.CODEX_BOT + "[bot]"}, "commit_id": "sha30", "state": "COMMENTED"}
+    ]
+    assert factory.codex_reviewed(env(gh), {"number": 30, "sha": "sha30"})
+
+
+def test_failed_label_removal_leaves_one_label(monkeypatch):
+    gh = FakeGitHub()
+    gh.add_issue(1, ["factory:ready"])
+
+    def boom(number, label):
+        if label == "factory:ready":
+            raise RuntimeError("remove failed")
+        FakeGitHub.remove_label(gh, number, label)
+
+    monkeypatch.setattr(gh, "remove_label", boom)
+    with pytest.raises(RuntimeError):
+        factory.set_state(gh, 1, State.ACCEPTED)
+    assert gh.issues[1]["labels"] == ["factory:ready"]
+
+
+def test_implement_always_passes_harness_and_reviewer(clone):
+    _, run, e = implement(clone, deliver_status("blocked"))
+    factory.do_implement(e, 7)
+    headless = next(c for c in run.calls if "headless" in c)
+    assert headless[headless.index("--harness") + 1] == "codex"
+    assert headless[headless.index("--reviewer") + 1] == "claude"
+
+
+def test_verify_waits_when_required_checks_pending():
+    gh = review_setup(checks="in_progress")
+    codex_review(gh)
+    run = Fake()
+    factory.do_verify(env(gh, run=run), 3)
+    assert gh.issues[3]["labels"] == ["factory:in-review"]
+    assert not run.calls
+
+
+def test_verify_records_reported_cost(tmp_path, monkeypatch):
+    gh = review_setup()
+    codex_review(gh)
+    run = Fake({"cross_review": (0, "Cost: 0.7500\nCross-review by codex: pass")})
+    monkeypatch.setattr(factory, "issue_worktree", lambda *a: tmp_path)
+    factory.do_verify(env(gh, root=tmp_path, run=run), 3)
+    assert any('"verify"' in c["body"] and "0.75" in c["body"] for c in gh.comment_log[3])
+
+
+def test_worktree_must_match_pr_head(clone):
+    e = factory.Env(FakeGitHub(), factory.Config(), clone[0], NOW)
+    factory._git(clone[0], "push", "origin", "HEAD:refs/heads/feat/5-x")
+    factory._git(clone[0], "fetch", "origin")
+    with pytest.raises(RuntimeError, match="head"):
+        factory.issue_worktree(e, 5, "feat/5-x", "0" * 40)

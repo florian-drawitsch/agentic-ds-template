@@ -311,3 +311,16 @@ def test_acceptance_excludes_plan(tmp_path: Path, monkeypatch) -> None:
     with pytest.raises(SystemExit) as exc:
         review.main(argv)
     assert exc.value.code == 2
+
+
+def test_acceptance_inputs_hide_the_plan(tmp_path: Path) -> None:
+    _git_repo(tmp_path)
+    base = review.git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "docs/plans").mkdir(parents=True)
+    (tmp_path / "docs/plans/p.md").write_text("secret plan\n")
+    (tmp_path / "code.py").write_text("x = 1\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    shown = review.write_review_inputs(tmp_path, base, None, review.ACCEPTANCE_HIDDEN)
+    patch = (shown / "diff.patch").read_text()
+    assert "x = 1" in patch
+    assert "secret plan" not in patch

@@ -18,10 +18,12 @@ never reaches a shell.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import enum
 import fnmatch
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -30,8 +32,8 @@ import tomllib
 import unicodedata
 import urllib.parse
 import uuid
-from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -829,19 +831,42 @@ class Runner(Protocol):
     """Runs a command; tests replace it so no model or CLI is reached."""
 
     def __call__(
-        self, args: Sequence[str], cwd: Path, timeout: int | None = None
+        self,
+        args: Sequence[str],
+        cwd: Path,
+        timeout: int | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         """Run args in cwd."""
         ...
 
 
 def run_command(
-    args: Sequence[str], cwd: Path, timeout: int | None = None
+    args: Sequence[str],
+    cwd: Path,
+    timeout: int | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a command in cwd and capture its output."""
     return subprocess.run(
-        list(args), cwd=cwd, capture_output=True, text=True, check=False, timeout=timeout
+        list(args), cwd=cwd, capture_output=True, text=True, check=False, timeout=timeout, env=env
     )
+
+
+SECRET_NAME = re.compile(r"(^GH_|^GITHUB_|TOKEN|SECRET|PASSWORD|^AWS_|^SSH_)", re.IGNORECASE)
+SECRET_TEXT = re.compile(
+    r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}"
+    r"|-----BEGIN [A-Z ]*PRIVATE KEY)"
+)
+DENIED_READS = ("~/.ssh", "~/.aws", "~/.config/gh", "~/.netrc", "~/.codex", "~/.claude", "**/.env*")
+# Estimates when a CLI reports no cost, so unpriced stages still count against the caps.
+TRIAGE_ESTIMATE_USD = 0.25
+VERIFY_ESTIMATE_USD = 1.0
+
+
+def agent_env() -> dict[str, str]:
+    """Return the environment without GitHub tokens or other credential variables."""
+    return {k: v for k, v in os.environ.items() if not SECRET_NAME.search(k)}
 
 
 @dataclass(frozen=True)
@@ -929,22 +954,24 @@ def _agent_text(vendor: str, stdout: str) -> tuple[str, float]:
 
 def parse_triage(text: str, cost: float = 0.0) -> TriageResult:
     """Validate the triage JSON against the contract; anything else is `INVALID`."""
+    if SECRET_TEXT.search(text):
+        return replace(INVALID, cost=cost)
     start, end = text.find("{"), text.rfind("}")
     try:
         data = json.loads(text[start : end + 1])
     except ValueError:
-        return INVALID
+        return replace(INVALID, cost=cost)
     if not isinstance(data, dict) or set(data) != {"verdict", "reason", "acceptance"}:
-        return INVALID
+        return replace(INVALID, cost=cost)
     criteria, reason = data["acceptance"], data["reason"]
     if data["verdict"] not in {"accept", "needs-info"} or not isinstance(reason, str):
-        return INVALID
+        return replace(INVALID, cost=cost)
     if not isinstance(criteria, list) or not all(
         isinstance(c, str) and c.strip() for c in criteria
     ):
-        return INVALID
+        return replace(INVALID, cost=cost)
     if data["verdict"] == "accept" and not criteria:
-        return INVALID
+        return replace(INVALID, cost=cost)
     return TriageResult(data["verdict"], reason, tuple(criteria), cost)
 
 
@@ -956,17 +983,18 @@ def run_triage(config: Config, path: Path, run: Runner = run_command) -> TriageR
     if vendor == "claude":
         command = ["claude", "-p", prompt, "--output-format", "json", "--tools", "Read"]
         command += ["--permission-mode", "dontAsk", "--max-budget-usd", "1"]
+        command += ["--disallowedTools", *(f"Read({path}/**)" for path in DENIED_READS)]
     else:
         command = ["codex", "exec", "--json", "-c", 'sandbox_mode="read-only"']
-        command += ["-c", 'approval_policy="never"', "--ephemeral", prompt]
+        command += ["-c", 'approval_policy="never"', "--ephemeral", "--skip-git-repo-check", prompt]
     try:
-        done = run(command, path.parent, 600)
+        done = run(command, path.parent, 600, agent_env())
         if done.returncode != 0:
-            return INVALID
+            return replace(INVALID, cost=TRIAGE_ESTIMATE_USD)
         text, cost = _agent_text(vendor, done.stdout)
     except (OSError, ValueError, subprocess.SubprocessError):
-        return INVALID
-    return parse_triage(text, cost)
+        return replace(INVALID, cost=TRIAGE_ESTIMATE_USD)
+    return parse_triage(text, cost or TRIAGE_ESTIMATE_USD)
 
 
 def marker_json(data: dict[str, Any]) -> str:
@@ -996,7 +1024,12 @@ def set_state(github: GitHub, number: int, target: State) -> None:
     transition(current, target)
     github.add_labels(number, [target.value])
     if current is not None and current is not target:
-        github.remove_label(number, current.value)
+        try:
+            github.remove_label(number, current.value)
+        except Exception:
+            with contextlib.suppress(Exception):
+                github.remove_label(number, target.value)  # never leave two factory labels
+            raise
 
 
 def do_triage(env: Env, number: int) -> None:
@@ -1050,21 +1083,27 @@ def _script(root: Path, skill: str, name: str) -> Path:
     return here if here.is_file() else root / "plugins/project/skills" / skill / "scripts" / name
 
 
-def issue_worktree(env: Env, number: int, branch: str) -> Path:
-    """Return a clean worktree on branch, creating it or fast-forwarding it."""
+def _at(path: Path, sha: str | None) -> Path:
+    if sha and _git(path, "rev-parse", "HEAD").stdout.strip() != sha:
+        raise RuntimeError(f"worktree {path} is not at the pull request head {sha}")
+    return path
+
+
+def issue_worktree(env: Env, number: int, branch: str, sha: str | None = None) -> Path:
+    """Return a clean worktree on branch; with sha, its HEAD must be exactly that commit."""
     path = env.root / ".worktrees" / f"issue-{number}"
     if not path.exists():
         made = _git(env.root, "worktree", "add", "-B", branch, str(path), f"origin/{branch}")
         if made.returncode != 0:
             raise RuntimeError(f"cannot create worktree: {made.stderr.strip()}")
-        return path
+        return _at(path, sha)
     if _git(path, "status", "--porcelain").stdout.strip():
         raise RuntimeError(f"worktree {path} is not clean")
     _git(path, "fetch", "origin", branch)
     merged = _git(path, "merge", "--ff-only", f"origin/{branch}")
     if merged.returncode != 0:
         raise RuntimeError(f"worktree {path} diverged from origin/{branch}")
-    return path
+    return _at(path, sha)
 
 
 def deliver_status(env: Env, workdir: Path, token: str | None) -> dict[str, Any]:
@@ -1103,12 +1142,12 @@ def do_implement(env: Env, number: int) -> None:
         if done.returncode != 0:
             raise RuntimeError(f"git {step[0]} failed: {done.stderr.strip()}")
     deliver = _script(env.root, "deliver", "deliver.py")
-    harness = env.config.deliver
+    harness, reviewer = _vendors(env.config)
+    limit = env.config.deliver.max_cost
     command = ["uv", "run", "--no-project", "python", str(deliver), "headless", "--in-place"]
     command += ["--plan", plan, "--publish-pr", "--cross-review", "final"]
-    command += ["--harness", harness.harness] if harness.harness else []
-    command += ["--reviewer", harness.reviewer] if harness.reviewer else []
-    command += ["--max-cost", str(harness.max_cost)] if harness.max_cost else []
+    command += ["--harness", harness, "--reviewer", reviewer]
+    command += ["--max-cost", str(limit)] if limit else []
     done = env.run(command, workdir)
     found = re.search(r"deliver-run: (\S+)", done.stdout or "")
     info = deliver_status(env, workdir, found.group(1) if found else None)
@@ -1171,7 +1210,8 @@ def open_findings(env: Env, pr: int) -> list[dict[str, Any]]:
 def codex_reviewed(env: Env, pr: dict[str, Any]) -> bool:
     """True if the Codex bot reviewed the head commit."""
     return any(
-        (r.get("user") or {}).get("login") == CODEX_BOT and r.get("commit_id") == pr["sha"]
+        (r.get("user") or {}).get("login", "").removesuffix("[bot]") == CODEX_BOT
+        and r.get("commit_id") == pr["sha"]
         for r in env.github.reviews(pr["number"])
     )
 
@@ -1195,7 +1235,7 @@ def do_repair(env: Env, number: int) -> None:
     if cycles >= env.config.max_repair_cycles:
         escalate(env, number, f"{cycles} repair cycles did not clear the findings")
         return
-    workdir = issue_worktree(env, number, pr["branch"])
+    workdir = issue_worktree(env, number, pr["branch"], pr["sha"])
     deliver = _script(env.root, "deliver", "deliver.py")
     command = ["uv", "run", "--no-project", "python", str(deliver), "fix-pr"]
     done = env.run([*command, "--pr", str(pr["number"])], workdir)
@@ -1218,6 +1258,10 @@ def do_verify(env: Env, number: int) -> None:
     if any(r.get("conclusion") in FAILED for r in runs):
         escalate(env, number, "a check run failed")
         return
+    facts = _pull_facts(github, pr, env.config.required_checks)
+    if not facts.checks_passed:
+        print(f"#{number}: waiting for required checks", file=sys.stderr)
+        return
     if not codex_reviewed(env, pr):
         waited = env.now - github.commit_date(pr["sha"])
         if waited > timedelta(minutes=env.config.review_wait_minutes):
@@ -1231,7 +1275,7 @@ def do_verify(env: Env, number: int) -> None:
         escalate(env, number, "no triage marker with acceptance criteria")
         return
     reviewer = _vendors(env.config)[1]
-    workdir = issue_worktree(env, number, pr["branch"])
+    workdir = issue_worktree(env, number, pr["branch"], pr["sha"])
     with tempfile.TemporaryDirectory() as tmp:
         criteria = Path(tmp) / "acceptance.md"
         criteria.write_text(
@@ -1241,7 +1285,10 @@ def do_verify(env: Env, number: int) -> None:
         script = _script(env.root, "cross-review", "cross_review.py")
         command = ["uv", "run", "--no-project", "python", str(script), "--reviewer", reviewer]
         command += ["--acceptance", str(criteria)]
-        done = env.run(command, workdir, 1800)
+        done = env.run(command, workdir, 1800, agent_env())
+    reported = re.search(r"^Cost: ([0-9.]+)", done.stdout or "", re.MULTILINE)
+    cost = float(reported.group(1)) if reported else VERIFY_ESTIMATE_USD
+    record_cost(github, number, "verify", cost, env.now)
     out = _plain((done.stdout or "")[-1500:])
     if done.returncode == 0:
         github.comment(number, f"Independent review by {reviewer} passed: {out}")

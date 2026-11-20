@@ -60,6 +60,10 @@ SCHEMA: dict[str, Any] = {
 CLAUDE_READ_TOOLS = ["Read", "Grep", "Glob"]
 
 
+# Paths the acceptance reviewer must not see: the worker's plan is not part of its input.
+ACCEPTANCE_HIDDEN = ("docs/plans",)
+
+
 def prices_file() -> Path:
     """Locate the Codex price table: beside this script in a project copy, else in the plugin."""
     here = Path(__file__).resolve()
@@ -174,14 +178,19 @@ def claude_command(prompt: str, model: str | None, budget: float = 2.0) -> list[
     return [*command, "--tools", ",".join(CLAUDE_READ_TOOLS)]
 
 
-def write_review_inputs(root: Path, base: str, token: str | None) -> Path:
+def write_review_inputs(
+    root: Path, base: str, token: str | None, exclude: tuple[str, ...] = ()
+) -> Path:
     """Write review diff and context files outside the tracked worktree."""
     runs = Path(git(root, "rev-parse", "--path-format=absolute", "--git-path", RUNS_DIRNAME))
     parent = runs / token if token else runs
     parent.mkdir(parents=True, exist_ok=True)
     input_dir = Path(tempfile.mkdtemp(prefix="review-input-", dir=parent))
     diff = subprocess.run(
-        ["git", "diff", "--binary", base], cwd=root, capture_output=True, check=True
+        ["git", "diff", "--binary", base, "--", ".", *(f":(exclude){x}" for x in exclude)],
+        cwd=root,
+        capture_output=True,
+        check=True,
     ).stdout
     status = git(root, "status", "--short")
     log = git(root, "log", "--oneline", f"{base}..HEAD")
@@ -398,6 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     base = base_ref(root, args.base)
     prompt = build_prompt(base, args.plan, acceptance=args.acceptance)
     run_dir = None
+    hidden = ACCEPTANCE_HIDDEN if args.acceptance else ()
     review_budget = 2.0
     remaining_budget = float("inf")
     if args.token:
@@ -464,10 +474,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if run_dir:
         diff = subprocess.run(
-            ["git", "diff", base], cwd=root, capture_output=True, text=True, check=False
+            ["git", "diff", base, "--", ".", *(f":(exclude){x}" for x in hidden)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
         diffstat = subprocess.run(
-            ["git", "diff", "--stat", base], cwd=root, capture_output=True, text=True, check=False
+            ["git", "diff", "--stat", base, "--", ".", *(f":(exclude){x}" for x in hidden)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
         (run_dir / "review.diff").write_text(diff, encoding="utf-8")
         (run_dir / "review.diffstat").write_text(diffstat, encoding="utf-8")
@@ -478,7 +496,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     signature = state_signature(root)
-    input_dir = write_review_inputs(root, base, args.token)
+    input_dir = write_review_inputs(root, base, args.token, hidden)
     prompt = build_prompt(base, args.plan, input_dir, args.acceptance)
     review_started = time.monotonic()
     review_started_at = datetime.now(UTC).isoformat(timespec="seconds")
@@ -535,6 +553,8 @@ def main(argv: list[str] | None = None) -> int:
         }
         with ledger.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(row) + "\n")
+    if usage.get("cost_usd") is not None:
+        print(f"Cost: {usage['cost_usd']:.4f}")
     print(f"Cross-review by {args.reviewer}: {review['verdict']}")
     print(review.get("summary", ""))
     for finding in review["findings"]:
