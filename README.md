@@ -51,11 +51,6 @@ It combines:
 - **Scaffold:** the codebase every loop works in. A clear layout, architecture contracts and
   tests make agent mistakes cheap to catch.
 
-The terms follow Addy Osmani's
-[Software factories, light and dark](https://addyosmani.com/blog/software-factories/) and
-harness engineering as described by [OpenAI](https://openai.com/index/harness-engineering/)
-and [Birgitta Böckeler](https://www.martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html).
-
 ## Factory modes
 
 <picture>
