@@ -119,6 +119,8 @@ FACTORY_FILES = (
     "scripts/agent/factory.py",
     "docs/guides/factory.md",
     ".github/workflows/factory.yml",
+    "scripts/assets/issue-plan.md",
+    "scripts/assets/roles/triage.md",
 )
 FACTORY_INIT = "uv run --script scripts/agent/factory.py init --skip-unavailable"
 
@@ -221,3 +223,6 @@ def test_factory_workflow_is_safe_and_calls_existing_tasks(factory_project: Path
             if "secrets.ANTHROPIC_API_KEY" in str(step.get("env", {})):
                 assert command.startswith("task factory:"), command
     assert "ANTHROPIC_API_KEY" not in str(workflow["jobs"]["report-weekly"])
+    tick = workflow["jobs"]["tick"]["steps"]
+    assert tick[0]["with"]["fetch-depth"] == 0
+    assert any(step.get("run") == "gh auth setup-git" for step in tick)

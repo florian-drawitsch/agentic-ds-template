@@ -695,8 +695,9 @@ def ready_signals(
     """Return the Ready signals of an issue, oldest first.
 
     A signal is a `factory:ready` label event, or a manual move into Ready on the factory
-    board. Moves on other boards, automated moves and the controller's own moves (its mirror
-    writes, not a human decision) are ignored.
+    board. Moves on other boards, automated moves and the controller's own mirror
+    writes (a move into Ready while the issue carries the label) are ignored. A move without
+    the label is a human decision, even when the controller token is a maintainer's.
     """
     signals = [
         {"actor": e.get("actor") or {}, "at": _when(e.get("created_at"))}
@@ -709,7 +710,7 @@ def ready_signals(
                 move["project"] == board.id
                 and move["status"] == "Ready"
                 and not move["automated"]
-                and move["actor"] != controller
+                and (move["actor"] != controller or State.READY.value not in issue["labels"])
             ):
                 actor = {"login": move["actor"], "type": move.get("actor_type")}
                 signals.append({"actor": actor, "at": _when(move["at"])})
@@ -937,6 +938,10 @@ def next_action(snap: Snapshot, config: Config, now: datetime) -> Action:
         if pull and pull.checks_passed and not pull.changes_requested:
             return Action("verify", issue["number"], "all required checks passed")
 
+    # Ticks are serialized, so an issue still In progress when a tick starts lost its delivery
+    # (the job was cut off); no later tick could resume it.
+    for issue in _order(snap.states[State.IN_PROGRESS]):
+        return Action("escalate", issue["number"], "delivery was interrupted")
     in_progress = len(snap.states[State.IN_PROGRESS])
     verified = len(snap.states[State.VERIFIED])
     accepted = _order(snap.states[State.ACCEPTED])
@@ -1058,7 +1063,9 @@ def run_command(
     )
 
 
-SECRET_NAME = re.compile(r"(^GH_|^GITHUB_|TOKEN|SECRET|PASSWORD|^AWS_|^SSH_)", re.IGNORECASE)
+SECRET_NAME = re.compile(
+    r"(^GH_|^GITHUB_|TOKEN|SECRET|PASSWORD|API_KEY|^AWS_|^SSH_)", re.IGNORECASE
+)
 SECRET_TEXT = re.compile(
     r"(gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}"
     r"|-----BEGIN [A-Z ]*PRIVATE KEY)"
@@ -1328,6 +1335,7 @@ def issue_worktree(env: Env, number: int, branch: str, sha: str | None = None) -
     """Return a clean worktree on branch; with sha, its HEAD must be exactly that commit."""
     path = env.root / ".worktrees" / f"issue-{number}"
     if not path.exists():
+        _git(env.root, "fetch", "origin", branch)
         made = _git(env.root, "worktree", "add", "-B", branch, str(path), f"origin/{branch}")
         if made.returncode != 0:
             raise RuntimeError(f"cannot create worktree: {made.stderr.strip()}")
@@ -2214,7 +2222,7 @@ def _tick(
         "implement": do_implement,
         "repair": do_repair,
         "verify": do_verify,
-        "escalate": lambda e, n: escalate(e, n, "repair limit reached"),
+        "escalate": lambda e, n: escalate(e, n, action.reason),
     }
     try:
         stages[action.kind](env, action.issue)

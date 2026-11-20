@@ -291,9 +291,9 @@ def test_ties_break_on_issue_number():
     assert act(snap).issue == 6
 
 
-def test_implement_refused_at_in_progress_limit():
+def test_interrupted_delivery_goes_to_a_human_before_new_work():
     snap = build({"accepted": [issue(3)], "in_progress": [issue(1)]})
-    assert act(snap) == factory.Action("idle", None, "max_in_progress (1) reached")
+    assert act(snap) == factory.Action("escalate", 1, "delivery was interrupted")
 
 
 def test_implement_refused_at_verified_limit_falls_back_to_triage():

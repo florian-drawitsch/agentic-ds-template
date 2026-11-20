@@ -96,9 +96,14 @@ branch protection.
   if wrong, a report runs at the wrong time.
 - `factory:tick` runs the real tick (`-- --dry-run` previews): the workflow needs it; the old
   dry-run behaviour moved to `status` and the flag.
-- Job `timeout-minutes: 360` (hosted maximum) and no `--max-wait` change in the controller: one
-  tick runs one delivery and the next tick resumes a cut-off run; if wrong, a very long
-  delivery restarts its round.
+- Job `timeout-minutes: 360` (hosted maximum). A cut-off job loses its local delivery state and
+  no tick can resume it, so a tick that finds an issue still In progress hands it to a human
+  (`delivery was interrupted`); ticks are serialized by `concurrency: factory`. If wrong, a
+  parallel local `factory:loop` could escalate a live issue.
+- Review round 1 fixes: triage assets symlinked into `scripts/assets`, `gh auth setup-git` and
+  full-depth checkout in the workflow, `origin/<branch>` fetched before a worktree is made, API
+  keys removed from the holdout environment, human moves with the controller's token admitted
+  when the card has no Ready label.
 - Agent CLIs installed with exact npm versions and a `zizmor: ignore[adhoc-packages]`
   comment: no lockfile exists in the rendered project; the versions need manual bumps.
 - Retro runs in the daily report job: the controller itself skips it below `retro_every`.

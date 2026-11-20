@@ -640,3 +640,16 @@ def test_retro_spend_counts_and_the_caps_block_a_retro(tmp_path):
     assert not run.calls
     snap = factory.snapshot(gh, factory.Config())
     assert factory.spend(snap, NOW, factory.Config()).day == 25
+
+
+def test_human_move_with_the_controllers_token_counts_without_the_label():
+    gh, board = board_gh()
+    gh.add_issue(1, [])
+    gh.move(1, CONTROLLER)  # a maintainer's own token moved the card; no label exists yet
+    assert factory.admitted(gh, gh.issues[1], factory.Config(), board)
+
+
+def test_agent_environment_drops_model_api_keys(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "y")
+    assert not {"ANTHROPIC_API_KEY", "OPENAI_API_KEY"} & set(factory.agent_env())

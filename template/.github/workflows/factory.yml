@@ -38,12 +38,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Set up Task
         uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      # Checkout keeps no credentials; this lets plain git commands push with the same token.
+      - name: Set up git credentials
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+        run: gh auth setup-git
 
       - name: Install agent CLIs
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
@@ -67,12 +74,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Set up Task
         uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      # Checkout keeps no credentials; this lets plain git commands push with the same token.
+      - name: Set up git credentials
+        env:
+          GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
+        run: gh auth setup-git
 
       - name: Install agent CLIs
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
@@ -102,6 +116,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
