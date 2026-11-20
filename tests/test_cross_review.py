@@ -276,3 +276,51 @@ def test_review_effort_is_always_high() -> None:
     assert claude[claude.index("--effort") + 1] == "high"
     codex = review.codex_command("Review", None, Path("schema"), Path("output"))
     assert 'model_reasoning_effort="high"' in codex
+
+
+def test_acceptance_prompt_has_no_plan_and_rejects_when_unsure() -> None:
+    prompt = review.build_prompt("abc", None, acceptance="criteria.md")
+    assert "There is no plan" in prompt
+    assert "criteria.md" in prompt
+    assert "Reject" in prompt
+
+
+def _git_repo(path: Path) -> None:
+    subprocess.run(["git", "init", "-q", "-b", "main", str(path)], check=True)
+    (path / "a.txt").write_text("a\n")
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True)
+    identity = ["-c", "user.name=t", "-c", "user.email=t@example.com"]
+    subprocess.run(["git", "-C", str(path), *identity, "commit", "-qm", "i"], check=True)
+
+
+def test_acceptance_dry_run_command_shape(tmp_path: Path, monkeypatch, capsys) -> None:
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    argv = ["--reviewer", "claude", "--acceptance", "criteria.md", "--dry-run"]
+    assert review.main(argv) == 0
+    command = json.loads(capsys.readouterr().out)
+    assert command[:2] == ["claude", "-p"]
+    assert "criteria.md" in command[2]
+    assert "implements the plan" not in command[2]
+
+
+def test_acceptance_excludes_plan(tmp_path: Path, monkeypatch) -> None:
+    _git_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    argv = ["--reviewer", "claude", "--plan", "p.md", "--acceptance", "c.md", "--dry-run"]
+    with pytest.raises(SystemExit) as exc:
+        review.main(argv)
+    assert exc.value.code == 2
+
+
+def test_acceptance_inputs_hide_the_plan(tmp_path: Path) -> None:
+    _git_repo(tmp_path)
+    base = review.git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "docs/plans").mkdir(parents=True)
+    (tmp_path / "docs/plans/p.md").write_text("secret plan\n")
+    (tmp_path / "code.py").write_text("x = 1\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    shown = review.write_review_inputs(tmp_path, base, None, review.ACCEPTANCE_HIDDEN)
+    patch = (shown / "diff.patch").read_text()
+    assert "x = 1" in patch
+    assert "secret plan" not in patch
