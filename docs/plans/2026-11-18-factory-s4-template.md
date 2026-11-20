@@ -1,6 +1,6 @@
 # Factory S4: template integration
 
-Status: Proposed; not approved for implementation.
+Status: Approved for implementation on 2026-11-20.
 
 ## Goal and scope
 
@@ -16,7 +16,7 @@ ADR-0033 (a human decision), a hosted GitHub App.
 - Depends on [Factory S3: holdout checks, reports and board mirror](2026-11-18-factory-s3-holdout-and-reports.md).
 - ADR-0002 and ADR-0022 (file ownership, plugin copies by symlink), ADR-0012 (actions pinned
   by SHA), ADR-0033.
-- Approval: pending. Once the user approves this named plan, delivery may publish a pull
+- Approval: the user approved this named plan on 2026-11-20. Delivery may publish a pull
   request. It never merges.
 
 ## Implementation sequence

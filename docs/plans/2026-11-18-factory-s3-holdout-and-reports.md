@@ -1,6 +1,6 @@
 # Factory S3: holdout checks, reports and board mirror
 
-Status: Proposed; not approved for implementation.
+Status: Approved for implementation on 2026-11-20.
 
 ## Goal and scope
 
@@ -13,7 +13,7 @@ Non-goals: template integration (S4). Automatic merge.
 
 - Depends on [Factory S2: agent stages](2026-11-18-factory-s2-agent-stages.md).
 - ADR-0033 (Proposed). Holdout data never enters the repository or the worker sandbox.
-- Approval: pending. Once the user approves this named plan, delivery may publish a pull
+- Approval: the user approved this named plan on 2026-11-20. Delivery may publish a pull
   request. It never merges.
 
 ## Implementation sequence
