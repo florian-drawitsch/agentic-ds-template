@@ -1814,3 +1814,51 @@ def test_codex_only_projects_need_no_skill_links(tmp_path: Path) -> None:
     (tmp_path / ".agents/skills/solo").mkdir(parents=True)
     (tmp_path / ".agents/skills/solo/SKILL.md").write_text("---\nname: solo\n---\n")
     assert deliver.unlinked_skills(tmp_path) == []
+
+
+def test_deny_path_reaches_claude_settings_and_codex_profile(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(delivery_repo)
+    secret = "/data/holdout"
+    claude = deliver.agent_command(
+        "claude", "Run", "session", True, None, "acceptEdits", root=delivery_repo, deny=[secret]
+    )
+    sandbox = json.loads(claude[claude.index("--settings") + 1])["sandbox"]
+    assert secret in sandbox["filesystem"]["denyRead"]
+    assert secret in sandbox["filesystem"]["denyWrite"]
+    monkeypatch.setattr(deliver, "codex_profile_mode", lambda: True)
+    codex = deliver.agent_command(
+        "codex", "Run", None, True, None, "acceptEdits", root=delivery_repo, deny=[secret]
+    )
+    table = next(c for c in codex if c.startswith("permissions.deliver.filesystem="))
+    assert f'"{secret}"' in table
+    assert "deny" in table
+
+
+def test_headless_parser_accepts_repeated_deny_path() -> None:
+    args = deliver.parser().parse_args(
+        ["headless", "--plan", "p.md", "--deny-path", "/a", "--deny-path", "/b"]
+    )
+    assert args.deny_path == ["/a", "/b"]
+
+
+def test_deny_paths_are_saved_with_the_run_and_fix_pr_accepts_them(delivery_repo: Path) -> None:
+    run = deliver.Run(token="dr-1", plan="p.md", check="c", deny_paths=["/data/holdout"])
+    run.save(delivery_repo)
+    assert deliver.load_runs(delivery_repo)[0].deny_paths == ["/data/holdout"]
+    args = deliver.parser().parse_args(["fix-pr", "--pr", "5", "--deny-path", "/data/holdout"])
+    assert args.deny_path == ["/data/holdout"]
+
+
+def test_codex_without_permission_profiles_refuses_denied_paths(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(deliver, "codex_profile_mode", lambda: False)
+    with pytest.raises(SystemExit, match="cannot deny paths"):
+        deliver.agent_command(
+            "codex", "Run", None, True, None, "acceptEdits", root=delivery_repo, deny=["/x"]
+        )
+    assert deliver.agent_command(
+        "codex", "Run", None, True, None, "acceptEdits", root=delivery_repo
+    )

@@ -1,6 +1,6 @@
 """In-memory GitHub for the factory tests; nothing here touches the network."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 CONTROLLER = "factory-bot"
@@ -33,6 +33,13 @@ class FakeGitHub:
         self.items: dict[str, str] = {}
         self.item_values: dict[str, str] = {}
         self.views: dict[str, list[dict[str, Any]]] = {}
+        # reports, tracking issue, intake
+        self.merged: list[dict[str, Any]] = []
+        self.pinned: list[str] = []
+        self.pin_error = False
+        self.moves: dict[int, list[dict[str, Any]]] = {}
+        self.cards: list[dict[str, Any]] = []
+        self.clock = 0
 
     # test setup helpers
     def add_issue(
@@ -73,16 +80,44 @@ class FakeGitHub:
             {"id": f"V{number}-1", "name": "View 1", "layout": "TABLE_LAYOUT", "query": "", "f": []}
         ]
 
-    def label_event(self, number: int, label: str, login: str, bot: bool = False) -> None:
+    def tick(self) -> str:
+        self.clock += 1
+        return (datetime(2026, 11, 1, tzinfo=UTC) + timedelta(minutes=self.clock)).isoformat()
+
+    def label_event(
+        self,
+        number: int,
+        label: str,
+        login: str,
+        bot: bool = False,
+        at: str | None = None,
+        kind: str = "labeled",
+    ) -> None:
         event = {
-            "event": "labeled",
+            "event": kind,
             "label": {"name": label},
             "actor": {"login": login, "type": "Bot" if bot else "User"},
+            "created_at": at or self.tick(),
         }
         self.timelines.setdefault(number, []).append(event)
 
     def add_comment(self, number: int, body: str, login: str = CONTROLLER) -> None:
-        self.comment_log.setdefault(number, []).append({"body": body, "user": {"login": login}})
+        log = self.comment_log.setdefault(number, [])
+        log.append({"id": 1000 * number + len(log), "body": body, "user": {"login": login}})
+
+    def move(
+        self, number: int, login: str, project: str = "P1", status: str = "Ready", **kw: Any
+    ) -> None:
+        self.moves.setdefault(number, []).append(
+            {
+                "actor": login,
+                "actor_type": kw.get("actor_type", "User"),
+                "project": project,
+                "status": status,
+                "automated": kw.get("automated", False),
+                "at": self.tick(),
+            }
+        )
 
     def add_pull(self, number: int, issue: int, checks: str = "success", sha: str = "") -> None:
         sha = sha or f"sha{number}"
@@ -141,6 +176,31 @@ class FakeGitHub:
 
     def comment(self, number: int, body: str) -> None:
         self.add_comment(number, body)
+
+    def update_comment(self, comment_id: int, body: str) -> None:
+        for log in self.comment_log.values():
+            for comment in log:
+                if comment["id"] == comment_id:
+                    comment["body"] = body
+
+    def create_issue(self, title: str, body: str, labels: list[str]) -> dict[str, Any]:
+        number = 1 + max(self.issues, default=0)
+        self.add_issue(number, list(labels), title=title, body=body)
+        return {**self.issues[number], "node_id": f"N{number}"}
+
+    def pin_issue(self, node_id: str) -> None:
+        if self.pin_error:
+            raise self.error_type("cannot pin")
+        self.pinned.append(node_id)
+
+    def merged_pulls(self) -> list[dict[str, Any]]:
+        return list(self.merged)
+
+    def status_changes(self, issue: int) -> list[dict[str, Any]]:
+        return list(self.moves.get(issue, []))
+
+    def board_items(self, project_id: str) -> list[dict[str, Any]]:
+        return [dict(c) for c in self.cards]
 
     def repository(self) -> dict[str, str]:
         if self.repo_error:

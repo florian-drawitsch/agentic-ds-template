@@ -203,9 +203,10 @@ def write_review_inputs(
         capture_output=True,
         check=True,
     ).stdout
-    status = git(root, "status", "--short")
+    hide = ["--", ".", *(f":(exclude){x}" for x in exclude)]
+    status = git(root, "status", "--short", *hide)
     log = git(root, "log", "--oneline", f"{base}..HEAD")
-    untracked = git(root, "ls-files", "--others", "--exclude-standard")
+    untracked = git(root, "ls-files", "--others", "--exclude-standard", *hide)
     (input_dir / "diff.patch").write_bytes(diff)
     (input_dir / "context.md").write_text(
         f"Base: {base}\n\nCommits:\n{log}\n\nStatus:\n{status}\n\nUntracked files:\n{untracked}\n",
