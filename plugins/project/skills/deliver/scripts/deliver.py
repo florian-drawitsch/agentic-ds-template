@@ -1570,8 +1570,33 @@ def absorb(result: RoundResult, event: dict[str, Any]) -> None:
         result.errors.append(str(event.get("message") or message or kind))
 
 
+# Seconds an agent may keep running after its final result. Claude Code waits for its
+# background shells before exiting, so an orphaned wait loop would otherwise hold the round.
+RESULT_GRACE_SECONDS = 60
+
+
+def stop_process_group(process: subprocess.Popen[str], grace: float = 10) -> None:
+    """Stop the agent and everything it started, such as background shells it left running."""
+    if not hasattr(os, "killpg"):
+        process.terminate()
+        process.wait()
+        return
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+
+
 def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -> RoundResult:
-    """Run one agent round, log its output, and return what it reported."""
+    """Run one agent round, log its output, and return what it reported.
+
+    The agent runs in its own process group. The round ends at the agent's final result: a
+    process still alive `RESULT_GRACE_SECONDS` later is stopped with everything it started.
+    """
     started_at = time.monotonic()
     started_iso = now()
     with (
@@ -1584,10 +1609,12 @@ def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -
             text=True,
             bufsize=1,
             env=sandbox_environment() | {NESTED_ENV: "1"},
+            start_new_session=True,
         ) as process,
     ):
         assert process.stdout is not None
         result = RoundResult(code=0)
+        finished: list[float] = []  # when the agent reported its final result
         selector = selectors.DefaultSelector()
         selector.register(process.stdout, selectors.EVENT_READ)
 
@@ -1603,6 +1630,8 @@ def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -
             if not isinstance(event, dict):
                 return
             absorb(result, event)
+            if event.get("type") == "result" and not finished:
+                finished.append(time.monotonic())
             if event.get("thread_id"):
                 active = [run for run in load_runs(cwd) if run.status == ACTIVE]
                 if len(active) == 1 and active[0].session_id != event["thread_id"]:
@@ -1611,21 +1640,36 @@ def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -
             say(*render_event(event))
 
         limited = False
-        while process.poll() is None:
-            remaining = timeout - (time.monotonic() - started_at)
-            if remaining <= 0:
-                limited = True
-                process.send_signal(signal.SIGINT)
-                try:
-                    process.wait(timeout=30)
-                except subprocess.TimeoutExpired:
-                    process.terminate()
-                    process.wait()
-                break
-            for key, _ in selector.select(min(remaining, 0.2)):
-                line = key.fileobj.readline()  # ty: ignore[unresolved-attribute]
-                if line:
-                    consume(line)
+        try:
+            while process.poll() is None:
+                remaining = timeout - (time.monotonic() - started_at)
+                if remaining <= 0:
+                    limited = True
+                    process.send_signal(signal.SIGINT)
+                    try:
+                        process.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        stop_process_group(process)
+                    break
+                if finished and time.monotonic() - finished[0] > RESULT_GRACE_SECONDS:
+                    note(
+                        "The agent reported its result but kept running, likely waiting on a "
+                        "background command; stopping it."
+                    )
+                    stop_process_group(process)
+                    break
+                for key, _ in selector.select(min(remaining, 0.2)):
+                    line = key.fileobj.readline()  # ty: ignore[unresolved-attribute]
+                    if line:
+                        consume(line)
+        except BaseException:
+            # The agent has its own process group, so a Ctrl-C here does not reach it.
+            stop_process_group(process)
+            raise
+        # Background commands the agent started must not outlive the round, nor hold its
+        # output open while the rest is read.
+        with contextlib.suppress(ProcessLookupError, PermissionError, AttributeError):
+            os.killpg(process.pid, signal.SIGTERM)
         for line in process.stdout:
             consume(line)
         result.code = process.returncode

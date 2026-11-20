@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import time
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -965,6 +967,47 @@ def test_run_round_saves_session_before_stream_finishes(delivery_repo: Path, mon
         command, delivery_repo, run.directory(delivery_repo) / "headless.jsonl"
     )
     assert result.thread == "thread-new"
+
+
+def _agent_with_background_child(pid_file: Path, *, linger: bool) -> list[str]:
+    """A fake agent that starts a long background command, reports its result, then waits."""
+    script = (
+        "import json, subprocess, sys, time\n"
+        "child = subprocess.Popen(['sleep', '300'])\n"  # inherits the agent's output pipe
+        f"open({str(pid_file)!r}, 'w').write(str(child.pid))\n"
+        "print(json.dumps({'type': 'result', 'subtype': 'success'}), flush=True)\n"
+        f"time.sleep({300 if linger else 0})\n"
+    )
+    return [sys.executable, "-c", script]
+
+
+def _gone(pid: int, seconds: float = 10) -> bool:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.1)
+    return False
+
+
+@pytest.mark.parametrize("linger", [True, False], ids=["agent-lingers", "agent-exits"])
+def test_round_ends_at_the_result_and_stops_background_commands(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch, linger: bool
+) -> None:
+    monkeypatch.setattr(deliver, "RESULT_GRACE_SECONDS", 0.5)
+    pid_file = delivery_repo / "child.pid"
+    started = time.monotonic()
+    result = deliver.run_round(
+        _agent_with_background_child(pid_file, linger=linger),
+        delivery_repo,
+        delivery_repo / "headless.jsonl",
+        timeout=120,
+    )
+    assert time.monotonic() - started < 30
+    assert result.subtype == "success"
+    assert _gone(int(pid_file.read_text()))
 
 
 @pytest.mark.parametrize("harness", ["claude", "codex"])
