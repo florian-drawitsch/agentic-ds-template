@@ -1,19 +1,9 @@
 name: CI
 
-# Documentation-only changes skip the gate: root Markdown, plans, ADRs and design notes are
-# not read by any check. Skill text (plugins/) and template Markdown still run it.
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "*.md"
-      - "docs/**"
-      - LICENSE
   pull_request:
-    paths-ignore:
-      - "*.md"
-      - "docs/**"
-      - LICENSE
 
 permissions:
   contents: read
@@ -24,6 +14,8 @@ concurrency:
 
 jobs:
   check:
+    # A required status check on main: it always reports, so documentation-only pull
+    # requests can merge too.
     name: Build check, lint, types, tests and manifests
     runs-on: ubuntu-latest
     steps:
@@ -31,19 +23,40 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      # Root Markdown, plans, ADRs and design notes are read by no check, so a change that
+      # touches only those skips the gate. Skill text (plugins/) and template Markdown still
+      # run it. Without a usable base commit, the full gate runs.
+      - name: Detect documentation-only changes
+        id: changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null) || changed=""
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^([^/]+\.md|docs/.*|LICENSE)$'; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Documentation-only change; the gate is skipped."
+          fi
 
       - name: Set up uv
+        if: steps.changes.outputs.docs_only != 'true'
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       - name: Set up Task
+        if: steps.changes.outputs.docs_only != 'true'
         uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
 
       # Manifest validation (task validate) needs the Claude Code CLI; it runs without login.
       - name: Install Claude Code
+        if: steps.changes.outputs.docs_only != 'true'
         run: npm install --global @anthropic-ai/claude-code@2.1.327
 
       - name: Install
+        if: steps.changes.outputs.docs_only != 'true'
         run: task setup
 
       - name: Check
+        if: steps.changes.outputs.docs_only != 'true'
         run: task check
