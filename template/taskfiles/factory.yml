@@ -35,13 +35,13 @@ tasks:
       - uv run --script scripts/agent/factory.py labels
 
   loop:
-    desc: Run the tick locally every N seconds (default 600) until interrupted
+    desc: Run the tick locally every N seconds (default 1800) until interrupted
     dir: '{{.ROOT_DIR}}'
     cmds:
       - |
         while true; do
           uv run --script scripts/agent/factory.py tick --scheduled || true
-          sleep {{.CLI_ARGS | default "600"}}
+          sleep {{.CLI_ARGS | default "1800"}}
         done
 
   report:

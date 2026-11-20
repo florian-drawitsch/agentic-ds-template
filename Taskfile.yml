@@ -99,14 +99,14 @@ tasks:
       - uv run --script {{.FACTORY}} tick {{.CLI_ARGS}}
 
   factory:loop:
-    desc: Run the tick locally every N seconds (default 600) until interrupted
+    desc: Run the tick locally every N seconds (default 1800) until interrupted
     summary: |
       Uses your gh, claude and codex logins; needs no Actions secrets. Stops with Ctrl-C.
     cmds:
       - |
         while true; do
           uv run --script {{.FACTORY}} tick --scheduled || true
-          sleep {{.CLI_ARGS | default "600"}}
+          sleep {{.CLI_ARGS | default "1800"}}
         done
 
   factory:report:
