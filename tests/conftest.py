@@ -11,6 +11,10 @@ import pytest
 # Tests import scripts from template/; never leave bytecode there for Copier to pick up.
 sys.dont_write_bytecode = True
 
+# Every fast test must finish within this many seconds (setup and call, each). Mark longer tests
+# `slow`. Raise the limit for one run with TEST_BUDGET_SECONDS on a heavily loaded machine.
+BUDGET_SECONDS = float(os.environ.get("TEST_BUDGET_SECONDS", "10"))
+
 
 def _isolate_git() -> None:
     """Run git without the developer's global and system config.
@@ -32,6 +36,25 @@ def _isolate_git() -> None:
 
 
 _isolate_git()
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
+    """Fail fast tests that exceed the time budget, so slow tests cannot pile up unnoticed."""
+    outcome = yield
+    report = outcome.get_result()
+    if (
+        call.when in {"setup", "call"}
+        and report.passed
+        and report.duration > BUDGET_SECONDS
+        and item.get_closest_marker("slow") is None
+    ):
+        report.outcome = "failed"
+        report.longrepr = (
+            f"{call.when} took {report.duration:.1f} s, over the {BUDGET_SECONDS:g} s budget for "
+            "fast tests. Make it faster (share renders and fixtures, fake subprocesses) or mark "
+            "it `slow`."
+        )
 
 
 @pytest.fixture
