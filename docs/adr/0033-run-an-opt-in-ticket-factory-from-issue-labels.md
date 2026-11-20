@@ -128,7 +128,7 @@ Blue states need a human action. Red states stop the factory for that ticket.
 - **Limits** in `factory.toml`: `max_in_progress` (default 1) and `max_verified` (default 3).
   When the number of verified PRs waiting for a human reaches `max_verified`, implementation
   does not start.
-- **Triggers.** A workflow scheduled every 10 minutes, `workflow_dispatch` and
+- **Triggers.** A workflow scheduled every 30 minutes, `workflow_dispatch` and
   `issues: labeled` run the tick in Actions. `task factory:loop` runs it locally on an
   interval. Board webhooks are not used: the scheduled tick polls the board instead.
 - **Board intake.** At the start of each tick the controller reads the cards in the board's
@@ -221,7 +221,7 @@ Blue states need a human action. Red states stop the factory for that ticket.
   ADR-0018 removed.
 - **Inside the `project` plugin:** every project would carry factory machinery it does not use.
 - **Board webhooks as the trigger:** Actions cannot receive board events, and a hosted webhook
-  receiver is out of scope for a template. Polling every 10 minutes gives the same result with
+  receiver is out of scope for a template. Polling every 30 minutes gives the same result with
   a delay.
 - **Every board column as input:** a human could skip triage, verification or the
   work-in-progress limits by dragging a card. Only Ready is a human state that starts work.
@@ -243,11 +243,13 @@ Blue states need a human action. Red states stop the factory for that ticket.
 - Throughput is bounded by human merges through `max_verified`. This is intended.
 - Holdout checks need a storage place outside the repository, which the template cannot
   provide. Without one, verification relies on the gate and the independent verifier.
-- A card moved to Ready starts work at the next scheduled tick, up to 10 minutes later plus
+- A card moved to Ready starts work at the next scheduled tick, up to 30 minutes later plus
   GitHub's schedule delay. Adding the label by hand starts it within seconds.
-- The schedule starts 144 runs a day. Public repositories pay nothing for them. On the Free
-  plan, private repositories exceed the 2,000 included minutes a month at this rate, so they
-  need a longer interval or `task factory:loop` on a local machine.
+- The schedule starts 48 runs a day, about 1,500 Actions minutes a month. Public
+  repositories pay nothing for them. On the Free plan, private repositories stay within the
+  2,000 included minutes unless other workflows need them; then they need a longer interval
+  or `task factory:loop` on a local machine. The interval was 10 minutes until 2026-11-20,
+  which exceeded the Free plan.
 - GitHub turns off scheduled workflows in a public repository after 60 days without activity.
   Board intake then stops until someone re-enables the workflow.
 - The triage role is a new skill surface and needs evals (AGENTS.md).
@@ -261,7 +263,7 @@ Planned, required before this record is accepted:
   permission for labels and board moves, board intake, protected paths, budget refusal and
   holdout output reduced to pass or fail.
 - `tests/template/`: rendering with `factory=true` and `false`, the workflow's pinned actions,
-  permissions and 10-minute schedule, and the `scripts/agent/factory.py` project copy.
+  permissions and 30-minute schedule, and the `scripts/agent/factory.py` project copy.
 - A live check on a board owned by a personal account: a card moved to Ready by the maintainer
   appears as a `ProjectV2ItemStatusChangedEvent` with that actor and becomes `factory:ready`.
 - `plugins/factory/evals/`: triage accepts a clear issue, returns needs-info for a vague one and

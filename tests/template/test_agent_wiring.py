@@ -203,7 +203,7 @@ def test_factory_workflow_is_safe_and_calls_existing_tasks(factory_project: Path
     text = (factory_project / ".github/workflows/factory.yml").read_text()
     workflow = yaml.safe_load(text)
     triggers = workflow[True]  # YAML reads the key `on` as a boolean
-    assert "*/10 * * * *" in [item["cron"] for item in triggers["schedule"]]
+    assert "*/30 * * * *" in [item["cron"] for item in triggers["schedule"]]
     assert {"workflow_dispatch", "issues"} <= set(triggers)
     assert triggers["issues"]["types"] == ["labeled"]
     assert "pull_request_target" not in text
