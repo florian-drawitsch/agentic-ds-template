@@ -186,15 +186,18 @@ Blue states need a human action. Red states stop the factory for that ticket.
 
 ### Budgets and reports
 
-- Per-run caps stay as in ADR-0027. `factory.toml` adds a daily cap and a sprint cap in US
-  dollars. The controller sums `usage.jsonl` and refuses new work once a cap is reached.
-- A sprint is a budget and reporting window, not a commitment of scope. Work flows from the
-  queue as above.
+- The factory runs as Kanban: work flows continuously from the queue under the limits above.
+  There are no sprints.
+- Per-run caps stay as in ADR-0027. `factory.toml` adds a daily cap and a weekly cap in US
+  dollars; the week is the calendar week, Monday to Sunday in UTC. The controller sums the
+  cost markers and refuses new work once a cap is reached.
 - Scheduled reports go to one pinned tracking issue:
   - **Daily:** open tickets per state, spend, blocked tickets with causes.
-  - **Sprint end:** merged PRs, cycle times, cost per ticket, Needs-human causes.
-  - **Retrospective:** runs the `agents-md` skill on the sprint's findings and opens a PR with
-    proposed rule changes. It touches protected paths, so a human reviews it.
+  - **Weekly:** throughput (merged PRs), cycle time from Accepted to merge, age of tickets in
+    progress, cost per ticket, Needs-human causes.
+  - **Retrospective:** after every `retro_every` merged tickets (default 10), runs the
+    `agents-md` skill on the findings since the last one and opens a PR with proposed rule
+    changes. It touches protected paths, so a human reviews it.
 
 ## Alternatives considered
 
@@ -217,7 +220,7 @@ Blue states need a human action. Red states stop the factory for that ticket.
 
 - Factory projects need a GitHub App or fine-grained token, both agent CLIs, branch protection
   and Codex review enabled on the repository.
-- Spend is real and varies. Daily and sprint caps bound it, and a tick may stop mid-sprint.
+- Spend is real and varies. Daily and weekly caps bound it, and a tick may stop mid-week.
 - Throughput is bounded by human merges through `max_verified`. This is intended.
 - Holdout checks need a storage place outside the repository, which the template cannot
   provide. Without one, verification relies on the gate and the independent verifier.

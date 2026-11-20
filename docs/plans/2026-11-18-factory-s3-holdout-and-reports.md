@@ -4,7 +4,7 @@ Status: Proposed; not approved for implementation.
 
 ## Goal and scope
 
-Add the sealed holdout checks, the budget and sprint reports, the retrospective PR and the
+Add the sealed holdout checks, the daily and weekly reports, the retrospective PR and the
 optional board mirror from ADR-0033.
 
 Non-goals: template integration (S4). Automatic merge.
@@ -38,16 +38,20 @@ Non-goals: template integration (S4). Automatic merge.
 - [ ] **Tracking issue.** `ensure_tracking_issue()` finds or creates one issue titled
   "Factory status" with the label `factory:tracking`, pinned when the API allows it. Tests:
   create once, reuse after.
-- [ ] **Reports.** New subcommand `report daily|sprint`. Daily: issues per state, blocked
-  issues with their causes, spend against both caps. Sprint: merged PRs with cycle time from
-  `factory:accepted` to merge, cost per ticket from cost markers, `needs-human` causes grouped.
-  Both post one comment on the tracking issue, with a marker so a rerun on the same day or
-  sprint edits instead of adding. Tests with fixed snapshots and `now`.
-- [ ] **Retrospective.** `report retro` collects the sprint's `needs-human` causes, declined
-  findings and cost outliers (above twice the median) into a file, runs the `agents-md` skill
-  through `deliver.py headless` with a generated plan that asks for proposed AGENTS.md or skill
-  changes only, and publishes the PR. The PR touches protected paths, so it is labeled
-  `factory:needs-human` and never verified automatically. Tests with a fake deliver runner.
+- [ ] **Reports.** New subcommand `report daily|weekly`. Daily: issues per state, blocked
+  issues with their causes, spend against both caps. Weekly, for the calendar week in UTC:
+  throughput (merged PRs), cycle time from `factory:accepted` to merge, age of issues in
+  progress, cost per ticket from cost markers, `needs-human` causes grouped. Both post one
+  comment on the tracking issue, with a marker so a rerun on the same day or week edits
+  instead of adding. Tests with fixed snapshots and `now`.
+- [ ] **Retrospective.** New key `retro_every` in `factory.toml` (int, default 10). Once that
+  many PRs merged since the last retrospective marker, `report retro` collects their
+  `needs-human` causes, declined findings and cost outliers (above twice the median) into a
+  file, runs the `agents-md` skill through `deliver.py headless` with a generated plan that
+  asks for proposed AGENTS.md or skill changes only, publishes the PR and writes a
+  `<!-- factory:retro -->` marker on the tracking issue. The PR touches protected paths, so it
+  is labeled `factory:needs-human` and never verified automatically. Tests with a fake deliver
+  runner: below the count nothing runs, at the count one run, the marker resets the count.
 - [ ] **Board mirror.** Done early: `factory.py init` creates and links the board and sets
   its Status columns, and `factory.py sync` mirrors every open issue. Left for this stage:
   after every label change, the controller mirrors that one issue with the same code. Errors

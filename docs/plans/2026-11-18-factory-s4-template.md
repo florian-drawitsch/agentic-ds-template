@@ -50,8 +50,8 @@ branch protection.
   `concurrency: factory` without cancellation. Job permissions `contents: read` only; the
   controller uses the token from secret `FACTORY_GH_TOKEN` (GitHub App or fine-grained token).
   Model keys come from secrets `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, passed only to the
-  step that runs `task factory:tick`. A daily `report daily` job and a sprint-end
-  `report sprint` job. Every action pinned by commit SHA. `timeout-minutes` and deliver
+  step that runs `task factory:tick`. A daily `report daily` job, a weekly
+  `report weekly` job on Mondays and a `report retro` step that runs when the count is reached. Every action pinned by commit SHA. `timeout-minutes` and deliver
   `--max-wait` sized so a run finishes inside one job. Tests: YAML parses, every `uses:` has
   a 40-character SHA, no `pull_request_target`, no issue text interpolated into `run:`,
   and the rendered project's zizmor hook passes on it in the e2e run.
