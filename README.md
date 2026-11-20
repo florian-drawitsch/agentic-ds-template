@@ -4,6 +4,17 @@
 ![Codex](https://img.shields.io/badge/Codex-412991?style=flat-square&logo=openai&logoColor=white)
 ![Copier](https://img.shields.io/badge/Copier-333333?style=flat-square)
 ![uv](https://img.shields.io/badge/uv-262626?style=flat-square&logo=python&logoColor=white)
+![Task](https://img.shields.io/badge/Task-29BEB0?style=flat-square)
+![Ruff](https://img.shields.io/badge/Ruff-E5A00D?style=flat-square)
+![ty](https://img.shields.io/badge/ty-333333?style=flat-square)
+![prek](https://img.shields.io/badge/prek-333333?style=flat-square)
+![Polars](https://img.shields.io/badge/Polars-0033A0?style=flat-square)
+![Hydra](https://img.shields.io/badge/Hydra-89B8CD?style=flat-square)
+![MLflow](https://img.shields.io/badge/MLflow-0194E2?style=flat-square&logo=mlflow&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
+![Sphinx](https://img.shields.io/badge/Sphinx-0A507A?style=flat-square&logo=sphinx&logoColor=white)
+![Pulumi](https://img.shields.io/badge/Pulumi-8A3391?style=flat-square&logo=pulumi&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
 Copier template for agentic development of production-grade AI and ML solutions.
@@ -12,10 +23,11 @@ It combines:
 
 - **Agent harness:** context, skills, guardrail hooks and quality gates that Claude Code and
   Codex share, so agents can work on the project unsupervised.
+- **Lit factory with spec-driven development:** you shape the design with an agent in your
+  IDE, then a Ralph loop implements the plan until every item is done and `task check`
+  passes, followed by a cross-vendor review and a pull request.
 - **Dark factory with GitHub board integration:** labeled issues move across a project board
   through triage, implementation and cross-vendor verification to a pull request you merge.
-- **Spec-driven development:** a Ralph loop implements a written plan until every item is
-  done and `task check` passes, then a cross-vendor review and a pull request follow.
 - **Modern Python scaffolding:** a uv workspace with Ruff, ty, pytest and import contracts,
   checked by one `task check` gate.
 - **Production path:** MLflow tracking, FastAPI, Streamlit, Docker and Azure via Pulumi, each
