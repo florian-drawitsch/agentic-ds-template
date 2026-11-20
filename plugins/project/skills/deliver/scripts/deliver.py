@@ -2966,7 +2966,15 @@ def advance_handoff(root: Path, run: Run) -> tuple[Run, Verdict]:
             return run, Verdict("continue", run.note or "Fix the failed final gate.")
     elif run.status == "reviewing":
         command = review_command(run)
+        model = f" ({run.reviewer_model})" if run.reviewer_model else ""
+        note(
+            f"Running the final review with {run.reviewer}{model}. It prints nothing until it "
+            "ends, usually after several minutes.",
+            "dim",
+        )
+        started = time.monotonic()
         result = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
+        note(f"Final review ended after {(time.monotonic() - started) / 60:.1f} min.", "dim")
         if result.returncode not in {0, 2}:
             run.status = ACTIVE
             run.note = (

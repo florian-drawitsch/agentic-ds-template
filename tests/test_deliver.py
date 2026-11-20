@@ -1136,6 +1136,31 @@ def test_unbound_run_binds_from_assistant_message_or_transcript_tail(
     assert deliver.find_run(delivery_repo, run.token).session_id == "bound-session"
 
 
+def test_controller_announces_the_silent_final_review(
+    delivery_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _commit_plan(delivery_repo)
+    run = deliver.Run(
+        "announce",
+        "plan.md",
+        "exit 0",
+        headless=True,
+        cross_review="final",
+        reviewer="codex",
+        reviewer_model="gpt-6.1-sol",
+        status="reviewing",
+    )
+    run.save(delivery_repo)
+    monkeypatch.setattr(
+        deliver, "review_command", lambda run: [sys.executable, "-c", "print('Saved to x')"]
+    )
+    deliver.advance_handoff(delivery_repo, run)
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "Running the final review with codex (gpt-6.1-sol)" in text
+    assert "Final review ended after" in text
+
+
 def test_outer_gate_failure_returns_to_agent_without_publication(
     delivery_repo: Path, monkeypatch
 ) -> None:
