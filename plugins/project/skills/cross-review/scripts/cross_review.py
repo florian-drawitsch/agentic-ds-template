@@ -60,6 +60,10 @@ SCHEMA: dict[str, Any] = {
 CLAUDE_READ_TOOLS = ["Read", "Grep", "Glob"]
 
 
+# Paths the acceptance reviewer must not see: the worker's plan is not part of its input.
+ACCEPTANCE_HIDDEN = ("docs/plans",)
+
+
 def prices_file() -> Path:
     """Locate the Codex price table: beside this script in a project copy, else in the plugin."""
     here = Path(__file__).resolve()
@@ -108,15 +112,24 @@ def base_ref(root: Path, explicit: str | None) -> str:
     return "HEAD"
 
 
-def build_prompt(base: str, plan: str | None, input_dir: Path | None = None) -> str:
+def build_prompt(
+    base: str, plan: str | None, input_dir: Path | None = None, acceptance: str | None = None
+) -> str:
     """Return the review instructions."""
-    spec = (
-        f"The change implements the plan in {plan}. Read it and check spec compliance first. "
-        "Ticked plan checkboxes and a rulings section in the plan are expected delivery "
-        "bookkeeping, not scope changes; do review whether each ruling is sound."
-        if plan
-        else "Infer the intent from the commits and the diff."
-    )
+    if acceptance:
+        spec = (
+            f"There is no plan. The acceptance criteria are in {acceptance}; read them. Judge "
+            "only whether the diff meets every criterion with tests that prove it. Reject "
+            'with verdict "changes_requested" when you are unsure.'
+        )
+    elif plan:
+        spec = (
+            f"The change implements the plan in {plan}. Read it and check spec compliance first. "
+            "Ticked plan checkboxes and a rulings section in the plan are expected delivery "
+            "bookkeeping, not scope changes; do review whether each ruling is sound."
+        )
+    else:
+        spec = "Infer the intent from the commits and the diff."
     inputs = (
         f"The controller prepared read-only review inputs at {input_dir}. Read `context.md` and "
         "`diff.patch` there with the Read tool, then inspect every untracked file listed in the "
@@ -165,14 +178,19 @@ def claude_command(prompt: str, model: str | None, budget: float = 2.0) -> list[
     return [*command, "--tools", ",".join(CLAUDE_READ_TOOLS)]
 
 
-def write_review_inputs(root: Path, base: str, token: str | None) -> Path:
+def write_review_inputs(
+    root: Path, base: str, token: str | None, exclude: tuple[str, ...] = ()
+) -> Path:
     """Write review diff and context files outside the tracked worktree."""
     runs = Path(git(root, "rev-parse", "--path-format=absolute", "--git-path", RUNS_DIRNAME))
     parent = runs / token if token else runs
     parent.mkdir(parents=True, exist_ok=True)
     input_dir = Path(tempfile.mkdtemp(prefix="review-input-", dir=parent))
     diff = subprocess.run(
-        ["git", "diff", "--binary", base], cwd=root, capture_output=True, check=True
+        ["git", "diff", "--binary", base, "--", ".", *(f":(exclude){x}" for x in exclude)],
+        cwd=root,
+        capture_output=True,
+        check=True,
     ).stdout
     status = git(root, "status", "--short")
     log = git(root, "log", "--oneline", f"{base}..HEAD")
@@ -357,7 +375,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reviewer", choices=["claude", "codex"], required=True)
     parser.add_argument("--token", help="delivery run that the review belongs to")
     parser.add_argument("--base", help="commit to compare against (default: merge base with main)")
-    parser.add_argument("--plan", help="plan the change implements")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--plan", help="plan the change implements")
+    source.add_argument(
+        "--acceptance", help="file with acceptance criteria; the reviewer has no plan"
+    )
     parser.add_argument("--model", help="reviewer model (Codex default: gpt-6.1-sol)")
     parser.add_argument("--codex-bin", help="Codex executable (default: CODEX_BIN or PATH)")
     parser.add_argument("--preflight", action="store_true", help="check reviewer installation only")
@@ -383,8 +405,9 @@ def main(argv: list[str] | None = None) -> int:
 
     root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel"))
     base = base_ref(root, args.base)
-    prompt = build_prompt(base, args.plan)
+    prompt = build_prompt(base, args.plan, acceptance=args.acceptance)
     run_dir = None
+    hidden = ACCEPTANCE_HIDDEN if args.acceptance else ()
     review_budget = 2.0
     remaining_budget = float("inf")
     if args.token:
@@ -451,10 +474,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if run_dir:
         diff = subprocess.run(
-            ["git", "diff", base], cwd=root, capture_output=True, text=True, check=False
+            ["git", "diff", base, "--", ".", *(f":(exclude){x}" for x in hidden)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
         diffstat = subprocess.run(
-            ["git", "diff", "--stat", base], cwd=root, capture_output=True, text=True, check=False
+            ["git", "diff", "--stat", base, "--", ".", *(f":(exclude){x}" for x in hidden)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
         ).stdout
         (run_dir / "review.diff").write_text(diff, encoding="utf-8")
         (run_dir / "review.diffstat").write_text(diffstat, encoding="utf-8")
@@ -465,8 +496,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     signature = state_signature(root)
-    input_dir = write_review_inputs(root, base, args.token)
-    prompt = build_prompt(base, args.plan, input_dir)
+    input_dir = write_review_inputs(root, base, args.token, hidden)
+    prompt = build_prompt(base, args.plan, input_dir, args.acceptance)
     review_started = time.monotonic()
     review_started_at = datetime.now(UTC).isoformat(timespec="seconds")
     try:
@@ -522,6 +553,8 @@ def main(argv: list[str] | None = None) -> int:
         }
         with ledger.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(row) + "\n")
+    if usage.get("cost_usd") is not None:
+        print(f"Cost: {usage['cost_usd']:.4f}")
     print(f"Cross-review by {args.reviewer}: {review['verdict']}")
     print(review.get("summary", ""))
     for finding in review["findings"]:

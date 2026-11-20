@@ -1,5 +1,6 @@
 """In-memory GitHub for the factory tests; nothing here touches the network."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 CONTROLLER = "factory-bot"
@@ -18,6 +19,7 @@ class FakeGitHub:
         self.review_log: dict[int, list[dict[str, Any]]] = {}
         self.runs: dict[str, list[dict[str, Any]]] = {}
         self.files: dict[int, list[str]] = {}
+        self.commit_dates: dict[str, datetime] = {}
         self.created: list[str] = []
         # board
         self.repo = {"owner": "acme", "name": "acme/widgets"}
@@ -34,11 +36,17 @@ class FakeGitHub:
 
     # test setup helpers
     def add_issue(
-        self, number: int, labels: list[str], title: str = "t", state: str = "open"
+        self,
+        number: int,
+        labels: list[str],
+        title: str = "t",
+        state: str = "open",
+        body: str = "",
     ) -> None:
         self.issues[number] = {
             "number": number,
             "title": title,
+            "body": body,
             "state": state,
             "labels": labels,
             "url": f"https://github.com/acme/widgets/issues/{number}",
@@ -118,6 +126,9 @@ class FakeGitHub:
 
     def check_runs(self, sha: str) -> list[dict[str, Any]]:
         return self.runs.get(sha, [])
+
+    def commit_date(self, sha: str) -> datetime:
+        return self.commit_dates.get(sha, datetime(2026, 1, 1, tzinfo=UTC))
 
     def changed_files(self, pr: int) -> list[str]:
         return self.files.get(pr, [])

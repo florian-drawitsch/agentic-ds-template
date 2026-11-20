@@ -92,7 +92,7 @@ groups; questions that do not apply are hidden.
 | | `ci` | github, none | CI workflow, Renovate, PR template |
 | Agents | `agent_harnesses` | claude, codex | Agent config per harness; none removes agent config and delivery files |
 | | `marketplace_repo`, `marketplace_ref` | this repository, `v0.1.0` | Pinned plugin marketplace |
-| | `factory` | no, yes; needs `ci=github` and both harnesses | Ticket factory: config, tasks, guide, labels and board (in development) |
+| | `factory` | no, yes; needs `ci=github` and both harnesses | Ticket factory: config, tasks, guide, labels and board |
 | Context | `context_problem`, `context_decisions`, `context_data`, `context_success`, `context_constraints` | free text, optional | Seeds `docs/context/` and the project section of AGENTS.md; empty answers leave TODO stubs |
 
 ### Architectures
@@ -344,11 +344,12 @@ its own errors.
 | PR repair | `task deliver:fix-pr` fixes unresolved Codex review threads, replies per finding, resolves fixed threads, requests one re-review; USD 5 and 15 rounds by default (ADR-0028) |
 | Doctor | `task deliver:doctor` checks hooks, roles, plugin copies, skill links and `.worktreeinclude` |
 
-### Ticket factory (in development)
+### Ticket factory
 
 The `factory` plugin runs an opt-in ticket factory from GitHub issue labels (ADR-0033, Proposed).
 The deterministic controller, `plugins/factory/skills/factory/scripts/factory.py`, ships first.
-It calls no model. Agent stages arrive in S2.
+The controller calls no model; the agent stages (triage, implement, repair, verify) run through the
+harness CLIs.
 
 | Feature | Details |
 | --- | --- |
@@ -359,6 +360,9 @@ It calls no model. Agent stages arrive in S2.
 | Generated projects | Copier question `factory` (needs GitHub CI and both harnesses); renders `factory.toml`, `taskfiles/factory.yml`, the script copy and `docs/guides/factory.md`; copy and `task setup` run `init` and skip it with a note while GitHub is not ready |
 | This repository | `task factory:init`, `factory:status`, `factory:tick`, `factory:sync` with the root `factory.toml` |
 | Admission | `factory:ready` counts only when a user with write access added it last; unadmitted issues are skipped and listed by `status` |
+| Agent stages | `tick` runs triage (read-only reviewer harness, JSON verdict and acceptance criteria), implement (`deliver headless --publish-pr`), repair (`deliver fix-pr`, bounded by `max_repair_cycles`) and verify (`cross_review.py --acceptance` by the other vendor); issue text reaches agents only as a fenced data file and never as checkbox syntax |
+| Review gates | Protected paths, failing checks, a missing Codex review and a rejected verification set `factory:needs-human` |
+| Evals | `task eval PLUGIN=factory` scores triage and the negative case against a no-plugin baseline |
 | Dispatch | `tick --dry-run` prints one action in the order repair, verify, implement, triage; `priority:` labels, then issue number; limits on work in progress and waiting verified PRs |
 | Claim | The first non-forced push of `feat/<issue>-<slug>` wins |
 | Protected paths | `touches_protected` checks a diff, renames included |
