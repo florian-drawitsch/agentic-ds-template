@@ -228,6 +228,7 @@ class Run:
     pr_head: str | None = None
     pr_branch: str | None = None
     pr_fix: dict[str, Any] | None = None
+    deny_paths: list[str] = field(default_factory=list)
     launch_head: str | None = None
     headless: bool = False
     pr_title: str | None = None
@@ -815,6 +816,7 @@ def create_run(root: Path, args: argparse.Namespace) -> Run:
         focused_review=getattr(args, "focused_review", False),
         codex_bin=getattr(args, "codex_bin", None),
         publish_pr=getattr(args, "publish_pr", False),
+        deny_paths=list(getattr(args, "deny_path", None) or []),
         headless=getattr(args, "headless", False),
         pr_remote=getattr(args, "pr_remote", "origin"),
         pr_destination=getattr(args, "pr_destination", "main"),
@@ -1446,6 +1448,11 @@ def agent_command(
     to the worktree: Claude by its Bash sandbox, Codex by its workspace-write sandbox.
     """
     root = root or Path.cwd()
+    if deny and harness == "codex" and not codex_profile_mode():
+        raise SystemExit(
+            "This Codex CLI cannot deny paths to the worker (permission profiles need a newer "
+            "version); upgrade it or use Claude Code as the implementer"
+        )
     if harness == "claude":
         command = ["claude", "-p", "--permission-mode", mode]
         # One `=` token, so the variadic option cannot swallow the prompt.
@@ -2955,7 +2962,7 @@ def cmd_headless(args: argparse.Namespace) -> int:
                 args.effort,
                 writable,
                 root=workdir,
-                deny=getattr(args, "deny_path", None) or (),
+                deny=run.deny_paths,
             )
             say(" ".join(command))
             return 0
@@ -3053,7 +3060,7 @@ def continue_run(
                 round_cap,
                 run.round_turns,
                 root=workdir,
-                deny=getattr(args, "deny_path", None) or (),
+                deny=run.deny_paths,
             )
             protected_before = protected_git_hashes(workdir)
             result = run_round(command, workdir, log, run.round_minutes * 60)
@@ -3823,6 +3830,12 @@ def parser() -> argparse.ArgumentParser:
     fix.add_argument("--review-rounds", type=int, choices=range(4), default=0)
     fix.add_argument("--max-wait", type=float, default=DEFAULT_MAX_WAIT_HOURS)
     fix.add_argument("--claude-permission-mode", default="acceptEdits")
+    fix.add_argument(
+        "--deny-path",
+        action="append",
+        default=[],
+        help="path the agent can neither read nor write (repeatable)",
+    )
     fix.add_argument(
         "--preview", "--dry-run", action="store_true", help="show the findings and writes only"
     )

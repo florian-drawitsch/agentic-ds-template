@@ -687,12 +687,16 @@ def _when(value: Any) -> str:
 
 
 def ready_signals(
-    github: GitHub, issue: dict[str, Any], board: Board | None = None
+    github: GitHub,
+    issue: dict[str, Any],
+    board: Board | None = None,
+    controller: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return the Ready signals of an issue, oldest first.
 
     A signal is a `factory:ready` label event, or a manual move into Ready on the factory
-    board. Moves on other boards and automated moves are ignored.
+    board. Moves on other boards, automated moves and the controller's own moves (its mirror
+    writes, not a human decision) are ignored.
     """
     signals = [
         {"actor": e.get("actor") or {}, "at": _when(e.get("created_at"))}
@@ -701,7 +705,12 @@ def ready_signals(
     ]
     if board is not None:
         for move in github.status_changes(issue["number"]):
-            if move["project"] == board.id and move["status"] == "Ready" and not move["automated"]:
+            if (
+                move["project"] == board.id
+                and move["status"] == "Ready"
+                and not move["automated"]
+                and move["actor"] != controller
+            ):
                 actor = {"login": move["actor"], "type": move.get("actor_type")}
                 signals.append({"actor": actor, "at": _when(move["at"])})
     return sorted(signals, key=lambda sig: sig["at"])
@@ -725,7 +734,8 @@ def admitted(
 
     Admitted are users with write access, trusted bots and the controller itself.
     """
-    signals = ready_signals(github, issue, board)
+    controller = config.controller or github.viewer()
+    signals = ready_signals(github, issue, board, controller)
     return bool(signals) and _admits(github, signals[-1]["actor"], config)
 
 
@@ -828,6 +838,8 @@ def snapshot(github: GitHub, config: Config, board: Board | None = None) -> Snap
     pulls: dict[int, Pull] = {}
     repairs: dict[int, int] = {}
     costs: list[tuple[datetime, float]] = []
+    for tracking in github.issues_with_label(TRACKING_LABEL):  # retrospective spend
+        costs += _parse_costs(github.comments(tracking["number"]), controller)
     for number, issue in sorted(seen.items()):
         comments = github.comments(number)
         costs += _parse_costs(comments, controller)
@@ -1339,6 +1351,12 @@ def deliver_status(env: Env, workdir: Path, token: str | None) -> dict[str, Any]
     return runs[-1] if runs else {}
 
 
+def _deny_args(env: Env) -> list[str]:
+    """Return `--deny-path` for a local holdout, so no worker round can reach it."""
+    holdout = env.config.holdout.local_path if env.config.holdout else None
+    return ["--deny-path", holdout] if holdout else []
+
+
 def run_delivery(env: Env, workdir: Path, plan: str) -> dict[str, Any]:
     """Run `deliver headless` on a committed plan and return the run's status record.
 
@@ -1351,8 +1369,7 @@ def run_delivery(env: Env, workdir: Path, plan: str) -> dict[str, Any]:
     command += ["--plan", plan, "--publish-pr", "--cross-review", "final"]
     command += ["--harness", harness, "--reviewer", reviewer]
     command += ["--max-cost", str(limit)] if limit else []
-    holdout = env.config.holdout.local_path if env.config.holdout else None
-    command += ["--deny-path", holdout] if holdout else []
+    command += _deny_args(env)
     done = env.run(command, workdir)
     found = re.search(r"deliver-run: (\S+)", done.stdout or "")
     return deliver_status(env, workdir, found.group(1) if found else None)
@@ -1471,7 +1488,9 @@ def do_repair(env: Env, number: int) -> None:
     workdir = issue_worktree(env, number, pr["branch"], pr["sha"])
     deliver = _script(env.root, "deliver", "deliver.py")
     command = ["uv", "run", "--no-project", "python", str(deliver), "fix-pr"]
-    done = env.run([*command, "--pr", str(pr["number"])], workdir)
+    command += ["--pr", str(pr["number"])]
+    command += _deny_args(env)
+    done = env.run(command, workdir)
     found = re.search(r"deliver-run: (\S+)", done.stdout or "")
     info = deliver_status(env, workdir, found.group(1) if found else None)
     github.comment(number, f"{REPAIR_MARKER}\nRepair cycle {cycles + 1} ran.")
@@ -1507,9 +1526,7 @@ def parse_checks(stdout: str) -> list[tuple[str, bool]]:
         name, passed = data["check"], data["passed"]
         if not isinstance(name, str) or not isinstance(passed, bool):
             continue
-        name = CHECK_NAME.sub("", name).strip()[:80]
-        if name and len(checks) < MAX_CHECKS:
-            checks.append((name, passed))
+        checks.append((CHECK_NAME.sub("", name).strip()[:80] or "unnamed check", passed))
     return checks
 
 
@@ -1546,11 +1563,12 @@ def run_holdout(env: Env, workdir: Path) -> HoldoutResult | None:
         except (OSError, ValueError):
             return HoldoutResult(False, (), None, "the holdout command could not run")
         checks = parse_checks(done.stdout or "")
+        # The limit applies to the names shown; every verdict counts toward pass or fail.
         failed = tuple(name for name, ok in checks if not ok)
         if done.returncode == 0 and not failed:
             return HoldoutResult(True, (), 0)
         reason = f"exit code {done.returncode}" if not failed else ""
-        return HoldoutResult(False, failed, done.returncode, reason)
+        return HoldoutResult(False, failed[:MAX_CHECKS], done.returncode, reason)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1766,6 +1784,20 @@ def factory_issues(github: GitHub) -> list[dict[str, Any]]:
     return [seen[number] for number in sorted(seen)]
 
 
+def _withdrawn_at(github: GitHub, number: int) -> str:
+    """Return the time of the last removal of `factory:ready` or move to Needs info."""
+    times = []
+    for event in github.timeline(number):
+        label = (event.get("label") or {}).get("name")
+        kind = event.get("event")
+        if (kind, label) in {
+            ("unlabeled", State.READY.value),
+            ("labeled", State.NEEDS_INFO.value),
+        }:
+            times.append(_when(event.get("created_at")))
+    return max(times, default="")
+
+
 def intake(github: GitHub, board: Board, config: Config) -> list[int]:
     """Turn admitted moves into Ready on the board into the `factory:ready` label.
 
@@ -1783,6 +1815,9 @@ def intake(github: GitHub, board: Board, config: Config) -> list[int]:
             continue
         if state not in (None, State.NEEDS_INFO) or not admitted(github, issue, config, board):
             continue
+        moves = ready_signals(github, issue, board, config.controller or github.viewer())
+        if _when(moves[-1]["at"]) <= _withdrawn_at(github, issue["number"]):
+            continue  # the Ready card predates a withdrawal or a Needs info verdict
         if state is State.NEEDS_INFO:
             github.remove_label(issue["number"], State.NEEDS_INFO.value)
         github.add_labels(issue["number"], [State.READY.value])
@@ -1977,6 +2012,25 @@ def last_retro(github: GitHub, controller: str, tracking: int) -> datetime | Non
     return found
 
 
+def declined_findings(root: Path, number: int) -> list[str]:
+    """Return the declined findings of the repair runs in the ticket's worktree."""
+    path = root / ".worktrees" / f"issue-{number}"
+    if not path.is_dir():
+        return []
+    done = _git(path, "rev-parse", "--path-format=absolute", "--git-path", "agent-runs")
+    found = []
+    for file in sorted(Path(done.stdout.strip()).glob("*/findings.json")):
+        try:
+            items = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        for item in items if isinstance(items, list) else []:
+            note = item.get("disposition") if isinstance(item, dict) else None
+            if isinstance(note, dict) and note.get("status") == "declined":
+                found.append(f"{item.get('id', '?')}: {note.get('note', '')}")
+    return found
+
+
 def retro_evidence(env: Env, merged: Sequence[tuple[int, int, datetime]]) -> str:
     """Collect needs-human causes, declined findings and cost outliers of merged tickets."""
     github = env.github
@@ -1994,11 +2048,8 @@ def retro_evidence(env: Env, merged: Sequence[tuple[int, int, datetime]]) -> str
                 causes.append(f"- #{number}: {_plain(body[len(NEEDS_HUMAN_PREFIX) :])[:200]}")
     lines += causes or ["- none"]
     lines += ["", "## Declined findings"]
-    declined = [
-        f"- #{n}: {_plain(text)[:200]}"
-        for n in numbers
-        for text in (env.declined or (lambda _: []))(n)
-    ]
+    source = env.declined or (lambda n: declined_findings(env.root, n))
+    declined = [f"- #{n}: {_plain(text)[:200]}" for n in numbers for text in source(n)]
     lines += declined or ["- none"]
     totals = {n: sum(u for _, u in c) for n, c in ticket_costs(github, controller, numbers).items()}
     median = statistics.median(totals.values()) if totals else 0.0
@@ -2025,6 +2076,9 @@ def do_retro(env: Env) -> str:
     github = env.github
     controller = env.config.controller or github.viewer()
     tracking = ensure_tracking_issue(github)
+    used = spend(snapshot(github, env.config), env.now, env.config)
+    if used.day >= env.config.daily_cap_usd or used.week >= env.config.weekly_cap_usd:
+        return "retrospective: spend cap reached"
     last = last_retro(github, controller, tracking)
     merged = _merged(github, last or datetime.min.replace(tzinfo=UTC))
     if len(merged) < env.config.retro_every:

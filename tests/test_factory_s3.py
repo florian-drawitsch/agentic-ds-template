@@ -556,3 +556,87 @@ def test_intake_errors_never_fail_the_tick(tmp_path):
     out = []
     assert factory._tick(env(gh, root=tmp_path), False, False, out.append) == 0
     assert "graphql down" in (tmp_path / ".factory/run.log").read_text()
+
+
+# --- review fixes ---
+
+
+def test_controller_mirror_move_does_not_manufacture_admission():
+    gh, board = board_gh()
+    gh.add_issue(1, ["factory:ready"])
+    gh.label_event(1, "factory:ready", "stranger")
+    gh.move(1, CONTROLLER)  # the scheduled sync moves the card into Ready
+    assert not factory.admitted(gh, gh.issues[1], factory.Config(), board)
+
+
+def test_removed_ready_label_is_not_restored_from_the_old_card():
+    gh, board = board_gh()
+    card(gh, 1, [])
+    gh.move(1, "maint")
+    gh.label_event(1, "factory:ready", "maint", kind="unlabeled")
+    assert intake(gh, board) == []
+    gh.move(1, "maint")  # a fresh admitted move releases it again
+    assert intake(gh, board) == [1]
+
+
+def test_needs_info_verdict_is_not_overridden_by_the_old_card():
+    gh, board = board_gh()
+    card(gh, 1, ["factory:needs-info"])
+    gh.move(1, "maint")
+    gh.label_event(1, "factory:needs-info", CONTROLLER)
+    assert intake(gh, board) == []
+
+
+def test_a_failure_after_the_check_limit_still_fails_the_holdout(tmp_path):
+    records = [{"check": f"c{i}", "passed": True} for i in range(150)]
+    records.append({"check": "late", "passed": False})
+    run = Fake({"pytest": (0, lines(*records))})
+    result = factory.run_holdout(holdout_env(tmp_path, run), tmp_path)
+    assert not result.passed
+    assert result.failed == ("late",)
+
+
+def test_a_failed_check_with_an_unusable_name_still_fails(tmp_path):
+    run = Fake({"pytest": (0, lines({"check": "<>!!", "passed": False}))})
+    result = factory.run_holdout(holdout_env(tmp_path, run), tmp_path)
+    assert not result.passed
+    assert result.failed == ("unnamed check",)
+
+
+def test_repair_denies_the_holdout_path_too(tmp_path, monkeypatch):
+    gh = review_setup()
+    run = Fake({"status": (0, json.dumps([{"stage": "completed"}]))})
+    monkeypatch.setattr(factory, "issue_worktree", lambda *a: tmp_path)
+    e = holdout_env(tmp_path, run)
+    e = factory.replace(e, github=gh, threads=lambda r, n: [{"id": "T1"}])
+    factory.do_repair(e, 3)
+    call = next(c for c in run.calls if "fix-pr" in c)
+    assert call[call.index("--deny-path") + 1] == str(tmp_path / "data")
+
+
+def test_declined_findings_are_read_from_the_repair_runs(tmp_path):
+    work = tmp_path / ".worktrees/issue-5"
+    work.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "--template=", str(work)], check=True)
+    runs = work / ".git/agent-runs/dr-1"
+    runs.mkdir(parents=True)
+    items = [
+        {"id": "T1", "disposition": {"status": "declined", "note": "false positive"}},
+        {"id": "T2", "disposition": {"status": "fixed", "note": "done"}},
+        {"id": "T3"},
+    ]
+    (runs / "findings.json").write_text(json.dumps(items))
+    assert factory.declined_findings(tmp_path, 5) == ["T1: false positive"]
+    assert factory.declined_findings(tmp_path, 6) == []
+
+
+def test_retro_spend_counts_and_the_caps_block_a_retro(tmp_path):
+    gh = retro_gh(3)
+    tracking = factory.ensure_tracking_issue(gh)
+    gh.add_comment(tracking, cost(25, "2026-11-20T01:00:00+00:00"))
+    run = Fake()
+    message = factory.do_retro(retro_env(gh, run, tmp_path))
+    assert "spend cap reached" in message
+    assert not run.calls
+    snap = factory.snapshot(gh, factory.Config())
+    assert factory.spend(snap, NOW, factory.Config()).day == 25

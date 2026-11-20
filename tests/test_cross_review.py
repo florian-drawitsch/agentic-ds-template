@@ -324,3 +324,27 @@ def test_acceptance_inputs_hide_the_plan(tmp_path: Path) -> None:
     patch = (shown / "diff.patch").read_text()
     assert "x = 1" in patch
     assert "secret plan" not in patch
+
+
+def test_excluded_plans_are_hidden_from_status_and_untracked_inputs(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q", "-b", "main", str(tmp_path)], check=True)
+    subprocess.run(
+        [
+            *["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t"],
+            *["commit", "--allow-empty", "-qm", "initial"],
+        ],
+        check=True,
+    )
+    base = subprocess.run(
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    (tmp_path / "docs/plans").mkdir(parents=True)
+    (tmp_path / "docs/plans/secret-plan.md").write_text("the plan\n")
+    (tmp_path / "other.txt").write_text("x\n")
+    input_dir = review.write_review_inputs(tmp_path, base, "t", exclude=("docs/plans",))
+    context = (input_dir / "context.md").read_text()
+    assert "secret-plan" not in context
+    assert "other.txt" in context

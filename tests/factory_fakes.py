@@ -85,10 +85,16 @@ class FakeGitHub:
         return (datetime(2026, 11, 1, tzinfo=UTC) + timedelta(minutes=self.clock)).isoformat()
 
     def label_event(
-        self, number: int, label: str, login: str, bot: bool = False, at: str | None = None
+        self,
+        number: int,
+        label: str,
+        login: str,
+        bot: bool = False,
+        at: str | None = None,
+        kind: str = "labeled",
     ) -> None:
         event = {
-            "event": "labeled",
+            "event": kind,
             "label": {"name": label},
             "actor": {"login": login, "type": "Bot" if bot else "User"},
             "created_at": at or self.tick(),
