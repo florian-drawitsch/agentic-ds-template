@@ -197,7 +197,7 @@ def verify(gh, tmp_path, answers, monkeypatch, holdout=True):
         cfg = factory.Config(holdout=hold)
     (tmp_path / "scripts/agent").mkdir(parents=True, exist_ok=True)
     (tmp_path / "scripts/agent/cross_review.py").write_text("")
-    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q", "--template="], check=True)
     monkeypatch.setattr(factory, "issue_worktree", lambda *a: tmp_path)
     factory.do_verify(env(gh, run, tmp_path, config=cfg), 3)
     return run
@@ -344,7 +344,7 @@ def retro_env(gh, run, root, every=3):
 def git_root(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
-    subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"], check=True)
+    subprocess.run(["git", "-C", str(root), "init", "-q", "--template=", "-b", "main"], check=True)
     subprocess.run(
         [
             "git",
