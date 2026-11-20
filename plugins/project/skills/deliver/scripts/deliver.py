@@ -559,13 +559,17 @@ def evaluate(root: Path, run: Run, *, outer: bool = False) -> Verdict:
         and (not run.reviewer_model or review.get("model") == run.reviewer_model)
     )
     signature = state_signature(root)
-    if run.cross_review == "final" and not selected_review and run.headless and outer:
+    # Headless runs never review inside the worker: its stop hook and the outer controller
+    # both hand off, and the controller runs the reviewer outside the agent sandbox.
+    review_handoff = Verdict(
+        "handoff",
+        "Implementation is ready for the configured final review. End this turn; the outer "
+        "controller will run the reviewer and resume this session with its findings. Do not run "
+        "or wait for the review here.",
+    )
+    if run.cross_review == "final" and not selected_review and run.headless:
         run.status = "reviewing"
-        return Verdict(
-            "handoff",
-            "Implementation is ready for the configured final review. End this turn; the outer "
-            "controller will run the reviewer and resume this session with its findings.",
-        )
+        return review_handoff
     if run.cross_review == "final":
         reviewed = (
             selected_review
@@ -579,6 +583,9 @@ def evaluate(root: Path, run: Run, *, outer: bool = False) -> Verdict:
         )
         used = len(list((run.directory(root) / "reviews").glob("*.json")))
         if resolved and review and review.get("verdict") != "pass" and used < run.review_rounds:
+            if run.headless:
+                run.status = "reviewing"
+                return review_handoff
             return Verdict(
                 "continue",
                 f"{prefix} Fixes verified. Run the next explicitly requested review "
@@ -1352,6 +1359,10 @@ def sandbox_environment() -> dict[str, str]:
     """Return an environment for model-controlled processes without common credentials."""
     env = {key: value for key, value in os.environ.items() if key not in CREDENTIAL_ENV}
     env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1"
+    # The controller runs from uv's throwaway script environment; the agent must use the
+    # project's own environment, so a plain `python` or `uv run` does not pick up the controller's.
+    for key in ("VIRTUAL_ENV", "VIRTUAL_ENV_PROMPT"):
+        env.pop(key, None)
     return env
 
 

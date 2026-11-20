@@ -1,6 +1,6 @@
 # Factory S2: agent stages
 
-Status: Proposed; not approved for implementation.
+Status: Approved for implementation on 2026-11-20.
 
 ## Goal and scope
 
@@ -16,7 +16,7 @@ automatic merge (ADR-0033 forbids it).
 - Depends on [Factory S1: deterministic controller core](2026-11-18-factory-s1-controller.md).
 - ADR-0033 (Proposed), ADR-0027 and ADR-0028. The controller owns every GitHub write. Agents
   get no GitHub credentials.
-- Approval: pending. Once the user approves this named plan, delivery may publish a pull
+- Approval: the user approved this named plan on 2026-11-20. Delivery may publish a pull
   request. It never merges.
 
 ## Implementation sequence

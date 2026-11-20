@@ -352,7 +352,7 @@ It calls no model. Agent stages arrive in S2.
 
 | Feature | Details |
 | --- | --- |
-| Configuration | `factory.toml`: limits, repair cycles, daily and sprint caps in USD, protected paths, trusted bots; unknown keys and wrong types are errors |
+| Configuration | `factory.toml`: limits, repair cycles, daily and weekly caps in USD, protected paths, trusted bots; unknown keys and wrong types are errors |
 | Label states | Seven `factory:*` labels and the transition table of ADR-0033; `factory.py labels` creates them idempotently |
 | Board | `factory.py init` creates and links a Kanban board with one Status column per state and the views Board, Backlog and Needs attention, found by name under the repository's owner so forks get their own; `sync` mirrors labels into it |
 | Priority | `priority:high`, `priority:medium`, `priority:low` labels, created by `init`, order the queue within a state |
@@ -362,7 +362,7 @@ It calls no model. Agent stages arrive in S2.
 | Dispatch | `tick --dry-run` prints one action in the order repair, verify, implement, triage; `priority:` labels, then issue number; limits on work in progress and waiting verified PRs |
 | Claim | The first non-forced push of `feat/<issue>-<slug>` wins |
 | Protected paths | `touches_protected` checks a diff, renames included |
-| Spend ledger | Cost markers in ticket comments; the daily or sprint cap turns the tick into idle |
+| Spend ledger | Cost markers in ticket comments; the daily or weekly cap turns the tick into idle |
 
 ### Codex app
 

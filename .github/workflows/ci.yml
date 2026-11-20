@@ -1,9 +1,19 @@
 name: CI
 
+# Documentation-only changes skip the gate: root Markdown, plans, ADRs and design notes are
+# not read by any check. Skill text (plugins/) and template Markdown still run it.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - LICENSE
   pull_request:
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - LICENSE
 
 permissions:
   contents: read

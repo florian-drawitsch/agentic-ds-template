@@ -12,11 +12,9 @@
 # max_repair_cycles = 2
 # review_wait_minutes = 30
 
-# Spend caps in USD per UTC day and per sprint.
+# Spend caps in USD per UTC day and per calendar week (Monday to Sunday, UTC).
 # daily_cap_usd = 20.0
-# sprint_cap_usd = 100.0
-# sprint_start = 2026-01-05
-# sprint_days = 14
+# weekly_cap_usd = 100.0
 
 # Check runs that must pass before a PR counts as verified: the CI job.
 required_checks = ["Lint, types, contracts, tests and docs"]

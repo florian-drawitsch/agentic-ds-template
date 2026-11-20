@@ -31,6 +31,8 @@ DEFAULT_HEADINGS = (
 HEADING = re.compile(r"^## .+$", re.MULTILINE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 UNFINISHED_PATTERN = re.compile(r"\b(?:TODO|TBD)\b|<[^>]+>", re.IGNORECASE)
+# Code is quoted, not prose: `feat/<issue>-<slug>` or a fenced command is not a placeholder.
+CODE = re.compile(r"^(```|~~~).*?^\1|`[^`\n]+`", re.DOTALL | re.MULTILINE)
 RECEIPT_FIELDS = "number,url,state,title,headRefName,headRefOid,baseRefName"
 
 
@@ -101,7 +103,7 @@ def _description(path: Path, headings: tuple[str, ...]) -> str:
         end = found[index + 1].start() if index + 1 < len(found) else len(description)
         if not description[heading.end() : end].strip():
             raise ValueError(f"description section is empty: {heading.group()}")
-    if UNFINISHED_PATTERN.search(description):
+    if UNFINISHED_PATTERN.search(CODE.sub("", description)):
         raise ValueError(
             "description contains an unfinished TODO, TBD, or angle-bracket placeholder"
         )

@@ -62,6 +62,23 @@ def test_description_rejects_incomplete_handoffs(tmp_path: Path, defect: str) ->
         pr._description(path, HEADINGS)
 
 
+def test_placeholders_inside_code_are_quotes(tmp_path: Path) -> None:
+    body = _body().replace(
+        "Concrete evidence.",
+        "Concrete evidence: `feat/<issue>-<slug>`.\n\n```bash\ngh issue edit <n>\n```",
+        1,
+    )
+    path = tmp_path / "body.md"
+    path.write_text(body)
+    assert "<issue>" in pr._description(path, HEADINGS)
+    path.write_text(body + "\nReplace <issue> before merging.")
+    with pytest.raises(ValueError, match="placeholder"):
+        pr._description(path, HEADINGS)
+    path.write_text(body + "\n`TODO` stays a quote, but TODO in prose does not.")
+    with pytest.raises(ValueError, match="placeholder"):
+        pr._description(path, HEADINGS)
+
+
 def test_title_requires_conventional_commit() -> None:
     assert pr._title("feat(deliver): publish to GitHub")
     with pytest.raises(ValueError, match="Conventional Commit"):

@@ -70,7 +70,7 @@ Closed issues move to Done through the board's built-in workflow.
 ## Limits
 
 `factory.toml` sets the limits: one issue in progress, at most three verified pull requests
-waiting, USD 20 per day and USD 100 per sprint by default. Pull requests that touch
+waiting, USD 20 per day and USD 100 per calendar week by default. Pull requests that touch
 `factory.toml`, agent configuration, CI or infrastructure always go to a human.
 
 To stop the factory, remove `factory:ready` from the waiting issues.

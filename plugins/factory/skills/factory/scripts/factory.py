@@ -79,9 +79,7 @@ class Config:
     max_repair_cycles: int = 2
     review_wait_minutes: int = 30
     daily_cap_usd: float = 20.0
-    sprint_cap_usd: float = 100.0
-    sprint_start: date | None = None
-    sprint_days: int = 14
+    weekly_cap_usd: float = 100.0
     protected_paths: tuple[str, ...] = DEFAULT_PROTECTED
     trusted_bots: tuple[str, ...] = ()
     controller: str | None = None
@@ -125,9 +123,7 @@ _KINDS = {
     "max_repair_cycles": "int",
     "review_wait_minutes": "int",
     "daily_cap_usd": "float",
-    "sprint_cap_usd": "float",
-    "sprint_start": "date",
-    "sprint_days": "int",
+    "weekly_cap_usd": "float",
     "protected_paths": "strs",
     "trusted_bots": "strs",
     "controller": "str",
@@ -657,31 +653,28 @@ def snapshot(github: GitHub, config: Config) -> Snapshot:
 
 @dataclass(frozen=True)
 class Spend:
-    """Spend in US dollars for the current UTC day and sprint."""
+    """Spend in US dollars for the current UTC day and calendar week."""
 
     day: float
-    sprint: float
+    week: float
 
 
-def sprint_window(config: Config, now: datetime) -> tuple[datetime, datetime]:
-    """Return the sprint containing now; without `sprint_start` the last `sprint_days` days."""
+def week_window(now: datetime) -> tuple[datetime, datetime]:
+    """Return the calendar week containing now: Monday 00:00 UTC to the next Monday."""
     now = now.astimezone(UTC)
-    if config.sprint_start is None:
-        return now - timedelta(days=config.sprint_days), now + timedelta(microseconds=1)
-    start = datetime.combine(config.sprint_start, datetime.min.time(), UTC)
-    length = timedelta(days=config.sprint_days)
-    index = max((now - start) // length, 0)
-    return start + index * length, start + (index + 1) * length
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start -= timedelta(days=start.weekday())
+    return start, start + timedelta(days=7)
 
 
 def spend(snap: Snapshot, now: datetime, config: Config) -> Spend:
-    """Return today's and the current sprint's totals in UTC."""
+    """Return today's and this calendar week's totals in UTC."""
     now = now.astimezone(UTC)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    low, high = sprint_window(config, now)
+    low, high = week_window(now)
     day = sum(usd for at, usd in snap.costs if day_start <= at < day_start + timedelta(days=1))
-    sprint = sum(usd for at, usd in snap.costs if low <= at < high)
-    return Spend(day, sprint)
+    week = sum(usd for at, usd in snap.costs if low <= at < high)
+    return Spend(day, week)
 
 
 def record_cost(
@@ -706,8 +699,8 @@ def next_action(snap: Snapshot, config: Config, now: datetime) -> Action:
     used = spend(snap, now, config)
     if used.day >= config.daily_cap_usd:
         return Idle(f"daily_cap_usd reached ({used.day:.2f} of {config.daily_cap_usd:.2f})")
-    if used.sprint >= config.sprint_cap_usd:
-        return Idle(f"sprint_cap_usd reached ({used.sprint:.2f} of {config.sprint_cap_usd:.2f})")
+    if used.week >= config.weekly_cap_usd:
+        return Idle(f"weekly_cap_usd reached ({used.week:.2f} of {config.weekly_cap_usd:.2f})")
 
     in_review = _order(snap.states[State.IN_REVIEW])
     for issue in in_review:
@@ -1003,8 +996,8 @@ def _status(github: GitHub, config: Config, now: datetime, as_json: bool) -> int
         "spend": {
             "day": used.day,
             "daily_cap_usd": config.daily_cap_usd,
-            "sprint": used.sprint,
-            "sprint_cap_usd": config.sprint_cap_usd,
+            "week": used.week,
+            "weekly_cap_usd": config.weekly_cap_usd,
         },
         "next_action": asdict(action),
     }
@@ -1017,7 +1010,7 @@ def _status(github: GitHub, config: Config, now: datetime, as_json: bool) -> int
     if snap.conflicts:
         print(f"conflicting labels: {snap.conflicts}")
     print(f"spend today: {used.day:.2f} of {config.daily_cap_usd:.2f} USD")
-    print(f"spend sprint: {used.sprint:.2f} of {config.sprint_cap_usd:.2f} USD")
+    print(f"spend week: {used.week:.2f} of {config.weekly_cap_usd:.2f} USD")
     print(f"next: {_describe(action)}")
     return EXIT_OK
 

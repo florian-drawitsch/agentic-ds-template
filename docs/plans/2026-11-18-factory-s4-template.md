@@ -1,6 +1,6 @@
 # Factory S4: template integration
 
-Status: Proposed; not approved for implementation.
+Status: Approved for implementation on 2026-11-20.
 
 ## Goal and scope
 
@@ -16,7 +16,7 @@ ADR-0033 (a human decision), a hosted GitHub App.
 - Depends on [Factory S3: holdout checks, reports and board mirror](2026-11-18-factory-s3-holdout-and-reports.md).
 - ADR-0002 and ADR-0022 (file ownership, plugin copies by symlink), ADR-0012 (actions pinned
   by SHA), ADR-0033.
-- Approval: pending. Once the user approves this named plan, delivery may publish a pull
+- Approval: the user approved this named plan on 2026-11-20. Delivery may publish a pull
   request. It never merges.
 
 ## Implementation sequence
@@ -46,15 +46,19 @@ branch protection.
   Tests: files present when true, symlink resolves and matches the plugin
   (`test_vendored_plugin_files_match_the_plugin`), plugin enabled in both harness configs.
 - [ ] **Workflow.** `template/.github/workflows/factory.yml`: triggers `schedule` (every
-  30 minutes), `workflow_dispatch` and `issues: [labeled]` filtered to `factory:ready`.
+  10 minutes, which also polls the board for cards moved to Ready), `workflow_dispatch` and
+  `issues: [labeled]` filtered to `factory:ready`. The scheduled run passes `--scheduled` so
+  the tick runs the full board mirror. A comment above the cron line says that private
+  repositories on the Free plan should lengthen the interval.
   `concurrency: factory` without cancellation. Job permissions `contents: read` only; the
   controller uses the token from secret `FACTORY_GH_TOKEN` (GitHub App or fine-grained token).
   Model keys come from secrets `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, passed only to the
-  step that runs `task factory:tick`. A daily `report daily` job and a sprint-end
-  `report sprint` job. Every action pinned by commit SHA. `timeout-minutes` and deliver
+  step that runs `task factory:tick`. A daily `report daily` job, a weekly
+  `report weekly` job on Mondays and a `report retro` step that runs when the count is reached. Every action pinned by commit SHA. `timeout-minutes` and deliver
   `--max-wait` sized so a run finishes inside one job. Tests: YAML parses, every `uses:` has
   a 40-character SHA, no `pull_request_target`, no issue text interpolated into `run:`,
-  and the rendered project's zizmor hook passes on it in the e2e run.
+  the schedule is `*/10 * * * *`, and the rendered project's zizmor hook passes on it in the
+  e2e run.
 - [x] **Agent wiring tests.** In `tests/template/test_agent_wiring.py`: the factory project
   copy resolves locally, `factory.toml` parses with the controller's `load_config`, the
   workflow's tasks exist in the rendered Taskfile, and `.worktreeinclude` still excludes
@@ -64,7 +68,8 @@ branch protection.
 - [ ] **Docs.**
   - `template/docs/guides/factory.md` (rendered only when true): setup steps (labels, token,
     secrets, branch protection with required human approval, Codex review), the label states,
-    the caps, how to write a factory-ready issue, how to stop the factory.
+    the caps, how to write a factory-ready issue, how to start a ticket (add the label, or
+    move its card to Ready and wait up to 10 minutes), how to stop the factory.
   - Repository docs: `docs/features.md`, `docs/design/architecture.md` (Copier question table
     and rendered project tree), `README.md` quick start mention, root `AGENTS.md` layout line
     for `plugins/*/`.
