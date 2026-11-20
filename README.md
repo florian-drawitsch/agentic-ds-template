@@ -2,47 +2,62 @@
 
 ![Claude Code](https://img.shields.io/badge/Claude_Code-000000?style=flat-square&logo=anthropic&logoColor=white)
 ![Codex](https://img.shields.io/badge/Codex-412991?style=flat-square&logo=openai&logoColor=white)
+![Copier](https://img.shields.io/badge/Copier-333333?style=flat-square)
 ![uv](https://img.shields.io/badge/uv-262626?style=flat-square&logo=python&logoColor=white)
-![Task](https://img.shields.io/badge/Task-29BEB0?style=flat-square)
-![Ruff](https://img.shields.io/badge/Ruff-E5A00D?style=flat-square)
-![ty](https://img.shields.io/badge/ty-333333?style=flat-square)
-![prek](https://img.shields.io/badge/prek-333333?style=flat-square)
-![Polars](https://img.shields.io/badge/Polars-0033A0?style=flat-square)
-![Hydra](https://img.shields.io/badge/Hydra-89B8CD?style=flat-square)
-![MLflow](https://img.shields.io/badge/MLflow-0194E2?style=flat-square&logo=mlflow&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
-![Sphinx](https://img.shields.io/badge/Sphinx-0A507A?style=flat-square&logo=sphinx&logoColor=white)
-![Pulumi](https://img.shields.io/badge/Pulumi-8A3391?style=flat-square&logo=pulumi&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
 
-A [Copier](https://copier.readthedocs.io) template for data science and ML projects that coding
-agents build with you. One command gives you a working, tested baseline pipeline, a strict
-quality gate, and Claude Code and Codex set up to turn a written plan into a verified pull request.
+Copier template for agentic development of production-grade AI and ML solutions.
 
-With the optional **ticket factory** (in development), the project runs as a dark software
-factory, one where no person drives each step: you write GitHub issues and release them with
-a label, agents triage, implement and verify them, and a project board shows each ticket
-moving to a verified pull request that you merge.
-[How the factory works](#ticket-factory-from-issue-to-pull-request).
+It combines:
 
-- **Ticket factory:** issues labeled `factory:ready` move through a GitHub project board via
-  triage, implementation and cross-vendor verification to a pull request you merge. Labels and
-  board set themselves up when the project is copied. In development.
-- **Plan delivery:** `task deliver` runs a plan unattended under a completion guard, gets a
-  cross-vendor review and opens a PR, within cost budgets.
-- **Three architectures:** simple modules, Kedro-style pipeline graphs, or hexagonal layers, each
-  enforced by import contracts.
-- **A virtual uv workspace:** apps under `apps/`, shared libraries under `packages/`,
-  a generic evaluation protocol and an 80 % branch coverage gate.
-- **Modern tooling:** uv, Task, Ruff, ty, import-linter, prek, pytest, Sphinx, all behind one
-  `task check`.
-- **Agents with guardrails:** hooks, permissions and sandboxing shared by Claude Code and Codex.
-- **Production path:** MLflow tracking, FastAPI, Streamlit, Docker and Azure via Pulumi, all
+- **Agent harness:** context, skills, guardrail hooks and quality gates that Claude Code and
+  Codex share, so agents can work on the project unsupervised.
+- **Dark factory with GitHub board integration:** labeled issues move across a project board
+  through triage, implementation and cross-vendor verification to a pull request you merge.
+- **Spec-driven development:** a Ralph loop implements a written plan until every item is
+  done and `task check` passes, then a cross-vendor review and a pull request follow.
+- **Modern Python scaffolding:** a uv workspace with Ruff, ty, pytest and import contracts,
+  checked by one `task check` gate.
+- **Production path:** MLflow tracking, FastAPI, Streamlit, Docker and Azure via Pulumi, each
   optional.
-- **Updatable:** pull later template versions without touching your code.
+- **Template updates:** pull new template versions without touching your code.
 
-Every feature is listed in the [feature index](docs/features.md).
+## How it fits together
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/harness-and-factory-dark.svg">
+  <img alt="One agent loop is wrapped in a harness; many harnesses run in a factory that ends at your merge; all of them work in the scaffold." src="docs/assets/harness-and-factory-light.svg">
+</picture>
+
+- **Loop:** one agent reads context, acts, verifies and repeats. A Ralph loop keeps it going
+  until the work is done, not until the agent decides it is.
+- **Harness:** the loop with guides that steer it (project context, skills) and sensors that
+  check it (hooks, `task check`, a review by the other vendor's agent). `task check` defines
+  what "done" means.
+- **Factory:** many harnessed loops, fed by the project board and drained through one gate:
+  your merge. You are the outer loop. You decide what gets built and what ships.
+- **Scaffold:** the codebase every loop works in. A clear layout, architecture contracts and
+  tests make agent mistakes cheap to catch.
+
+The terms follow Addy Osmani's
+[Software factories, light and dark](https://addyosmani.com/blog/software-factories/) and
+harness engineering as described by [OpenAI](https://openai.com/index/harness-engineering/)
+and [Birgitta Böckeler](https://www.martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html).
+
+## Lit factory and dark factory
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/lit-and-dark-factory-dark.svg">
+  <img alt="Lit factory, interactive mode: you shape the design with an agent and review the result. Dark factory, board mode: agents run from issue to pull request and stop at your merge." src="docs/assets/lit-and-dark-factory-light.svg">
+</picture>
+
+- **Lit factory, interactive mode:** you work with Claude Code or Codex in your IDE or app and
+  shape the design with the skills. The harness then builds it unattended.
+  [How interactive mode works](#interactive-mode-spec-driven-development).
+- **Dark factory, board mode:** agents run from the issue to the pull request. You write the
+  issue and merge the result. [How board mode works](#board-mode-the-dark-factory).
+
+Both modes end at the same gate: nothing merges without you.
 
 ## Quick start
 
@@ -84,50 +99,41 @@ Every feature is listed in the [feature index](docs/features.md).
    plugin marketplace load automatically. Fill `docs/context/` so agents know the problem and
    the data.
 
-6. **Optionally run the ticket factory:** answer `factory=yes` in step 2, push the project to
-   GitHub, run `task factory:init`, then `task factory:loop` locally or
-   `task factory:secrets` for GitHub Actions. See
-   [Ticket factory](#ticket-factory-from-issue-to-pull-request).
+6. **Optionally turn on board mode:** answer `factory=yes` in step 2, push the project to
+   GitHub, run `task factory:init`, then `task factory:loop` locally or `task factory:secrets`
+   for GitHub Actions. See [Board mode](#board-mode-the-dark-factory).
 
-## Ticket factory: from issue to pull request
+## Interactive mode: spec-driven development
 
-> In development (ADR-0033). Labels, the board, status and the dispatch decision work today.
-> Triage, implementation and verification by agents arrive in the next stages.
+Open the project in Claude Code or Codex, in the terminal, your IDE or the desktop app. The
+skills load from the pinned marketplace.
 
-The factory turns GitHub issues into verified pull requests without a person driving each
+1. **Brainstorm:** ask the agent to use the `brainstorm` skill. It explores requirements and
+   design options. Durable decisions become decision records in `docs/adr/`.
+2. **Plan:** the `write-plan` skill writes a test-first plan with `- [ ]` items to
+   `docs/plans/YYYY-MM-DD-<topic>.md`. Commit it.
+3. **Deliver:** run `task deliver` and pick the plan, the implementing agent, the reviewer and
+   the review budget in the menus. `task deliver -- --preview` shows the menus without starting
+   anything.
+   - The run works in `.worktrees/<topic>` on a `feat/<topic>` branch.
+   - A Ralph loop keeps the agent working until every item is ticked and `task check` passes.
+   - The other vendor's agent reviews the change once, read-only. Required findings are fixed
+     with a regression test.
+   - The run pushes the branch and opens a pull request. It never merges and never requests
+     human reviewers.
+4. **Review and merge** the pull request yourself. To fix Codex review comments on it, run
+   `task deliver:fix-pr -- <number>`.
+
+Runs stop at USD 2 per round and USD 10 per run by default, wait out usage limits for up to 48
+hours, and continue with `task deliver:resume`. `task deliver:status -- --all-worktrees` shows
+every run with token usage and estimated cost. Inside an agent session, the `deliver` skill
+does the same without leaving the chat.
+
+## Board mode: the dark factory
+
+Board mode turns GitHub issues into verified pull requests without a person driving each
 step. Issue labels hold the state, and a GitHub project board shows it. A deterministic
-controller, not a model, picks the next action. A human still merges every pull request.
-
-```mermaid
----
-config:
-  themeCSS: >-
-    .row-rect-odd path, .row-rect-even path, marker circle { fill: none !important; }
-    .edgePaths path, .flowchart-link, .relation, .transition, .relationshipLine, marker path, marker circle { stroke: #868e96 !important; }
-    circle.state-start, circle.state-end { fill: #868e96 !important; stroke: #868e96 !important; }
-    rect.actor, rect.note, rect[class^=activation], polygon.labelBox { fill: none !important; stroke: #868e96 !important; }
-    line[class^=actor-line], line.loopLine, line[class^=messageLine], path[class^=messageLine] { stroke: #868e96 !important; }
-    text.actor, text.actor tspan, .messageText, .noteText, .noteText tspan, .labelText, .labelText tspan, .loopText, .loopText tspan, text.text { fill: #868e96 !important; }
----
-flowchart LR
-  classDef default fill:none,stroke:#868e96,stroke-width:1px,color:#868e96
-  classDef blue fill:none,stroke:#2f81f7,stroke-width:2px,color:#2f81f7
-  classDef red fill:none,stroke:#e5534b,stroke-width:2px,color:#e5534b
-  linkStyle default stroke:#868e96
-
-  issue([Issue]) -->|maintainer labels| ready[Ready]
-  ready --> triage[triage]:::blue
-  triage -->|unclear| info[Needs info]:::red
-  info --> ready
-  triage --> accepted[Accepted]
-  accepted --> deliver[deliver]:::blue
-  deliver --> verify[independent verification]:::blue
-  verify --> verified[Verified]
-  verify -->|stuck or protected path| human[Needs human]:::red
-  verified --> merge([human merge])
-```
-
-Blue steps run unattended. Red columns wait for a person.
+controller, not a model, picks the next action. A person still merges every pull request.
 
 **Set it up**, in a generated project or in this repository:
 
@@ -146,12 +152,11 @@ Blue steps run unattended. Red columns wait for a person.
    task factory:init
    ```
 
-   `init` creates the `factory:*` and `priority:*` labels and a Kanban board named
-   `<repository> factory` with one Status column per state and three views, and links it to
-   the repository. The board is found by that name under the repository's owner, so no URL is
-   stored and every fork gets its own board. In generated projects, `copier copy` and
-   `task setup` run the same step and skip it with a note while the repository, the scope or
-   write access is missing.
+   `init` creates the `factory:*` and `priority:*` labels and a board named
+   `<repository> factory`, and links it to the repository. The board is found by that name
+   under the repository's owner, so no URL is stored and every fork gets its own board. In
+   generated projects, `copier copy` and `task setup` run the same step and skip it with a
+   note while the repository, the scope or write access is missing.
 
 4. Choose where it runs:
    - **Locally**, with your existing `gh`, `claude` and `codex` logins and no secrets. It
@@ -192,108 +197,66 @@ Blue steps run unattended. Red columns wait for a person.
 4. `task factory:status` shows the issues per state, spend against the caps and the next
    action. `task factory:tick -- --dry-run` prints that action without changing anything.
 
-The board is a Kanban board: work flows continuously, one ticket at a time, with no sprints
-or estimates. `init` adds three views:
+**The board** has one column per state:
 
-| View | Shows |
+| Column | Meaning |
 | --- | --- |
-| Board | One column per factory state, from Ready to Done |
-| Backlog | Tickets not started yet: Ready, Needs info, Accepted |
-| Needs attention | Tickets waiting for a person: Needs info, Needs human, Verified |
+| Ready | Released by a maintainer |
+| Needs info | Triage needs more information from you |
+| Accepted | Triaged and queued |
+| In progress | An agent is implementing it |
+| In review | Pull request open, the other vendor's agent is verifying it |
+| Verified | All checks passed, waiting for your merge |
+| Needs human | Stopped, a person must decide |
 
-Order the queue with the labels `priority:high`, `priority:medium` and `priority:low`; the
-factory picks higher priority first, then the lower issue number. To show the factory's
-limits on the board, set a column limit of 1 on In progress and 3 on Verified in the board
-settings. Labels drive the factory: a card moved to Ready becomes `factory:ready`, and a card
-moved to any other column returns to its label's column at the next tick.
+Three views filter it: **Board** shows every column, **Backlog** shows tickets not started yet,
+and **Needs attention** shows tickets waiting for you. Order the queue with the labels
+`priority:high`, `priority:medium` and `priority:low`. Labels drive the factory: a card moved to
+Ready becomes `factory:ready`, and a card moved to any other column returns to its label's
+column at the next tick.
 
-`factory.toml` limits the work: one issue in progress, at most three verified pull requests
-waiting for a merge, USD 20 per day and USD 100 per calendar week. Pull requests that touch protected
-paths, such as agent settings, CI or `factory.toml`, always go to a human. The generated
-`docs/guides/factory.md` describes every label and board column.
+**Limits** live in `factory.toml`: one issue in progress, at most three verified pull requests
+waiting for a merge, USD 20 per day and USD 100 per calendar week. Pull requests that touch
+protected paths, such as agent settings, CI or `factory.toml`, always go to a person. The
+generated `docs/guides/factory.md` describes every label and column.
 
-## Build features with agents
+## The harness
 
-```mermaid
----
-config:
-  themeCSS: >-
-    .row-rect-odd path, .row-rect-even path, marker circle { fill: none !important; }
-    .edgePaths path, .flowchart-link, .relation, .transition, .relationshipLine, marker path, marker circle { stroke: #868e96 !important; }
-    circle.state-start, circle.state-end { fill: #868e96 !important; stroke: #868e96 !important; }
-    rect.actor, rect.note, rect[class^=activation], polygon.labelBox { fill: none !important; stroke: #868e96 !important; }
-    line[class^=actor-line], line.loopLine, line[class^=messageLine], path[class^=messageLine] { stroke: #868e96 !important; }
-    text.actor, text.actor tspan, .messageText, .noteText, .noteText tspan, .labelText, .labelText tspan, .loopText, .loopText tspan, text.text { fill: #868e96 !important; }
----
-flowchart LR
-  classDef default fill:none,stroke:#868e96,stroke-width:1px,color:#868e96
-  classDef blue fill:none,stroke:#2f81f7,stroke-width:2px,color:#2f81f7
-  linkStyle default stroke:#868e96
+The same harness runs in Claude Code and Codex.
 
-  idea([Idea]) --> brainstorm[brainstorm]
-  brainstorm --> plan[/plan file/]
-  plan --> deliver[task deliver]:::blue
-  deliver --> review[cross-vendor review]:::blue
-  review --> gate{task check?}
-  gate -->|fails| deliver
-  gate -->|passes| pr([GitHub PR])
-  pr --> fix[task deliver:fix-pr]:::blue
-  fix --> pr
-```
+**Guides** steer agents before they act:
 
-Blue steps run unattended.
-
-1. **Brainstorm:** ask the agent to use the `brainstorm` skill. It explores requirements and
-   design options. Durable decisions become ADRs in `docs/adr/`.
-2. **Plan:** the `write-plan` skill writes a test-first plan with `- [ ]` items to
-   `docs/plans/YYYY-MM-DD-<topic>.md`. Commit it.
-3. **Deliver:** run `task deliver` and pick the plan, the implementing agent, the reviewer and
-   the review budget in the menus. `task deliver -- --preview` shows the menus without starting
-   anything.
-   - The run works in `.worktrees/<topic>` on a `feat/<topic>` branch.
-   - A completion guard keeps the agent working until every item is ticked and `task check`
-     passes.
-   - The other vendor's agent reviews the change once, read-only. Required findings are fixed
-     with a regression test.
-   - The run pushes the branch and opens a PR. It never merges and never requests human
-     reviewers.
-4. **Review and merge** the PR yourself. To fix Codex review comments on it, run
-   `task deliver:fix-pr -- <number>`.
-
-Runs stop at USD 2 per round and USD 10 per run by default, wait out usage limits for up to 48
-hours, and continue with `task deliver:resume`. `task deliver:status -- --all-worktrees` shows
-every run with token usage and estimated cost.
-
-Inside an agent session, the `deliver` skill does the same without leaving the chat.
-
-### Skills
+- `AGENTS.md` and `docs/context/` describe the commands, the layout, the rules, the problem and
+  the data.
+- Import contracts define which modules may use which, in the chosen architecture.
+- Skills hold reusable procedures:
 
 | Skill | Use it to |
 | --- | --- |
 | `brainstorm` | Explore requirements and design trade-offs before planning |
 | `write-plan` | Write a test-first implementation plan in `docs/plans/` |
-| `deliver` | Execute a plan to a verified PR; resume runs; repair PR findings |
+| `deliver` | Execute a plan to a verified pull request; resume runs; repair review findings |
 | `cross-review` | Have the other vendor's agent review a change, read-only |
-| `github-create-pr` | Create or update a PR that follows the PR template |
+| `github-create-pr` | Create or update a pull request that follows the template |
 | `mermaid` | Draw diagrams in one checked house style |
 | `template-update` | Pull a newer template version and merge conflicts by file ownership |
-| `agents-md` | Audit or update AGENTS.md against the code, tasks and ADRs |
+| `agents-md` | Audit or update AGENTS.md against the code, tasks and decision records |
 | `implement-feature`, `debug`, `execute-plan`, `request-review`, `wrap-feature` | Test-driven work, debugging, step-wise execution, in-session review, finishing a branch ([Superpowers](https://github.com/obra/superpowers)) |
 
-### Guardrails
+**Sensors** check what agents produce:
 
-The same hooks run in Claude Code and Codex:
-
-- **Session start:** branch, uncommitted changes, latest plan and active runs.
-- **Before each tool call:** blocks pip, `.env` access, hand edits of `uv.lock`, force pushes and
-  skipped git hooks, and says what to do instead.
+- **Session start:** reports the branch, uncommitted changes, the latest plan and active runs.
+- **Before each tool call:** blocks pip, `.env` access, hand edits of `uv.lock`, force pushes
+  and skipped git hooks, and says what to do instead.
 - **After each edit:** formats Python with Ruff and checks Mermaid diagrams.
-- **On stop:** the delivery completion guard.
+- **On stop:** the Ralph loop's completion check.
+- **`task check`:** lint, types, import contracts and tests with 80 % branch coverage.
+- **Cross-vendor review:** Claude Code and Codex check each other's changes.
 
 Unattended runs also scrub provider tokens, restrict network access to package registries, and
 scan published commits for secrets with gitleaks.
 
-## Choose the project shape
+## The scaffold
 
 The most important questions:
 
@@ -305,12 +268,10 @@ The most important questions:
 | `tracking` | MLflow with a local SQLite store, none |
 | `infrastructure` | none, Azure with Pulumi |
 | `agent_harnesses` | Claude Code and Codex, either one, none |
-| `factory` | no, yes: the ticket factory; needs GitHub CI and both harnesses |
+| `factory` | no, yes: board mode; needs GitHub CI and both harnesses |
 
 Optional context questions seed `docs/context/` and AGENTS.md. All questions are in the
 [feature index](docs/features.md#copier-questions).
-
-## What you get
 
 ```text
 my-project/
@@ -321,7 +282,7 @@ my-project/
 ├── .claude/, .codex/             settings, hooks, roles, Codex app actions
 ├── .github/                      CI, Renovate, PR template
 ├── data/01_raw … 09_tracking/    numbered data layers, git-ignored
-├── docs/                         Sphinx site: context, method, ADRs, plans, guides
+├── docs/                         Sphinx site: context, method, decisions, plans, guides
 ├── notebooks/                    exploration, outputs stripped on commit
 ├── scripts/agent/                hook and delivery scripts
 ├── apps/<package>/               pyproject.toml, Taskfile.yml, optional Dockerfile
@@ -332,12 +293,11 @@ my-project/
 └── infra/                        Pulumi stack for Azure (optional)
 ```
 
-Every project has an 80 % branch coverage gate and a generic evaluation protocol in
-`docs/method/evaluation-protocol.md`. Runtime dependencies follow the selected tools.
-Apps never import each other. Shared libraries belong in `packages/`.
-The generated development guide explains how to add another app.
+Every project has a generic evaluation protocol in `docs/method/evaluation-protocol.md`.
+Apps never import each other. Shared libraries belong in `packages/`. The generated
+development guide explains how to add another app.
 
-## Everyday commands
+**Everyday commands:**
 
 | Command | Does |
 | --- | --- |
@@ -348,9 +308,9 @@ The generated development guide explains how to add another app.
 | `task <app>:sweep -- key=a,b` | Run every combination of overrides |
 | `task mlflow`, `task <app>:api`, `task <app>:dashboard` | Tracking UI, REST API, dashboard |
 | `task docs:serve` | Live documentation |
-| `task deliver` | Deliver a committed plan as a PR |
+| `task deliver` | Deliver a committed plan as a pull request |
 | `task deliver:status` | Delivery runs, tokens and cost |
-| `task factory:status` | Ticket factory issues per state, spend and next action |
+| `task factory:status` | Board mode issues per state, spend and next action |
 | `task update-template` | Pull the latest template version |
 
 The [feature index](docs/features.md#tasks) lists every task, including Docker and Azure.
@@ -414,10 +374,10 @@ task check
 - `task test-e2e` renders a pairwise set of projects and runs each one's `task check`.
 - `task dev` registers this working copy as a local marketplace in Claude Code and Codex.
 - `task eval` scores the skills against a no-plugin baseline. It spends model tokens.
-- The ticket factory develops this repository too: `task factory:init`, `factory:loop`,
+- Board mode develops this repository too: `task factory:init`, `factory:loop`,
   `factory:secrets` and `.github/workflows/factory.yml` work as in generated projects. The
-  root `factory.toml` also protects the delivery guard, the factory itself, ADRs and the
-  catalog, so changes there always go to a human.
+  root `factory.toml` also protects the delivery guard, the factory itself, decision records
+  and the catalog, so changes there always go to a person.
 
 Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
 
