@@ -1238,7 +1238,8 @@ def headless_prompt(run: Run, plan: str, root: Path | None = None) -> str:
             f"{protocol(run)}"
         )
     review = (
-        f" Finish with `{shlex.join(review_command(run))}`."
+        " The outer controller runs the final review outside your sandbox after you stage "
+        "publication; do not run or wait for the reviewer yourself."
         if run.cross_review == "final" and not latest_review(root or Path.cwd(), run)
         else ""
     )
@@ -2964,7 +2965,8 @@ def advance_handoff(root: Path, run: Run) -> tuple[Run, Verdict]:
             run.verified_signature != state_signature(root) or run.verified_check != run.check
         ):
             return run, Verdict("continue", run.note or "Fix the failed final gate.")
-    elif run.status == "reviewing":
+    # Publication staged before any review turns into a review handoff: run it now.
+    if run.status == "reviewing":
         command = review_command(run)
         model = f" ({run.reviewer_model})" if run.reviewer_model else ""
         note(
