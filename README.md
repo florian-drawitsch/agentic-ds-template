@@ -34,7 +34,7 @@ It combines:
   optional.
 - **Template updates:** pull new template versions without touching your code.
 
-## How it fits together
+## Template features
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/harness-and-factory-dark.svg">
@@ -56,7 +56,7 @@ The terms follow Addy Osmani's
 harness engineering as described by [OpenAI](https://openai.com/index/harness-engineering/)
 and [Birgitta Böckeler](https://www.martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html).
 
-## Lit factory and dark factory
+## Factory modes
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/lit-and-dark-factory-dark.svg">
@@ -65,9 +65,9 @@ and [Birgitta Böckeler](https://www.martinfowler.com/articles/exploring-gen-ai/
 
 - **Lit factory, interactive mode:** you work with Claude Code or Codex in your IDE or app and
   shape the design with the skills. The harness then builds it unattended.
-  [How interactive mode works](#interactive-mode-spec-driven-development).
+  [Lit factory](#lit-factory).
 - **Dark factory, board mode:** agents run from the issue to the pull request. You write the
-  issue and merge the result. [How board mode works](#board-mode-the-dark-factory).
+  issue and merge the result. [Dark factory](#dark-factory).
 
 Both modes end at the same gate: nothing merges without you.
 
@@ -113,12 +113,12 @@ Both modes end at the same gate: nothing merges without you.
 
 6. **Optionally turn on board mode:** answer `factory=yes` in step 2, push the project to
    GitHub, run `task factory:init`, then `task factory:loop` locally or `task factory:secrets`
-   for GitHub Actions. See [Board mode](#board-mode-the-dark-factory).
+   for GitHub Actions. See [Dark factory](#dark-factory).
 
-## Interactive mode: spec-driven development
+## Lit factory
 
-Open the project in Claude Code or Codex, in the terminal, your IDE or the desktop app. The
-skills load from the pinned marketplace.
+Interactive mode follows spec-driven development. Open the project in Claude Code or Codex,
+in the terminal, your IDE or the desktop app. The skills load from the pinned marketplace.
 
 1. **Brainstorm:** ask the agent to use the `brainstorm` skill. It explores requirements and
    design options. Durable decisions become decision records in `docs/adr/`.
@@ -141,7 +141,7 @@ hours, and continue with `task deliver:resume`. `task deliver:status -- --all-wo
 every run with token usage and estimated cost. Inside an agent session, the `deliver` skill
 does the same without leaving the chat.
 
-## Board mode: the dark factory
+## Dark factory
 
 Board mode turns GitHub issues into verified pull requests without a person driving each
 step. Issue labels hold the state, and a GitHub project board shows it. A deterministic
@@ -232,7 +232,7 @@ waiting for a merge, USD 20 per day and USD 100 per calendar week. Pull requests
 protected paths, such as agent settings, CI or `factory.toml`, always go to a person. The
 generated `docs/guides/factory.md` describes every label and column.
 
-## The harness
+## Harness
 
 The same harness runs in Claude Code and Codex.
 
@@ -268,7 +268,7 @@ The same harness runs in Claude Code and Codex.
 Unattended runs also scrub provider tokens, restrict network access to package registries, and
 scan published commits for secrets with gitleaks.
 
-## The scaffold
+## Scaffold
 
 The most important questions:
 
@@ -327,7 +327,7 @@ development guide explains how to add another app.
 
 The [feature index](docs/features.md#tasks) lists every task, including Docker and Azure.
 
-## Deploy to Azure
+## Deployment
 
 With `infrastructure=azure`, `infra/` holds a Pulumi stack: container registry, managed
 identity, Container Apps environment, and optionally a scheduled pipeline job, an API app, a
@@ -348,7 +348,7 @@ task infra:init && task infra:up && task infra:release
 `infra:test` needs no Azure account. The generated `docs/guides/deployment.md` covers the
 one-time setup and the GitHub Actions deployment with OpenID Connect.
 
-## Keep projects current
+## Updates
 
 ```bash
 task update-template
