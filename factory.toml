@@ -25,6 +25,10 @@ protected_paths = [
 
 project = "https://github.com/users/florian-drawitsch/projects/1"
 
+# Sprints match the board's Sprint field: two weeks from Monday 2026-11-16.
+sprint_start = 2026-11-16
+sprint_days = 14
+
 [deliver]
 # The implementer; the verifier is always the other vendor.
 harness = "claude"
