@@ -85,7 +85,9 @@ Every feature is listed in the [feature index](docs/features.md).
    the data.
 
 6. **Optionally run the ticket factory:** answer `factory=yes` in step 2, push the project to
-   GitHub and run `task factory:init`, then add the secrets from `docs/guides/factory.md`. See [Ticket factory](#ticket-factory-from-issue-to-pull-request).
+   GitHub, run `task factory:init`, then `task factory:loop` locally or
+   `task factory:secrets` for GitHub Actions. See
+   [Ticket factory](#ticket-factory-from-issue-to-pull-request).
 
 ## Ticket factory: from issue to pull request
 
@@ -127,17 +129,18 @@ flowchart LR
 
 Blue steps run unattended. Red columns wait for a person.
 
-**Set it up in a generated project:**
+**Set it up**, in a generated project or in this repository:
 
-1. Answer `factory=yes` when copying. The question appears with GitHub CI and both agent
-   harnesses, because the verifier must be the other vendor.
+1. Generated projects: answer `factory=yes` when copying. The question appears with GitHub CI
+   and both agent harnesses, because the verifier must be the other vendor. This repository
+   already has the root `factory.toml`, the tasks and the workflow.
 2. Allow `gh` to manage projects, once per machine:
 
    ```bash
    gh auth refresh -s project
    ```
 
-3. Push the project to GitHub, then create the labels and the board:
+3. Push to GitHub, then create the labels and the board:
 
    ```bash
    task factory:init
@@ -146,17 +149,47 @@ Blue steps run unattended. Red columns wait for a person.
    `init` creates the `factory:*` and `priority:*` labels and a Kanban board named
    `<repository> factory` with one Status column per state and three views, and links it to
    the repository. The board is found by that name under the repository's owner, so no URL is
-   stored and every fork gets its own board. `copier copy` and `task setup` run the same step
-   and skip it with a note while the repository, the scope or write access is missing, so
-   copying into a clone of an existing GitHub repository sets everything up at once.
+   stored and every fork gets its own board. In generated projects, `copier copy` and
+   `task setup` run the same step and skip it with a note while the repository, the scope or
+   write access is missing.
+
+4. Choose where it runs:
+   - **Locally**, with your existing `gh`, `claude` and `codex` logins and no secrets. It
+     runs while your machine and the loop run:
+
+     ```bash
+     task factory:loop
+     ```
+
+   - **In GitHub Actions**, every 10 minutes with your machine off. Set three repository
+     secrets step by step; the command opens each page in the browser and stores each value
+     without printing it:
+
+     ```bash
+     task factory:secrets
+     ```
+
+     It sets `FACTORY_GH_TOKEN` (a classic token with the `repo` and `project` scopes, or the
+     token of your `gh` login), the Claude login (`CLAUDE_CODE_OAUTH_TOKEN` from
+     `claude setup-token`, using your subscription, or `ANTHROPIC_API_KEY`) and
+     `OPENAI_API_KEY`. Until they exist, the workflow skips each run with a notice. Public
+     repositories pay no Actions minutes; private ones on the Free plan spend about 4,300
+     minutes a month on idle polling, so lengthen the interval there or run locally.
+
+5. Protect `main`: require a pull request and the CI check. The factory never merges. GitHub
+   does not let you approve your own pull requests, so with a token of your own account,
+   require no approvals, or give the token to a separate machine account.
 
 **Work with it:**
 
 1. Write an issue with a clear goal and acceptance criteria.
-2. Add the label `factory:ready`. Only labels set by users with write access count.
-3. `task factory:status` shows the issues per state, spend against the caps and the next
-   action. `task factory:tick` prints that action without changing anything.
-4. `task factory:sync` mirrors manual label changes into the board.
+2. Release it: add the label `factory:ready`, or move its card to **Ready** on the board. Only
+   users with write access count. A moved card becomes `factory:ready` at the next tick.
+3. Each tick takes one step: triage, implementation, repair or verification. The card moves
+   from Ready through Accepted, In progress and In review to Verified. You review and merge
+   the pull request.
+4. `task factory:status` shows the issues per state, spend against the caps and the next
+   action. `task factory:tick -- --dry-run` prints that action without changing anything.
 
 The board is a Kanban board: work flows continuously, one ticket at a time, with no sprints
 or estimates. `init` adds three views:
@@ -170,8 +203,8 @@ or estimates. `init` adds three views:
 Order the queue with the labels `priority:high`, `priority:medium` and `priority:low`; the
 factory picks higher priority first, then the lower issue number. To show the factory's
 limits on the board, set a column limit of 1 on In progress and 3 on Verified in the board
-settings. Labels drive the factory: moving a card does not change its label, so change the
-label instead.
+settings. Labels drive the factory: a card moved to Ready becomes `factory:ready`, and a card
+moved to any other column returns to its label's column at the next tick.
 
 `factory.toml` limits the work: one issue in progress, at most three verified pull requests
 waiting for a merge, USD 20 per day and USD 100 per calendar week. Pull requests that touch protected
@@ -380,10 +413,10 @@ task check
 - `task test-e2e` renders a pairwise set of projects and runs each one's `task check`.
 - `task dev` registers this working copy as a local marketplace in Claude Code and Codex.
 - `task eval` scores the skills against a no-plugin baseline. It spends model tokens.
-- `task factory:init` sets up the ticket factory for this repository: labels, the board and its
-  URL in the root `factory.toml`. `task factory:status` and `task factory:tick` work as in
-  generated projects. The root `factory.toml` also protects the delivery guard, the factory
-  itself, ADRs and the catalog, so changes there always go to a human.
+- The ticket factory develops this repository too: `task factory:init`, `factory:loop`,
+  `factory:secrets` and `.github/workflows/factory.yml` work as in generated projects. The
+  root `factory.toml` also protects the delivery guard, the factory itself, ADRs and the
+  catalog, so changes there always go to a human.
 
 Rules for contributors and agents are in [AGENTS.md](AGENTS.md).
 

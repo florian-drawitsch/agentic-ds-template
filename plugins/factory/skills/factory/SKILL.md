@@ -20,6 +20,8 @@ uv run --script <skill-dir>/scripts/factory.py tick --dry-run
   overrides it. It needs `gh` with the `project` scope (`gh auth refresh -s project`), and
   `--skip-unavailable` turns GitHub refusals into a note.
 - `labels` creates the factory labels only.
+- `secrets` sets the GitHub Actions secrets step by step and stores each value with
+  `gh secret set` from stdin; `--check` lists missing ones. Local runs need no secrets.
 - `sync` mirrors the label state of open issues into the board.
 - `status` shows counts per state, unadmitted issues, spend and the next action.
 - `tick --dry-run` prints the next action and changes nothing.
