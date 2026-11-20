@@ -108,15 +108,24 @@ def base_ref(root: Path, explicit: str | None) -> str:
     return "HEAD"
 
 
-def build_prompt(base: str, plan: str | None, input_dir: Path | None = None) -> str:
+def build_prompt(
+    base: str, plan: str | None, input_dir: Path | None = None, acceptance: str | None = None
+) -> str:
     """Return the review instructions."""
-    spec = (
-        f"The change implements the plan in {plan}. Read it and check spec compliance first. "
-        "Ticked plan checkboxes and a rulings section in the plan are expected delivery "
-        "bookkeeping, not scope changes; do review whether each ruling is sound."
-        if plan
-        else "Infer the intent from the commits and the diff."
-    )
+    if acceptance:
+        spec = (
+            f"There is no plan. The acceptance criteria are in {acceptance}; read them. Judge "
+            "only whether the diff meets every criterion with tests that prove it. Reject "
+            'with verdict "changes_requested" when you are unsure.'
+        )
+    elif plan:
+        spec = (
+            f"The change implements the plan in {plan}. Read it and check spec compliance first. "
+            "Ticked plan checkboxes and a rulings section in the plan are expected delivery "
+            "bookkeeping, not scope changes; do review whether each ruling is sound."
+        )
+    else:
+        spec = "Infer the intent from the commits and the diff."
     inputs = (
         f"The controller prepared read-only review inputs at {input_dir}. Read `context.md` and "
         "`diff.patch` there with the Read tool, then inspect every untracked file listed in the "
@@ -357,7 +366,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reviewer", choices=["claude", "codex"], required=True)
     parser.add_argument("--token", help="delivery run that the review belongs to")
     parser.add_argument("--base", help="commit to compare against (default: merge base with main)")
-    parser.add_argument("--plan", help="plan the change implements")
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--plan", help="plan the change implements")
+    source.add_argument(
+        "--acceptance", help="file with acceptance criteria; the reviewer has no plan"
+    )
     parser.add_argument("--model", help="reviewer model (Codex default: gpt-6.1-sol)")
     parser.add_argument("--codex-bin", help="Codex executable (default: CODEX_BIN or PATH)")
     parser.add_argument("--preflight", action="store_true", help="check reviewer installation only")
@@ -383,7 +396,7 @@ def main(argv: list[str] | None = None) -> int:
 
     root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel"))
     base = base_ref(root, args.base)
-    prompt = build_prompt(base, args.plan)
+    prompt = build_prompt(base, args.plan, acceptance=args.acceptance)
     run_dir = None
     review_budget = 2.0
     remaining_budget = float("inf")
@@ -466,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
 
     signature = state_signature(root)
     input_dir = write_review_inputs(root, base, args.token)
-    prompt = build_prompt(base, args.plan, input_dir)
+    prompt = build_prompt(base, args.plan, input_dir, args.acceptance)
     review_started = time.monotonic()
     review_started_at = datetime.now(UTC).isoformat(timespec="seconds")
     try:
