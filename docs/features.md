@@ -367,6 +367,10 @@ harness CLIs.
 | Claim | The first non-forced push of `feat/<issue>-<slug>` wins |
 | Protected paths | `touches_protected` checks a diff, renames included |
 | Spend ledger | Cost markers in ticket comments; the daily or weekly cap turns the tick into idle |
+| Holdout checks | `[holdout]` in `factory.toml` (local path or `git` URL with a ref, command, timeout): run before the verifier with a scrubbed environment; only check names and pass or fail are kept; a local path is denied to the worker with `deliver.py headless --deny-path`; a failure sets `factory:needs-human` |
+| Reports | `report daily` and `report weekly` edit one marked comment per day or week on the "Factory status" issue (`factory:tracking`): states, blocked causes, spend, throughput, cycle time, cost per ticket |
+| Retrospective | `report retro` after `retro_every` merged PRs: evidence file, `agents-md` run through `deliver.py headless`, PR labeled `factory:needs-human`, marker on the tracking issue |
+| Board mirror and intake | Each label change mirrors that issue into the board; an admitted move into Ready sets `factory:ready` (other boards, automated and outsider moves are ignored); `tick --scheduled` runs the full sync |
 
 ### Codex app
 

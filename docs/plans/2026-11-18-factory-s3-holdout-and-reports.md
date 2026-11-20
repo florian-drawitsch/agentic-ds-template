@@ -18,12 +18,12 @@ Non-goals: template integration (S4). Automatic merge.
 
 ## Implementation sequence
 
-- [ ] **Holdout configuration.** `[holdout]` in `factory.toml`: `source` is a local path or a
+- [x] **Holdout configuration.** `[holdout]` in `factory.toml`: `source` is a local path or a
   `git` URL with a ref, `command` is the command to run inside the PR worktree with
   `FACTORY_HOLDOUT_DIR` set to the checked-out holdout, `timeout_minutes` defaults to 30.
   Validation rejects a `source` inside the repository. Tests: path, git source, inside-repo
   rejection, missing command.
-- [ ] **Holdout run.** Before the verifier, the controller fetches the holdout into a
+- [x] **Holdout run.** Before the verifier, the controller fetches the holdout into a
   temporary directory outside every worktree, runs the command with a scrubbed environment
   (reuse the env-scrub approach of `deliver.py`), and keeps only the exit code and a list of
   check names with pass or fail parsed from JSON lines `{"check": str, "passed": bool}` on
@@ -31,20 +31,20 @@ Non-goals: template integration (S4). Automatic merge.
   failed check names only, then `factory:needs-human`. Missing holdout configuration skips the
   step. Tests: pass, fail, timeout, output that tries to leak data is dropped, temporary
   directory removed.
-- [ ] **Worker denial.** Add the holdout path to the deny list that `deliver.py headless`
+- [x] **Worker denial.** Add the holdout path to the deny list that `deliver.py headless`
   passes to the worker sandbox, through a new `--deny-path` option that `factory.py` sets.
   Tests in `tests/test_deliver.py`: the option appears in the Claude settings and the Codex
   profile of a headless round.
-- [ ] **Tracking issue.** `ensure_tracking_issue()` finds or creates one issue titled
+- [x] **Tracking issue.** `ensure_tracking_issue()` finds or creates one issue titled
   "Factory status" with the label `factory:tracking`, pinned when the API allows it. Tests:
   create once, reuse after.
-- [ ] **Reports.** New subcommand `report daily|weekly`. Daily: issues per state, blocked
+- [x] **Reports.** New subcommand `report daily|weekly`. Daily: issues per state, blocked
   issues with their causes, spend against both caps. Weekly, for the calendar week in UTC:
   throughput (merged PRs), cycle time from `factory:accepted` to merge, age of issues in
   progress, cost per ticket from cost markers, `needs-human` causes grouped. Both post one
   comment on the tracking issue, with a marker so a rerun on the same day or week edits
   instead of adding. Tests with fixed snapshots and `now`.
-- [ ] **Retrospective.** New key `retro_every` in `factory.toml` (int, default 10). Once that
+- [x] **Retrospective.** New key `retro_every` in `factory.toml` (int, default 10). Once that
   many PRs merged since the last retrospective marker, `report retro` collects their
   `needs-human` causes, declined findings and cost outliers (above twice the median) into a
   file, runs the `agents-md` skill through `deliver.py headless` with a generated plan that
@@ -52,12 +52,12 @@ Non-goals: template integration (S4). Automatic merge.
   `<!-- factory:retro -->` marker on the tracking issue. The PR touches protected paths, so it
   is labeled `factory:needs-human` and never verified automatically. Tests with a fake deliver
   runner: below the count nothing runs, at the count one run, the marker resets the count.
-- [ ] **Board mirror.** Done early: `factory.py init` creates and links the board and sets
+- [x] **Board mirror.** Done early: `factory.py init` creates and links the board and sets
   its Status columns, and `factory.py sync` mirrors every open issue. Left for this stage:
   after every label change, the controller mirrors that one issue with the same code. Errors
   are logged and never fail the tick. Tests: mirror called once per label change, `gh` error
   tolerated.
-- [ ] **Board intake.** New `GitHub` method `status_changes(issue)` reads the issue's
+- [x] **Board intake.** New `GitHub` method `status_changes(issue)` reads the issue's
   `ProjectV2ItemStatusChangedEvent` timeline items through GraphQL: actor, project, status,
   `wasAutomated`, time. Extend admission from S1: the latest Ready signal, either a
   `factory:ready` label event or a move into Ready on the factory board, must come from an
@@ -72,7 +72,7 @@ Non-goals: template integration (S4). Automatic merge.
   already Accepted is left alone, a later outsider label after an admitted move is rejected,
   the controller's own label passes admission, a card dragged to Verified returns to its
   label's column.
-- [ ] **Docs and gate.** Document holdouts (with the data science example from ADR-0033),
+- [x] **Docs and gate.** Document holdouts (with the data science example from ADR-0033),
   reports, the board mirror and board intake in the skill and `docs/features.md`. Run
   `task check`.
 
@@ -91,3 +91,21 @@ Non-goals: template integration (S4). Automatic merge.
   the holdout through repeated runs; if wrong, a human reads the full output locally.
 - Report comments are edited in place by marker: one comment per day keeps the tracking issue
   readable; if wrong, switch to new comments.
+- Tests for S3 live in `tests/test_factory_s3.py`, with the fake GitHub extended in
+  `tests/factory_fakes.py`: `tests/test_factory.py` is already 840 lines; if wrong, merge the
+  files. The deny-path tests are in `tests/test_deliver.py` as planned.
+- Git holdout source written as `<url>#<ref>` in one `source` string: keeps the `[holdout]`
+  table to the three planned keys; if wrong, add a `ref` key.
+- Check names are reduced to `[\w .:/-]` and 80 characters, at most 100 checks: the name is the
+  only text that reaches the comment, so it cannot carry markup; if wrong, loosen the filter.
+- Declined findings for the retrospective come through an injectable `Env.declined` source that
+  returns nothing by default: the controller has no stable API to the delivery run's finding
+  records; if wrong, wire it to the run directory's `findings.json`.
+- The `task check` step of the docs item runs in the controller's final gate, not here: the
+  run instructions give the controller the broad gate. Focused checks run here: ruff, ty,
+  `tests/test_factory*.py`, `tests/test_deliver.py` and the build check.
+- Board lookups in a tick are one extra `gh` call set per tick; errors only log. If the board
+  cost matters, cache the board id in `.factory/`.
+- External acceptance pending, not passed: posting reports and updating a real board with
+  `gh` project scope, and the live check that a card moved on a personal-account board becomes
+  `factory:ready`.
