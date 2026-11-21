@@ -527,16 +527,17 @@ def test_admitted_move_after_an_outsider_label_counts():
     assert factory.admitted(gh, gh.issues[1], factory.Config(), board)
 
 
-def test_tick_runs_intake_before_the_snapshot_and_scheduled_sync(tmp_path):
+@pytest.mark.parametrize("scheduled", [True, False])
+def test_tick_runs_intake_before_the_snapshot_and_the_sync(tmp_path, scheduled):
     gh, _ = board_gh()
     card(gh, 1, [])
     gh.move(1, "maint")
     card(gh, 2, ["factory:verified"], status="Verified")
     out = []
     e = env(gh, root=tmp_path)
-    factory._tick(e, False, False, out.append, scheduled=True)
+    factory._tick(e, False, False, out.append, scheduled=scheduled)
     assert out[0].startswith("triage #1")  # intake released #1 before the snapshot
-    assert gh.item_values  # the full sync mirrored the cards
+    assert gh.item_values  # the full sync mirrored the cards on every tick
 
 
 def test_card_dragged_to_verified_returns_to_its_label_column():

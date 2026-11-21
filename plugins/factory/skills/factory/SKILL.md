@@ -76,8 +76,8 @@ makes a rerun edit the comment instead of adding one.
   factory label or `factory:needs-info`, and was moved there by an admitted user gets
   `factory:ready`. Moves on other boards, automated moves and moves by users without write
   access are ignored. The controller's own label counts as admitted.
-- `tick --scheduled` also runs the full `sync`, which moves hand-placed cards back to the
-  column of their label.
+- Every `tick` also runs the full `sync`, which adds released tickets to the board and moves
+  hand-placed cards back to the column of their label.
 - The latest Ready signal decides admission: a later `factory:ready` label or Ready move by
   an outsider revokes an earlier admitted one.
 

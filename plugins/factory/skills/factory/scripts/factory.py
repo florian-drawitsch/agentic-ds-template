@@ -2759,7 +2759,11 @@ def make_mirror(github: GitHub, config: Config) -> Callable[[int], None]:
 
 
 def _board_tick(env: Env, scheduled: bool) -> Board | None:
-    """Run board intake and, when scheduled, the full sync; errors are logged, never raised."""
+    """Run board intake and the full sync; errors are logged, never raised.
+
+    The sync runs on every tick, so a ticket released by label appears on the board at once,
+    not only at the next scheduled run.
+    """
     try:
         board = find_board(env.github, env.config, env.github.repository())[0]
     except Exception as exc:
@@ -2772,11 +2776,10 @@ def _board_tick(env: Env, scheduled: bool) -> Board | None:
             mirror_issue(env, number)
     except Exception as exc:
         log_error(env, f"board intake: {exc!r}")
-    if scheduled:
-        try:
-            sync_board(env.github, board, factory_issues(env.github))
-        except Exception as exc:
-            log_error(env, f"board sync: {exc!r}")
+    try:
+        sync_board(env.github, board, factory_issues(env.github))
+    except Exception as exc:
+        log_error(env, f"board sync: {exc!r}")
     return board
 
 
