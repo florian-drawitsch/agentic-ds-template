@@ -189,14 +189,20 @@ def test_factory_init_skips_before_the_repository_exists(factory_project: Path) 
     result = subprocess.run(
         [sys.executable, "scripts/agent/factory.py", "init", "--skip-unavailable"],
         cwd=factory_project,
-        env={"PATH": "/usr/bin:/bin", "HOME": str(factory_project), "GH_CONFIG_DIR": "/nonexistent"},
+        env={
+            "PATH": "/usr/bin:/bin",
+            "HOME": str(factory_project),
+            "GH_CONFIG_DIR": "/nonexistent",
+        },
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0, result.stderr
     assert "skipped" in result.stderr
-    assert "project =" not in (factory_project / "factory.toml").read_text().replace("# project", "")
+    assert "project =" not in (factory_project / "factory.toml").read_text().replace(
+        "# project", ""
+    )
 
 
 def test_factory_workflow_is_safe_and_calls_existing_tasks(factory_project: Path) -> None:
@@ -208,7 +214,13 @@ def test_factory_workflow_is_safe_and_calls_existing_tasks(factory_project: Path
     assert triggers["issues"]["types"] == ["labeled"]
     assert "pull_request_target" not in text
     assert workflow["permissions"] == {"contents": "read"}
-    assert workflow["concurrency"] == {"group": "factory", "cancel-in-progress": False}
+    # Job-level only: a skipped run must not join the group and cancel a queued tick.
+    assert "concurrency" not in workflow
+    for name in ("tick", "report-daily"):
+        assert workflow["jobs"][name]["concurrency"] == {
+            "group": "factory",
+            "cancel-in-progress": False,
+        }
     tasks = task_names(factory_project)
     for job in workflow["jobs"].values():
         assert job["timeout-minutes"] > 0
@@ -222,7 +234,7 @@ def test_factory_workflow_is_safe_and_calls_existing_tasks(factory_project: Path
                 assert command.split()[1] in tasks, command
             if step.get("id") == "ready":
                 # Only tests whether the secrets are set; it never prints them.
-                assert "echo \"$" not in command
+                assert 'echo "$' not in command
                 continue
             if "secrets.ANTHROPIC_API_KEY" in str(step.get("env", {})):
                 assert command.startswith("task factory:"), command
@@ -279,7 +291,8 @@ PAIRS: dict[tuple[str, ...], tuple[set[str], set[str]]] = {
 
 
 @pytest.mark.parametrize(
-    "harnesses", [["claude", "codex"], ["claude", "gemini"], ["codex", "gemini"], ["gemini", "codex", "claude"]]
+    "harnesses",
+    [["claude", "codex"], ["claude", "gemini"], ["codex", "gemini"], ["gemini", "codex", "claude"]],
 )
 def test_factory_workflow_uses_only_the_configured_vendors(tmp_path: Path, harnesses) -> None:
     root = render(tmp_path / "p", factory=True, agent_harnesses=harnesses)

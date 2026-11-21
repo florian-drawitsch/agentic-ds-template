@@ -22,10 +22,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: factory
-  cancel-in-progress: false
-
 jobs:
   tick:
     name: Tick
@@ -33,6 +29,12 @@ jobs:
       github.event_name == 'workflow_dispatch'
       || (github.event_name == 'issues' && github.event.label.name == 'factory:ready')
       || (github.event_name == 'schedule' && github.event.schedule == '23 * * * *')
+    # Job-level, so runs whose job is skipped (for example one started by the controller's own
+    # labels) never join the group. GitHub keeps one waiting run per group and cancels older
+    # waiting ones, so a workflow-level group let those runs cancel queued ticks.
+    concurrency:
+      group: factory
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # The hosted-runner maximum. One tick runs at most one delivery; if the job is cut
     # off, the next tick resumes the saved run.
@@ -107,6 +109,10 @@ jobs:
     name: Daily report
     if: github.event_name == 'schedule' && github.event.schedule == '0 6 * * *'
     runs-on: ubuntu-latest
+    # Shares the tick's group: the retrospective writes to GitHub too.
+    concurrency:
+      group: factory
+      cancel-in-progress: false
     timeout-minutes: 360
     steps:
       # Until `task factory:secrets` has run, skip quietly instead of failing every run.
