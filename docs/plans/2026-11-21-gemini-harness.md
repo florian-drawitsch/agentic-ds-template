@@ -89,7 +89,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
 ## Implementation sequence
 
-- [ ] **Spike, recorded in ADR-0034.** With the installed Gemini CLI, establish:
+- [x] **Spike, recorded in ADR-0034.** With the installed Gemini CLI, establish:
   1. resuming a session by its `session_id`;
   2. that `plan` mode can still read files;
   3. how the sandbox works: Docker or Podman on Linux, Seatbelt on macOS;
@@ -203,3 +203,7 @@ External checks, which need the repository secrets and spend API credit:
   refusing to start without path denial. `--harness gemini` stays rejected by the parser.
   ADR-0034 lists the open spike items. External acceptance (Claude implementing with Gemini
   reviewing, and the Actions triage) is pending, not passed.
+- Spike ran outside the delivery sandbox, on macOS with the user's key, because the sandbox has
+  neither the CLI nor network access to Google; results and the implementer design are in
+  ADR-0034 under "Spike results" and "Gemini as implementer"; if wrong, Gemini rounds fail
+  to start or commit, which the implementer tests and the external check catch.
