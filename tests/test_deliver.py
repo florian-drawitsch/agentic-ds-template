@@ -1919,9 +1919,11 @@ def test_codex_without_permission_profiles_refuses_denied_paths(
 def test_gemini_round_command_and_resume() -> None:
     first = deliver.agent_command("gemini", "Go", None, True, None, "x")
     later = deliver.agent_command("gemini", "Go", "sess-1", False, "gemini-4-hydrogen", "x")
-    assert first[:2] == ["gemini", "-m"] and first[2] == "gemini-4-neon"
+    assert first[:2] == ["gemini", "-m"]
+    assert first[2] == "gemini-4-neon"
     for command in (first, later):
-        assert "-s" in command and "--skip-trust" in command
+        assert "-s" in command
+        assert "--skip-trust" in command
         assert command[command.index("--approval-mode") + 1] == "yolo"
         assert command[command.index("--output-format") + 1] == "json"
         assert command[-2:] == ["-p", "Go"]
@@ -1959,7 +1961,7 @@ def test_gemini_environment_keeps_only_its_login_and_writes_profile(tmp_path, mo
     assert "sandbox-macos-deliver.sb" in (root / ".git/info/exclude").read_text()
     settings = json.loads(Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text())
     blocked = settings["security"]["environmentVariableRedaction"]["blocked"]
-    assert "GEMINI_API_KEY" in blocked and "GH_TOKEN" in blocked
+    assert {"GEMINI_API_KEY", "GH_TOKEN"} <= set(blocked)
 
 
 def test_gemini_round_parses_session_usage_and_cost(tmp_path, monkeypatch) -> None:
@@ -1987,4 +1989,5 @@ def test_gemini_round_failure_and_rate_limit(tmp_path, monkeypatch) -> None:
         lambda c, **k: subprocess.CompletedProcess(c, 1, "", "429 RESOURCE_EXHAUSTED"),
     )
     result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {})
-    assert result.failed and result.rejected
+    assert result.failed
+    assert result.rejected
