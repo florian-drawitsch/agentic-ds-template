@@ -1979,6 +1979,8 @@ def test_gemini_environment_writes_srt_settings_and_keeps_only_its_login(
     srt = json.loads((run.directory(root) / "srt.json").read_text())
     assert srt["network"]["allowedDomains"][0] == "generativelanguage.googleapis.com"
     assert "pypi.org" in srt["network"]["allowedDomains"]
+    # srt 0.0.83 refuses a settings file without the denied-domains list.
+    assert srt["network"]["deniedDomains"] == []
     assert "/cache" in srt["filesystem"]["allowWrite"]
     assert str(root.resolve()) in srt["filesystem"]["allowWrite"]
     assert any(path.endswith(".git/hooks") for path in srt["filesystem"]["denyWrite"])

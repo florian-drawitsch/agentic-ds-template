@@ -1810,6 +1810,8 @@ def gemini_srt_settings(
     )
     domains = rules["network"]["allowedDomains"]
     rules["network"]["allowedDomains"] = list(dict.fromkeys([*GEMINI_HOSTS, *domains]))
+    # srt rejects a settings file without this list and refuses to start.
+    rules["network"]["deniedDomains"] = []
     keep = set(VENDOR_ENV["gemini"])
     rules["credentials"]["envVars"] = [
         entry for entry in rules["credentials"]["envVars"] if entry["name"] not in keep
