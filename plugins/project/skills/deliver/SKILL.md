@@ -60,7 +60,7 @@ and remains enabled; delivery cross-review selects an agent, not a GitHub review
 ## Terminal dialogs
 
 Run `task deliver` to choose a plan, implementation harness, reviewer, and review budget.
-Defaults are Codex/Sol, Claude/Opus, and one review. Gemini is offered as a reviewer (Carbon or Neon); it implements headless on macOS only (ADR-0034). Implementation menus include GPT-6.1 Sol
+Defaults are Codex/Sol, Claude/Opus, and one review. Gemini is offered as a reviewer (Carbon or Neon); it implements headless on macOS and Linux inside `srt`, which needs `srt`, plus bubblewrap, socat and ripgrep on Linux; its shell commands have no network (ADR-0034). Implementation menus include GPT-6.1 Sol
 and GPT-6 Luna for Codex, and Sonnet, Opus and Haiku for Claude. They show default effort
 and offer an effort selector: high for Luna/Haiku, medium for frontier implementers.
 Reviewers always use a frontier model (Sol or Opus in the menus) at high effort;

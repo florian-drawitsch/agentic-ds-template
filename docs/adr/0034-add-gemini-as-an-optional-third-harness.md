@@ -80,23 +80,55 @@ Run on 2026-11-21 on macOS with Gemini CLI 0.70.0, `gemini-4-hydrogen`, and the 
 
 ## Gemini as implementer
 
-`deliver headless` runs Gemini only on macOS. Each round:
+The spike above used Gemini's own Seatbelt sandbox, which exists only on macOS. A second probe on
+2026-11-21 replaced it with Anthropic's `sandbox-runtime` (`srt` 0.0.83, bubblewrap 0.11.1,
+Gemini CLI 0.70.0, `gemini-4-hydrogen`, eight runs on `ubuntu-latest`). `srt` uses Seatbelt on
+macOS and bubblewrap with a network proxy on Linux, and reads the rules `deliver` already
+builds for Claude.
 
-1. The controller writes a Seatbelt profile and a settings file to the run directory, outside
-   the worktree. It points `GEMINI_CLI_SYSTEM_SETTINGS_PATH` at the settings file, so the
-   agent cannot weaken them.
-   - The profile is `strict-proxied` with the shared git directory added to the readable and
-     writable paths. It is copied into the worktree's `.gemini/` only because the CLI looks it
-     up there; `.git/info/exclude` keeps it out of commits, and the controller rewrites it
-     before each round.
-   - The settings enable environment variable redaction for every credential name the
-     controller already scrubs.
-2. It starts the allowlist proxy through `GEMINI_SANDBOX_PROXY_COMMAND`. The allowlist is
-   the Gemini API hosts plus the `deliver.toml` network hosts.
-3. It runs `gemini -m <model> -s --approval-mode yolo --output-format json --skip-trust -p`,
-   or `-r <session_id>` for later rounds.
+| Check, from the agent's shell | Result |
+| --- | --- |
+| Gemini key | absent: Gemini's shell tool drops it |
+| Other secret variables (`credentials.envVars`, mode `deny`) | withheld |
+| `~/.ssh` (`denyRead`) | blocked |
+| Writes outside the project | blocked |
+| Writes inside the project | allowed |
+| Commit from a worktree, shared `.git` in `allowWrite` | works |
+| Gemini's own API calls | work through `srt`'s proxy and allowlist |
+| `example.com`, `pypi.org` | blocked: the shell tool drops the proxy variables, so agent commands have no network |
 
-On Linux, and when the installed CLI lacks Seatbelt, delivery refuses Gemini as implementer.
+Runner preparation on Ubuntu 24.04:
+
+1. `apt-get install bubblewrap socat ripgrep`.
+2. `sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`.
+3. `apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict`, or `srt`'s seccomp helper fails.
+4. Create `~/.gemini`, `~/.cache`, `~/.npm` and `/tmp/claude` first.
+
+Steps 2 and 3 weaken the host's hardening. That is acceptable on a throwaway hosted runner, not
+on a developer machine. macOS needs none of them.
+
+Decisions:
+
+- **D1:** `srt` is the Gemini implementer's sandbox on macOS and Linux. The custom Seatbelt
+  profile, `GEMINI_SANDBOX_PROXY_COMMAND` and the stdlib proxy are gone.
+- **D2:** the `srt` settings come from the builder that also feeds Claude's sandbox settings:
+  writable roots, protected git paths, denied paths, allowed hosts, credential files and
+  variables. The Gemini API hosts are added. `GEMINI_API_KEY` is not withheld from the `gemini`
+  process; Gemini's redaction setting keeps it out of the agent's shell.
+- **D3:** agent shell commands have no network. `uv sync` in the setup command installs
+  dependencies before the agent starts. A plan that needs a new dependency blocks the run.
+- **D4:** `srt` is pinned in `deliver.toml` (`srt_version`) and in the factory workflow.
+  `deliver doctor` reports a missing `srt`, `bwrap`, `socat` or `rg` when `factory.toml` selects
+  Gemini as the implementer.
+- **D5:** the factory workflow prepares the runner (steps 1 to 4) only when `factory.toml`
+  selects Gemini as the implementer.
+
+Each round writes `srt.json` and Gemini's settings to the run directory, outside the worktree,
+points `GEMINI_CLI_SYSTEM_SETTINGS_PATH` at the settings, and runs
+`srt --settings <run-dir>/srt.json -- gemini -m <model> --approval-mode yolo --output-format
+json --skip-trust -p`, or with `-r <session_id>` for later rounds. Delivery refuses Gemini as
+implementer when `srt` is missing, or on Linux when `bwrap`, `socat` or `rg` is.
+
 Reviewing works everywhere. Plan mode alone is not read-only, because Gemini CLI 0.70.0 approves
 `exit_plan_mode` in headless runs and switches to YOLO. Reviews and triage therefore also load an
 admin policy that denies mode changes, writes, shell commands and network tools. The review
@@ -106,8 +138,9 @@ inputs go on standard input, since the file tools cannot read the Git directory.
 
 - Gemini reviews in `cross-review`, the factory (triage and verification) and `deliver`.
 - The factory workflow is rendered per vendor pair and installs only the pinned CLIs it uses.
-- Gemini implements in `deliver headless` on macOS only, inside the profile, redaction and
-  proxy above. The factory orders vendors Claude, Codex, Gemini, so Gemini implements there
-  only when it is configured explicitly.
+- Gemini implements in `deliver headless` on macOS and Linux, inside `srt`. The factory orders
+  vendors Claude, Codex, Gemini, so Gemini implements there only when `factory.toml` says so.
+  The workflow then needs a prepared runner (D5).
+- Agent shell commands have no network, so a plan that adds a dependency blocks the run.
 - Gemini CLI updates can change the sandbox behaviour. Rerun these checks when bumping the
   pinned version.

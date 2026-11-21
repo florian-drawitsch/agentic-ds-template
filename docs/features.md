@@ -258,7 +258,8 @@ builds the site with warnings as errors.
 
 Claude Code and Codex are configured side by side and share one operating model. Every plugin
 works in both (ADR-0017). Gemini is an optional third harness for review, triage and the
-factory; it implements headless on macOS only (ADR-0034).
+factory; it implements headless on macOS and Linux inside `srt`, with no network for its shell
+commands (ADR-0034).
 
 ### Instructions
 

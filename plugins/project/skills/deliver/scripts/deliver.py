@@ -121,7 +121,6 @@ VENDORS = ("codex", "claude", "gemini")
 IMPLEMENTERS = ("claude", "codex", "gemini")
 VENDOR_TITLES = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini"}
 GEMINI_HOSTS = ("generativelanguage.googleapis.com", "play.googleapis.com")
-GEMINI_PROXY_PORT = 8877
 GEMINI_IMPLEMENT_MODELS = ["gemini-4-neon", "gemini-4-hydrogen", "gemini-4-carbon"]
 # Default and menu models per reviewer vendor. Never use Gemini CLI aliases.
 REVIEW_MODELS = {
@@ -1078,6 +1077,12 @@ def cmd_install(args: argparse.Namespace) -> int:
     return 0
 
 
+def gemini_implementer_configured(target: Path) -> bool:
+    """Tell whether the project's factory configuration names Gemini as the implementer."""
+    section = read_toml(target / "factory.toml").get("deliver", {})
+    return isinstance(section, dict) and section.get("harness") == "gemini"
+
+
 def doctor(target: Path) -> list[str]:
     """Return the problems that keep the guard or roles from working."""
     problems = []
@@ -1105,6 +1110,11 @@ def doctor(target: Path) -> list[str]:
         problems.append(f"{WORKTREES_DIRNAME}/ is not git-ignored; run install")
     if shutil.which("uv") is None:
         problems.append("uv is not on PATH; the hooks run the guard with uv")
+    if gemini_implementer_configured(target):
+        try:
+            require_gemini_implementer()
+        except SystemExit as exc:
+            problems.append(f"Gemini is configured as the implementer: {exc}")
     if shutil.which("srt") is None:
         print("Optional gate sandbox: srt not installed (env-scrub remains available).")
     else:
@@ -1260,6 +1270,17 @@ def default_setup(workdir: Path) -> str | None:
     return "uv sync" if (workdir / "pyproject.toml").is_file() else None
 
 
+def no_network_note(run: Run) -> str:
+    """Tell a Gemini worker that its shell commands have no network (ADR-0034)."""
+    if run.harness != "gemini":
+        return ""
+    return (
+        "Your shell commands have no network access, and dependencies are installed before "
+        "the run. If the plan needs a new dependency, block the run with that reason instead "
+        "of retrying installs. "
+    )
+
+
 def headless_prompt(run: Run, plan: str, root: Path | None = None) -> str:
     """Return the first prompt of an unattended run."""
     controller = f"uv run --no-project python {shlex.quote(str(Path(__file__).resolve()))}"
@@ -1310,7 +1331,7 @@ def headless_prompt(run: Run, plan: str, root: Path | None = None) -> str:
         "all independent authorized implementation, documentation, focused tests and review "
         "preparation. Record that external acceptance as pending, never as passed, and block "
         "only once the implementation is ready for it. "
-        f"{protocol(run)}"
+        f"{no_network_note(run)}{protocol(run)}"
     )
 
 
@@ -1428,33 +1449,44 @@ def codex_profile_mode() -> bool:
     return bool(match and tuple(map(int, match.groups())) >= MIN_CODEX_PROFILE_VERSION)
 
 
+def sandbox_rules(
+    writable: list[str], root: Path | None = None, deny: Sequence[str] = ()
+) -> dict[str, Any]:
+    """Return the filesystem, network and credential rules shared by the agent sandboxes.
+
+    Shell commands can write to the worktree, the temp directory and the given paths, and reach
+    package hosts only. Paths in `deny` can be neither read nor written.
+    """
+    root = root or Path.cwd()
+    return {
+        "filesystem": {
+            "allowWrite": writable,
+            "denyWrite": [*protected_git_paths(root), *deny],
+            "denyRead": list(deny),
+        },
+        "network": {"allowedDomains": allowed_hosts(root)},
+        # Claude Code 2.1.303 expects one entry per path or variable, each with its own mode.
+        "credentials": {
+            "files": [{"path": path, "mode": "deny"} for path in credential_file_paths(root)],
+            "envVars": [{"name": name, "mode": "deny"} for name in CREDENTIAL_ENV],
+        },
+    }
+
+
 def claude_sandbox_settings(
     writable: list[str], root: Path | None = None, deny: Sequence[str] = ()
 ) -> str:
     """Return session settings that confine Claude's shell commands to the worktree.
 
-    Shell commands run in the operating-system sandbox and are approved automatically; they can
-    write to the worktree, the temp directory and the given paths, and reach package hosts only.
-    File edits are approved by the acceptEdits permission mode. Paths in `deny` can be neither
-    read nor written.
+    Shell commands run in the operating-system sandbox and are approved automatically.
+    File edits are approved by the acceptEdits permission mode.
     """
+    rules = sandbox_rules(writable, root, deny)
     sandbox = {
         "enabled": True,
         "autoAllowBashIfSandboxed": True,
         "allowUnsandboxedCommands": False,
-        "filesystem": {
-            "allowWrite": writable,
-            "denyWrite": [*protected_git_paths(root or Path.cwd()), *deny],
-            "denyRead": list(deny),
-        },
-        "network": {"allowedDomains": allowed_hosts(root or Path.cwd())},
-        # Claude Code 2.1.303 expects one entry per path or variable, each with its own mode.
-        "credentials": {
-            "files": [
-                {"path": path, "mode": "deny"} for path in credential_file_paths(root or Path.cwd())
-            ],
-            "envVars": [{"name": name, "mode": "deny"} for name in CREDENTIAL_ENV],
-        },
+        **rules,
         "failIfUnavailable": True,
     }
     return json.dumps({"sandbox": sandbox})
@@ -1498,8 +1530,8 @@ def agent_command(
             "version); upgrade it or use Claude Code as the implementer"
         )
     if harness == "gemini":
-        # The sandbox profile, proxy and settings come from the environment: see gemini_environment.
-        command = ["gemini", "-m", model or GEMINI_IMPLEMENT_MODELS[0], "-s"]
+        # `srt` wraps the round (see gemini_round_command); settings come from gemini_environment.
+        command = ["gemini", "-m", model or GEMINI_IMPLEMENT_MODELS[0]]
         command += ["--approval-mode", "yolo", "--output-format", "json", "--skip-trust"]
         command += [] if first else ["-r", str(session)]
         return [*command, "-p", prompt]
@@ -1747,127 +1779,59 @@ def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -
 
 # --- Gemini rounds (ADR-0034) ----------------------------------------------------------------
 
-GEMINI_PROXY = """\
-import os, select, socket, sys, threading, time
-ALLOW = set(filter(None, os.environ.get("GEMINI_PROXY_ALLOW", "").split(",")))
-def pipe(a, b):
-    try:
-        while True:
-            ready, _, _ = select.select([a, b], [], [], 60)
-            if not ready:
-                return
-            for src in ready:
-                data = src.recv(65536)
-                if not data:
-                    return
-                (b if src is a else a).sendall(data)
-    except OSError:
-        pass
-    finally:
-        a.close(); b.close()
-def handle(client):
-    try:
-        head = b""
-        while b"\\r\\n\\r\\n" not in head and len(head) < 65536:
-            chunk = client.recv(4096)
-            if not chunk:
-                return client.close()
-            head += chunk
-        method, target, *_ = head.split(b"\\r\\n")[0].decode("latin-1").split()
-        host, _, port = target.rpartition(":")
-        if method != "CONNECT" or host not in ALLOW:
-            client.sendall(b"HTTP/1.1 403 Forbidden\\r\\n\\r\\n")
-            return client.close()
-        upstream = socket.create_connection((host, int(port)), timeout=30)
-        client.sendall(b"HTTP/1.1 200 Connection Established\\r\\n\\r\\n")
-        pipe(client, upstream)
-    except Exception:
-        client.close()
-def watch(parent):
-    while os.getppid() == parent:
-        time.sleep(2)
-    os._exit(0)
-threading.Thread(target=watch, args=(os.getppid(),), daemon=True).start()
-server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-server.bind(("::", int(sys.argv[1])))
-server.listen(64)
-while True:
-    conn, _ = server.accept()
-    threading.Thread(target=handle, args=(conn,), daemon=True).start()
-"""
-
-
-def gemini_bundle_profile() -> Path | None:
-    """Locate the Gemini CLI's strict-proxied Seatbelt profile next to its executable."""
-    binary = shutil.which("gemini")
-    if not binary:
-        return None
-    path = Path(binary).resolve().parent / "sandbox-macos-strict-proxied.sb"
-    return path if path.is_file() else None
+LINUX_SANDBOX_TOOLS = ("bwrap", "socat", "rg")
 
 
 def require_gemini_implementer() -> None:
-    """Refuse Gemini as implementer unless the sandbox can deny paths and limit the network."""
-    if sys.platform != "darwin":
+    """Refuse Gemini as implementer unless `srt` and its platform tools are installed."""
+    missing = [] if shutil.which("srt") else ["srt (sandbox-runtime)"]
+    if sys.platform.startswith("linux"):
+        missing += [tool for tool in LINUX_SANDBOX_TOOLS if shutil.which(tool) is None]
+    elif sys.platform != "darwin":
+        raise SystemExit("Gemini implements only on macOS and Linux (ADR-0034)")
+    if missing:
         raise SystemExit(
-            "Gemini implements only on macOS, where its Seatbelt sandbox can deny paths and "
-            "limit the network; use Claude Code or Codex as the implementer (ADR-0034)"
-        )
-    if gemini_bundle_profile() is None:
-        raise SystemExit(
-            "This Gemini CLI has no strict-proxied Seatbelt profile, so it cannot deny paths to "
-            "the worker; install a current Gemini CLI or use another implementer"
+            f"Gemini needs {', '.join(missing)} to sandbox the worker; install them or use "
+            "another implementer (ADR-0034)"
         )
 
 
-def seatbelt_quote(value: str) -> str:
-    """Quote a path for a Seatbelt profile, refusing characters that cannot be escaped safely."""
-    if any(char in value for char in '"\\\n'):
-        raise SystemExit(
-            f"Gemini cannot deny the path {value!r}; rename it or use another implementer"
-        )
-    return value
+def gemini_srt_settings(
+    writable: list[str], root: Path, deny: Sequence[str] = ()
+) -> dict[str, Any]:
+    """Return `srt` settings: the shared rules plus the Gemini hosts and the Gemini login.
+
+    The `gemini` process needs its API key, so the key is not withheld. Gemini's own redaction
+    setting still keeps it out of the agent's shell commands.
+    """
+    # srt, unlike Claude's sandbox, does not make the working directory writable by itself.
+    rules = sandbox_rules(
+        [str(root.resolve()), *writable, str(Path.home() / ".gemini")], root, deny
+    )
+    domains = rules["network"]["allowedDomains"]
+    rules["network"]["allowedDomains"] = list(dict.fromkeys([*GEMINI_HOSTS, *domains]))
+    keep = set(VENDOR_ENV["gemini"])
+    rules["credentials"]["envVars"] = [
+        entry for entry in rules["credentials"]["envVars"] if entry["name"] not in keep
+    ]
+    return rules
 
 
-def gemini_denials(root: Path, deny: Sequence[str]) -> str:
-    """Return Seatbelt rules that deny the run's denied paths and the controller's credentials."""
-    rules = []
-    for path in [*(str((root / d).resolve()) for d in deny), *credential_file_paths(root)]:
-        quoted = seatbelt_quote(path)
-        if any(char in quoted for char in "*?["):  # a glob such as `<root>/.env*`
-            regex = re.escape(quoted).replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
-            rules.append(f'(deny file-read* file-write* (regex #"^{regex}$"))')
-        else:
-            rules.append(f'(deny file-read* file-write* (subpath "{quoted}"))')
-    return "\n".join(rules) + "\n"
-
-
-def gemini_environment(run: Run, root: Path) -> dict[str, str]:
+def gemini_environment(run: Run, root: Path, writable: list[str] | None = None) -> dict[str, str]:
     """Prepare the sandbox files for one Gemini round and return its environment.
 
-    The settings live in the run directory, outside the worktree, and are loaded as system
-    settings, so the agent cannot weaken them. The profile is copied into the worktree's
-    `.gemini/` because the CLI looks it up there; `.git/info/exclude` keeps it out of commits
-    and every round rewrites it.
+    The `srt` settings and Gemini's own settings live in the run directory, outside the
+    worktree. Directories the sandbox cannot create itself are made first.
     """
-    bundle = gemini_bundle_profile()
-    assert bundle is not None
     directory = run.directory(root)
     directory.mkdir(parents=True, exist_ok=True)
-    git_dir = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
-    extra = f'\n(allow file-read* file-write* (subpath "{git_dir}"))\n'
-    # Later rules win in Seatbelt, so these denials follow the allowance above.
-    extra += gemini_denials(root, run.deny_paths)
-    profile = root / ".gemini" / "sandbox-macos-deliver.sb"
-    profile.parent.mkdir(exist_ok=True)
-    profile.write_text(bundle.read_text(encoding="utf-8") + extra, encoding="utf-8")
-    exclude = git_dir / "info" / "exclude"
-    exclude.parent.mkdir(exist_ok=True)
-    text = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
-    if "/.gemini/sandbox-macos-deliver.sb" not in text:
-        exclude.write_text(text + "/.gemini/sandbox-macos-deliver.sb\n", encoding="utf-8")
+    for path in (Path.home() / ".gemini", Path.home() / ".cache", Path("/tmp/claude")):
+        with contextlib.suppress(OSError):
+            path.mkdir(parents=True, exist_ok=True)
+    (directory / "srt.json").write_text(
+        json.dumps(gemini_srt_settings(writable or writable_paths(root), root, run.deny_paths)),
+        encoding="utf-8",
+    )
     settings = directory / "gemini-settings.json"
     settings.write_text(
         json.dumps(
@@ -1880,17 +1844,16 @@ def gemini_environment(run: Run, root: Path) -> dict[str, str]:
         ),
         encoding="utf-8",
     )
-    proxy = directory / "gemini_proxy.py"
-    proxy.write_text(GEMINI_PROXY, encoding="utf-8")
-    hosts = [*GEMINI_HOSTS, *allowed_hosts(root)]
     return sandbox_environment("gemini") | {
-        "SEATBELT_PROFILE": "deliver",
-        "GEMINI_SANDBOX_PROXY_COMMAND": f"{sys.executable} {proxy} {GEMINI_PROXY_PORT}",
-        "GEMINI_PROXY_ALLOW": ",".join(dict.fromkeys(hosts)),
         "GEMINI_CLI_SYSTEM_SETTINGS_PATH": str(settings),
         "GEMINI_CLI_TRUST_WORKSPACE": "true",
         NESTED_ENV: "1",
     }
+
+
+def gemini_round_command(command: list[str], run: Run, root: Path) -> list[str]:
+    """Run a Gemini round under `srt` with the settings written by gemini_environment."""
+    return ["srt", "--settings", str(run.directory(root) / "srt.json"), "--", *command]
 
 
 def parse_gemini_round(stdout: str, result: RoundResult) -> None:
@@ -3353,8 +3316,13 @@ def continue_run(
             )
             protected_before = protected_git_hashes(workdir)
             if args.harness == "gemini":
+                env = gemini_environment(run, workdir, writable)
                 result = run_gemini_round(
-                    command, workdir, log, gemini_environment(run, workdir), run.round_minutes * 60
+                    gemini_round_command(command, run, workdir),
+                    workdir,
+                    log,
+                    env,
+                    run.round_minutes * 60,
                 )
             else:
                 result = run_round(command, workdir, log, run.round_minutes * 60)

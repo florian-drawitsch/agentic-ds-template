@@ -1922,7 +1922,7 @@ def test_gemini_round_command_and_resume() -> None:
     assert first[:2] == ["gemini", "-m"]
     assert first[2] == "gemini-4-neon"
     for command in (first, later):
-        assert "-s" in command
+        assert "-s" not in command  # srt sandboxes the round, not Gemini
         assert "--skip-trust" in command
         assert command[command.index("--approval-mode") + 1] == "yolo"
         assert command[command.index("--output-format") + 1] == "json"
@@ -1931,37 +1931,84 @@ def test_gemini_round_command_and_resume() -> None:
     assert later[later.index("-r") + 1] == "sess-1"
 
 
-def test_gemini_implementer_refused_without_seatbelt(monkeypatch) -> None:
-    monkeypatch.setattr(deliver.sys, "platform", "linux")
-    with pytest.raises(SystemExit, match="only on macOS"):
-        deliver.require_gemini_implementer()
+def test_gemini_implementer_needs_srt_and_linux_tools(monkeypatch) -> None:
+    present: set[str] = set()
+    monkeypatch.setattr(deliver.shutil, "which", lambda name: name if name in present else None)
     monkeypatch.setattr(deliver.sys, "platform", "darwin")
-    monkeypatch.setattr(deliver, "gemini_bundle_profile", lambda: None)
-    with pytest.raises(SystemExit, match="cannot deny paths"):
+    with pytest.raises(SystemExit, match="srt"):
+        deliver.require_gemini_implementer()
+    present.add("srt")
+    deliver.require_gemini_implementer()
+    monkeypatch.setattr(deliver.sys, "platform", "linux")
+    with pytest.raises(SystemExit, match=r"bwrap, socat, rg"):
+        deliver.require_gemini_implementer()
+    present.update({"bwrap", "socat", "rg"})
+    deliver.require_gemini_implementer()
+    monkeypatch.setattr(deliver.sys, "platform", "win32")
+    with pytest.raises(SystemExit, match="only on macOS and Linux"):
         deliver.require_gemini_implementer()
 
 
-def test_gemini_environment_keeps_only_its_login_and_writes_profile(tmp_path, monkeypatch) -> None:
-    bundle = tmp_path / "strict.sb"
-    bundle.write_text("(version 1)\n")
-    monkeypatch.setattr(deliver, "gemini_bundle_profile", lambda: bundle)
+def test_sandbox_rules_are_shared_and_claude_wraps_them(tmp_path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    rules = deliver.sandbox_rules(["/w"], tmp_path, ["holdout"])
+    assert set(rules) == {"filesystem", "network", "credentials"}
+    assert rules["filesystem"]["allowWrite"] == ["/w"]
+    assert "holdout" in rules["filesystem"]["denyRead"]
+    claude = json.loads(deliver.claude_sandbox_settings(["/w"], tmp_path, ["holdout"]))["sandbox"]
+    assert {k: claude[k] for k in rules} == rules
+    assert claude["failIfUnavailable"] is True
+
+
+def test_gemini_environment_writes_srt_settings_and_keeps_only_its_login(
+    tmp_path, monkeypatch
+) -> None:
     for name in ("GEMINI_API_KEY", "OPENAI_API_KEY", "GH_TOKEN"):
         monkeypatch.setenv(name, "secret")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     root = tmp_path / "repo"
     root.mkdir()
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     run = deliver.Run(token="dr-g", plan="p.md", check="true", harness="gemini")
-    env = deliver.gemini_environment(run, root)
+    env = deliver.gemini_environment(run, root, ["/cache"])
     assert env["GEMINI_API_KEY"] == "secret"
     assert not {"OPENAI_API_KEY", "GH_TOKEN"} & set(env)
-    assert env["SEATBELT_PROFILE"] == "deliver"
-    assert "generativelanguage.googleapis.com" in env["GEMINI_PROXY_ALLOW"].split(",")
-    profile = (root / ".gemini/sandbox-macos-deliver.sb").read_text()
-    assert str((root / ".git").resolve()) in profile
-    assert "sandbox-macos-deliver.sb" in (root / ".git/info/exclude").read_text()
+    assert (tmp_path / "home/.gemini").is_dir()
+    assert (tmp_path / "home/.cache").is_dir()
+    srt = json.loads((run.directory(root) / "srt.json").read_text())
+    assert srt["network"]["allowedDomains"][0] == "generativelanguage.googleapis.com"
+    assert "pypi.org" in srt["network"]["allowedDomains"]
+    assert "/cache" in srt["filesystem"]["allowWrite"]
+    assert str(root.resolve()) in srt["filesystem"]["allowWrite"]
+    assert any(path.endswith(".git/hooks") for path in srt["filesystem"]["denyWrite"])
+    withheld = {entry["name"] for entry in srt["credentials"]["envVars"]}
+    assert "GH_TOKEN" in withheld
+    assert "GEMINI_API_KEY" not in withheld
+    assert any(entry["path"].endswith("/.ssh") for entry in srt["credentials"]["files"])
     settings = json.loads(Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text())
     blocked = settings["security"]["environmentVariableRedaction"]["blocked"]
     assert {"GEMINI_API_KEY", "GH_TOKEN"} <= set(blocked)
+    command = deliver.gemini_round_command(["gemini", "-p", "x"], run, root)
+    assert command[:4] == ["srt", "--settings", str(run.directory(root) / "srt.json"), "--"]
+    assert command[4:] == ["gemini", "-p", "x"]
+
+
+def test_only_gemini_rounds_are_told_the_shell_has_no_network() -> None:
+    gemini = deliver.Run(token="dr-g", plan="p.md", check="true", harness="gemini")
+    claude = deliver.Run(token="dr-c", plan="p.md", check="true", harness="claude")
+    assert "no network access" in deliver.no_network_note(gemini)
+    assert deliver.no_network_note(claude) == ""
+
+
+def test_doctor_reports_missing_srt_only_for_a_gemini_implementer(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(deliver.shutil, "which", lambda name: None)
+    assert not deliver.gemini_implementer_configured(tmp_path)
+    (tmp_path / "factory.toml").write_text('[deliver]\nharness = "gemini"\n')
+    assert deliver.gemini_implementer_configured(tmp_path)
+    assert any("srt" in problem for problem in deliver.doctor(tmp_path))
+    (tmp_path / "factory.toml").write_text('[deliver]\nharness = "claude"\n')
+    assert not any("srt" in problem for problem in deliver.doctor(tmp_path))
 
 
 class FakeProcess:
@@ -2011,14 +2058,3 @@ def test_gemini_round_timeout_stops_the_process_group(tmp_path, monkeypatch) -> 
     result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {}, timeout=1)
     assert len(stopped) == 1
     assert result.subtype == "wall_clock_limit"
-
-
-def test_gemini_profile_denies_holdout_and_credentials(tmp_path) -> None:
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / "holdout").mkdir()
-    rules = deliver.gemini_denials(tmp_path, ["holdout"])
-    assert f'(subpath "{(tmp_path / "holdout").resolve()}")' in rules
-    assert "/.ssh" in rules
-    assert '(regex #"^' in rules  # the `.env*` glob
-    with pytest.raises(SystemExit, match="cannot deny"):
-        deliver.gemini_denials(tmp_path, ['bad"name'])

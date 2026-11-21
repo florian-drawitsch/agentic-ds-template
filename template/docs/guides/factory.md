@@ -74,6 +74,11 @@ model tokens and Actions minutes: set the spend caps in `factory.toml` before th
 
    Only the two vendors in `factory.toml` need secrets.
 
+   Gemini as the implementer (`harness = "gemini"`) runs under `srt`. The workflow installs the
+   pinned `srt` and prepares the runner: bubblewrap, socat, ripgrep and relaxed Ubuntu
+   user-namespace rules, which is acceptable on a throwaway hosted runner only. The agent's
+   shell commands have no network, so a plan that needs a new dependency blocks the run.
+
    Until the secrets exist, each workflow run skips its steps with a notice instead of
    failing. `task factory:secrets -- --check` lists what is missing.
 
