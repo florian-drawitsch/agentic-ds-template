@@ -2084,3 +2084,14 @@ def test_gemini_key_comes_from_dotenv_outside_the_sandbox(
     if dotenv is not None:
         path.write_text(dotenv)
     assert deliver.gemini_key_from_dotenv(path) == expected
+
+
+@pytest.mark.parametrize(("content", "changed"), [("", False), ("[core]\n\thooksPath = x\n", True)])
+def test_integrity_check_ignores_an_empty_worktree_config(
+    tmp_path: Path, content: str, changed: bool
+) -> None:
+    root = checkout(tmp_path / "repo")
+    before = deliver.protected_git_hashes(root)
+    (root / ".git" / "config.worktree").write_text(content)
+    after = deliver.protected_git_hashes(root)
+    assert (before != after) is changed
