@@ -458,3 +458,21 @@ def test_gemini_prompt_and_failure(tmp_path, monkeypatch) -> None:
     )
     with pytest.raises(RuntimeError, match="gemini exited with 55"):
         review.run_review(tmp_path, "gemini", "Review", None, 60)
+
+
+def test_every_vendor_has_every_table_entry() -> None:
+    from tests.helpers import load_script
+
+    path = Path(__file__).parents[1] / "plugins/factory/skills/factory/scripts/factory.py"
+    factory = load_script(path, "factory_tables")
+    for module, credentials in (
+        (review, review.CREDENTIAL_ENV),
+        (deliver, deliver.CREDENTIAL_ENV),
+        (factory, factory.SECRET_ENV),
+    ):
+        for vendor in review.REVIEWERS:
+            assert module.VENDOR_ENV[vendor]
+            assert set(module.VENDOR_ENV[vendor]) <= set(credentials)
+    assert set(deliver.REVIEW_MODELS) == set(deliver.VENDORS) == set(review.REVIEWERS)
+    assert set(factory.VENDORS) == set(review.REVIEWERS)
+    assert review.DEFAULT_MODELS["gemini"] == deliver.REVIEW_MODELS["gemini"][0]

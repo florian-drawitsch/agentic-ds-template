@@ -10,6 +10,7 @@ the other CLI headless and read-only:
 
 - **Claude Code:** only read and git-read tools are allowed, and edits are denied.
 - **Codex:** runs in the read-only sandbox.
+- **Gemini:** runs in `--approval-mode plan`, which is read-only, with only Gemini credentials.
 
 The reviewer returns a verdict and findings that follow a JSON schema.
 
@@ -24,11 +25,11 @@ uv run --script <skill-dir>/scripts/cross_review.py --reviewer codex \
 
 | Option | Meaning |
 | --- | --- |
-| `--reviewer` | `codex` when you are Claude, `claude` when you are Codex |
+| `--reviewer` | the first other vendor that is installed, in the order `codex`, `claude`, `gemini`; `gemini` also on request |
 | `--token` | the delivery run the review belongs to; the completion guard reads it from there |
 | `--plan` | the plan the change implements, for the spec-compliance check |
 | `--base` | the commit to compare against; default is the merge base with `main` |
-| `--model` | exact reviewer model; Codex defaults to `gpt-6.1-sol`, Claude to `opus`; both run at high effort |
+| `--model` | exact reviewer model; Codex defaults to `gpt-6.1-sol`, Claude to `opus`, Gemini to `gemini-4-carbon` (never CLI aliases); both run at high effort |
 | `--codex-bin` | Codex executable; overrides `CODEX_BIN`, then PATH |
 | `--preflight` | check executable availability and supported Codex version without a model request |
 

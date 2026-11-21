@@ -98,7 +98,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
   Write ADR-0034 with the results and the decisions above. Mark in ADR-0017 that ADR-0034
   amends it.
-- [ ] **Vendor table, no behavior change.** Replace the two-vendor branches (`other = "claude"
+- [x] **Vendor table, no behavior change.** Replace the two-vendor branches (`other = "claude"
   if harness == "codex" else "codex"` and similar) in `deliver.py`, `cross_review.py` and
   `factory.py` with one table per script. Each entry holds:
   - the command builder;
@@ -111,7 +111,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
   The scripts stay standalone and stdlib-only, so each keeps its own table. Tests: the
   existing suites pass unchanged, and a parametrized test checks that every vendor has every
   field.
-- [ ] **Gemini reviewer in `cross-review`.**
+- [x] **Gemini reviewer in `cross-review`.**
   - `--reviewer gemini` runs `gemini -p` with `--approval-mode plan`, `--output-format json`
     and `--skip-trust`, using the same review prompt and verdict contract.
   - The environment keeps only Gemini credentials.
@@ -119,7 +119,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
     and the verification date.
 
   Tests with a fake runner: command shape, parsed verdict, cost, scrubbed environment.
-- [ ] **Gemini in the factory.**
+- [x] **Gemini in the factory.**
   - Triage and verification run on `reviewer = "gemini"`: triage with
     `gemini-4-hydrogen`, verification with `gemini-4-carbon` (D4).
   - `_vendors` and the role prompts accept any vendor pair.
@@ -144,7 +144,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
   - `--harness` and `--reviewer` accept `gemini` in `start`, `headless` and `resume`.
 
   Tests: menu choices and the argument parser.
-- [ ] **Template.**
+- [x] **Template.**
   - `agent_harnesses` gains `gemini`. It renders `.gemini/settings.json`, which sets
     `AGENTS.md` as the context file, enables folder trust for the project and denies
     credential paths.
@@ -156,7 +156,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
   Tests: render with Gemini alone, Gemini with Claude, and all three. Workflow assertions per
   pair. The pairwise matrix gets the new value.
-- [ ] **This repository.**
+- [x] **This repository.**
   - `factory.toml` sets `reviewer = "gemini"`.
   - The root workflow matches the template.
   - The README, the factory guide, the `deliver` and `cross-review` skills and `docs/features.md`
@@ -183,4 +183,23 @@ External checks, which need the repository secrets and spend API credit:
 
 ## Rulings
 
-None yet.
+- Vendor tables hold the credential variables and the default and menu models per vendor
+  (`VENDOR_ENV`, `DEFAULT_MODELS`, `REVIEW_MODELS`, `VENDORS`) instead of full command-builder
+  entries: the command builders differ in shape per script, so a field-per-vendor table would
+  add indirection without removing branches. A parametrized test checks every vendor has every
+  entry. Costs a later refactor if a fourth vendor needs more fields.
+- The default reviewer is the first other vendor whose CLI is installed, in the order Codex,
+  Claude, Gemini (D1). `deliver` checks `shutil.which`; the factory, which cannot see the
+  runner, orders by vendor only. Costs a wrong default when the CLI is missing, which
+  preflight reports.
+- The template workflow and `factory.toml` render from the first two of Claude, Codex, Gemini
+  in `agent_harnesses`, so Gemini is never the implementer there. This repository's workflow is
+  the render for Claude and Gemini and a test keeps it equal.
+- `gemini-cli` is pinned to 0.70.0, the probe version. Costs a bump when Google ships a
+  fixed release.
+- Not done, pending the Gemini CLI: the spike, the Gemini implementer in `deliver headless`,
+  and the `--harness gemini` menu and flag. The CLI is not installed in the delivery sandbox,
+  so session resume, path denial and the sandbox cannot be established, and the plan requires
+  refusing to start without path denial. `--harness gemini` stays rejected by the parser.
+  ADR-0034 lists the open spike items. External acceptance (Claude implementing with Gemini
+  reviewing, and the Actions triage) is pending, not passed.

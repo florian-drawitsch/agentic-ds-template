@@ -258,7 +258,7 @@ The same harness runs in Claude Code and Codex.
 - **After each edit:** formats Python with Ruff and checks Mermaid diagrams.
 - **On stop:** the Ralph loop's completion check.
 - **`task check`:** lint, types, import contracts and tests with 80 % branch coverage.
-- **Cross-vendor review:** Claude Code and Codex check each other's changes.
+- **Cross-vendor review:** Claude Code, Codex and Gemini check each other's changes.
 
 Unattended runs also scrub provider tokens, restrict network access to package registries, and
 scan published commits for secrets with gitleaks.
@@ -274,8 +274,8 @@ The most important questions:
 | `config` | Hydra, TOML with dataclasses |
 | `tracking` | MLflow with a local SQLite store, none |
 | `infrastructure` | none, Azure with Pulumi |
-| `agent_harnesses` | Claude Code and Codex, either one, none |
-| `factory` | no, yes: board mode; needs GitHub CI and both harnesses |
+| `agent_harnesses` | Claude Code, Codex and Gemini (review and factory only), any subset |
+| `factory` | no, yes: board mode; needs GitHub CI and two harnesses |
 
 Optional context questions seed `docs/context/` and AGENTS.md. All questions are in the
 [feature index](docs/features.md#copier-questions).

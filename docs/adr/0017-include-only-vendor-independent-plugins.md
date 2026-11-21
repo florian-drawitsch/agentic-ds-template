@@ -1,6 +1,6 @@
 # ADR-0017: Include only vendor-independent plugins
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0034 (Gemini is an optional third harness)
 - **Date:** 2026-10-09
 
 ## Context

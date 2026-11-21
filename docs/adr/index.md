@@ -38,3 +38,4 @@ Accepted records outrank executable code and tests, which outrank plans.
 | [ADR-0031](0031-organize-projects-as-a-workspace-of-apps.md) | Organize generated projects as a uv workspace of apps | 2026-11-18 |
 | [ADR-0032](0032-run-workspace-contracts-with-released-import-linter.md) | Run workspace contracts with released import-linter | 2026-11-18 |
 | [ADR-0033](0033-run-an-opt-in-ticket-factory-from-issue-labels.md) | Run an opt-in ticket factory from issue labels (proposed) | 2026-11-18 |
+| [ADR-0034](0034-add-gemini-as-an-optional-third-harness.md) | Add Gemini as an optional third harness | 2026-11-21 |

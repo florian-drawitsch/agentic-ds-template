@@ -60,7 +60,7 @@ and remains enabled; delivery cross-review selects an agent, not a GitHub review
 ## Terminal dialogs
 
 Run `task deliver` to choose a plan, implementation harness, reviewer, and review budget.
-Defaults are Codex/Sol, Claude/Opus, and one review. Implementation menus include GPT-6.1 Sol
+Defaults are Codex/Sol, Claude/Opus, and one review. Gemini is offered as a reviewer (Carbon or Neon); it does not implement yet (ADR-0034). Implementation menus include GPT-6.1 Sol
 and GPT-6 Luna for Codex, and Sonnet, Opus and Haiku for Claude. They show default effort
 and offer an effort selector: high for Luna/Haiku, medium for frontier implementers.
 Reviewers always use a frontier model (Sol or Opus in the menus) at high effort;
@@ -110,9 +110,9 @@ Use the user's stated options. Otherwise use these defaults and state them in on
 | --- | --- | --- |
 | `--mode` | `single`: one implementation agent | `subagents` for explicitly requested independent work |
 | `--cross-review` | `final` when the other vendor's CLI (`claude` or `codex`) is installed, else `off` | `off` |
-| `--reviewer` | the other vendor: `codex` when you are Claude, `claude` when you are Codex | |
+| `--reviewer` | the first other vendor whose CLI is installed, in the order `codex`, `claude`, `gemini` | |
 | `--check` | `task check` | a narrower gate only when the user asks for one |
-| `--reviewer-model` | `gpt-6.1-sol` for Codex; `opus` for Claude, always at high effort | exact supported model ID |
+| `--reviewer-model` | `gpt-6.1-sol` for Codex; `opus` for Claude; `gemini-4-carbon` for Gemini, always at high effort | exact supported model ID |
 | `--codex-bin` | `CODEX_BIN`, then PATH | explicit executable path |
 | `--publish-pr` | enabled by `task deliver` | `--no-publish-pr` for an explicit local-only run |
 | `--pr-remote`, `--pr-destination` | `origin`, `main` | explicit GitHub target |

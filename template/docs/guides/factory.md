@@ -70,6 +70,9 @@ model tokens and Actions minutes: set the spend caps in `factory.toml` before th
    - Claude: `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`, which uses your Claude
      subscription through a browser login, or an `ANTHROPIC_API_KEY` billed per token.
    - Codex: `OPENAI_API_KEY`, billed per token.
+   - Gemini: `GEMINI_API_KEY`, billed per token; a Google AI Pro plan adds API credit.
+
+   Only the two vendors in `factory.toml` need secrets.
 
    Until the secrets exist, each workflow run skips its steps with a notice instead of
    failing. `task factory:secrets -- --check` lists what is missing.
