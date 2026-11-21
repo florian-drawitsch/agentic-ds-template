@@ -61,8 +61,9 @@ model tokens and Actions minutes: set the spend caps in `factory.toml` before th
    task factory:secrets
    ```
 
-   - `FACTORY_GH_TOKEN`: a classic token with the `repo` and `project` scopes. The command
-     opens the token page with both scopes selected. Fine-grained tokens cannot reach a board
+   - `FACTORY_GH_TOKEN`: a classic token with the `repo`, `project` and `read:org` scopes.
+     `gh` needs `read:org` to tell whether the board belongs to a user or an organization. The
+     command opens the token page with these scopes selected. Fine-grained tokens cannot reach a board
      owned by a personal account. You can instead reuse the token of your `gh` login, which
      carries every scope `gh` was granted. The workflow's own token is read-only, and pull
      requests it opened would not start CI.

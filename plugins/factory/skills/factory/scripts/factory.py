@@ -524,7 +524,8 @@ class GitHub:
 
     def secret_names(self) -> list[str]:
         """Return the names of the repository's Actions secrets."""
-        return [s["name"] for s in self._pages("repos/{owner}/{repo}/actions/secrets")]
+        pages = self._pages("repos/{owner}/{repo}/actions/secrets")
+        return [s["name"] for page in pages for s in page.get("secrets") or []]
 
     def set_secret(self, name: str, value: str) -> None:
         """Create or replace one Actions secret; the value is read by gh from stdin."""
@@ -2282,7 +2283,8 @@ def _tick(
 # --- secrets for GitHub Actions ---------------------------------------------------------
 
 TOKEN_URL = (
-    "https://github.com/settings/tokens/new?scopes=repo,project&description=factory%20controller"
+    "https://github.com/settings/tokens/new"
+    "?scopes=repo,project,read:org&description=factory%20controller"
 )
 GH_LOGIN = "gh-login"  # a choice whose value is the current gh login token
 
@@ -2318,8 +2320,9 @@ def required_secrets(config: Config) -> list[SecretSpec]:
             "GitHub token for labels, the board, pushes and pull requests",
             (
                 SecretChoice(
-                    "Create a classic token in the browser, with the repo and project scopes "
-                    "pre-selected (needed for a board owned by a personal account)",
+                    "Create a classic token in the browser, with the repo, project and read:org "
+                    "scopes pre-selected (needed for a board owned by a personal account; gh "
+                    "needs read:org to resolve the board's owner)",
                     "FACTORY_GH_TOKEN",
                     url=TOKEN_URL,
                 ),
