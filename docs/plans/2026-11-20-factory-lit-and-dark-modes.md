@@ -38,7 +38,7 @@ needs a place on the board.
 - Escalation only, per ticket. A ticket gets the plan gate in dark mode when triage rates it
   `risk: high` or a maintainer adds `factory:lit`. No label removes the gate in lit mode.
 - The gate is a board state. A plan waits in **Plan review**. A maintainer approves it by
-  adding `factory:approved` or by moving the card to **Approved**. The same admission rule as
+  adding `factory:approved` or by moving the card from Plan review to **Building** (D8). The same admission rule as
   for Ready applies: the latest signal from a user with write access counts.
 - Approval binds to the plan commit. If the branch changes after approval, the ticket returns
   to Plan review.
@@ -108,7 +108,7 @@ Non-goals:
     with the options it sees and its recommendation.
   - Any open question sends the ticket to Plan review, in both modes. The controller lists the
     questions in a comment.
-  - You answer in a comment, then move the card to Approved or add `factory:approved`. The
+  - You answer in a comment, then move the card from Plan review to Building or add `factory:approved`. The
     planner revises the plan with your answers, and the ticket returns to Plan review until no
     question is open.
   - Only answers from users with write access count, under the same latest-signal rule as
@@ -122,8 +122,29 @@ Non-goals:
   - The plan file on the branch stays the source for implementation, and approval binds to
     its commit. The body section is a copy for reading.
   - Triage reads the issue body without that section, so a plan never feeds back into triage.
+- D8 (decided): the board shows one column per owner, not one per state. Labels keep every
+  state; the board groups them.
+
+  | Column | Labels behind it | Whose move |
+  | --- | --- | --- |
+  | Ready | `ready` | you released it; the factory triages next |
+  | Planning | `accepted` | factory: triage done, planner working |
+  | Plan review | `plan-review` | you: read the plan in the ticket, answer questions, approve |
+  | Building | `approved`, `in-progress` | factory: queued or implementing |
+  | In review | `in-review` | factory: pull request, CI, repairs, verification |
+  | Ready to merge | `verified` | you: merge |
+  | Blocked | `needs-info`, `needs-human` | you: the reason is in the last comment |
+  | Done | closed | none |
+
+  - "Verified" stays as a state, shown as Ready to merge: it is your merge queue and
+    `max_verified` counts it.
+  - Needs info and Needs human share Blocked. Their labels stay apart, because reports and
+    reruns treat them differently.
+  - Board input stays limited to two moves: a card moved into Ready releases a ticket, and a
+    card moved from Plan review into Building approves its plan. Every other move goes back
+    to the column of the card's label at the next mirror.
 - Approval: the user approved this named plan with D1 to D3 on 2026-11-21, D5 on the same day,
-  and D6 and D7 on the same day. Delivery may not publish a pull request until the user says
+  D6 and D7 on the same day, and D8 on 2026-11-22. Delivery may not publish a pull request until the user says
   so.
 
 ## Implementation sequence
@@ -143,14 +164,18 @@ Non-goals:
   controller passes them to triage, the planner session, `deliver headless` and the verifier.
   Tests: defaults, overrides, a model ID passed to each stage's command, an unknown key
   rejected.
-- [ ] **States and board.**
-  - Add states `PLAN_REVIEW` (`factory:plan-review`, column "Plan review") and `APPROVED`
-    (`factory:approved`, column "Approved") to the labels, the transitions and
-    `BOARD_COLUMNS`.
-  - `init` adds missing columns to an existing board without reordering or renaming the
-    others.
+- [ ] **States and board (D8).**
+  - Add states `PLAN_REVIEW` (`factory:plan-review`) and `APPROVED` (`factory:approved`) to
+    the labels and the transitions.
+  - `BOARD_COLUMNS` becomes the eight columns of D8, each with the labels it shows. The mirror
+    maps a label to its column. Intake reads a move into Ready as a release and a move from
+    Plan review into Building as an approval.
+  - `init` migrates an existing board: it adds the new columns, moves each card to the column
+    of its label and removes the old columns (Needs info, Accepted, Approved, In progress,
+    Verified, Needs human) only when they are empty. It reports a column it could not remove.
 
-  Tests: allowed and refused transitions, label creation, column migration on a fake board.
+  Tests: allowed and refused transitions, label creation, every label's column, both input
+  moves and a refused move, migration of a fake board with cards in old columns.
 - [ ] **Triage risk.**
   - The triage role also returns `risk` (`low` or `high`) and `risk_reason`. High means:
     new dependencies, public interfaces, data handling, security, architecture, or more than
@@ -197,7 +222,8 @@ Non-goals:
   questions, one that leaves a question open, the revised commit bound to the approval.
 - [ ] **Approval admission.**
   - Generalize `ready_signals` and `admitted` to approval signals: a `factory:approved` label
-    or a move to Approved on the factory board, by a user with write access. The latest
+    or a move from Plan review to Building on the factory board (D8), by a user with write
+    access. The latest
     signal wins.
   - Intake moves an admitted Plan review card to `APPROVED`.
   - `factory:lit` is admitted the same way. Once the gate applies, no later signal removes it.
@@ -237,6 +263,8 @@ Non-goals:
   progress without a person. Check: `uv run pytest tests/test_factory_stages.py -q`.
 - In dark mode, a high-risk ticket or one labeled `factory:lit` stops in Plan review. Check:
   same file.
+- The board shows the eight columns of D8, and each label lands in its column. Check:
+  `uv run pytest tests/test_factory.py -q`.
 - In lit mode, every ticket stops in Plan review. An approval by an outsider or a board
   workflow is ignored. An approval by a maintainer leads to implementation of exactly the
   approved plan commit. Check: `uv run pytest tests/test_factory.py -q`.
@@ -252,7 +280,10 @@ Non-goals:
 
 External checks, which need a board on a personal account and `gh` with the `project` scope:
 
-- On a test repository in lit mode, approve a plan by moving its card to Approved. The ticket
+- Run `task factory:init` on this repository's existing board. The old columns are replaced
+  by the eight columns of D8, and the cards keep their tickets.
+- On a test repository in lit mode, approve a plan by moving its card from Plan review to
+  Building. The ticket
   should reach In progress at the next tick.
 - Change the plan branch after approval. The ticket should return to Plan review.
 - A ticket whose plan has an open question shows the question in its body and waits. After an
