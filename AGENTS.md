@@ -21,6 +21,7 @@ outrank code and tests, which outrank plans. The design overview is in
 - `task setup`: install the locked development environment
 - `task build`: regenerate marketplaces and manifests from the catalog
 - `task check`: build check, ruff, ty, pytest and manifest validation; the merge gate
+- `task security`: zizmor on the workflows and `uv audit` on the lock; CI adds a gitleaks scan
 - `task dev`: register this working copy as a local marketplace in both CLIs
 - `task eval`: score the `project` skills in `plugins/project/evals/` against a no-plugin
   baseline; spends model tokens, so it runs on demand, not in `task check`

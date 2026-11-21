@@ -51,7 +51,7 @@ jobs:
       # Manifest validation (task validate) needs the Claude Code CLI; it runs without login.
       - name: Install Claude Code
         if: steps.changes.outputs.docs_only != 'true'
-        run: npm install --global @anthropic-ai/claude-code@2.1.327
+        run: npm install --global @anthropic-ai/claude-code@2.1.327 # zizmor: ignore[adhoc-packages]
 
       - name: Install
         if: steps.changes.outputs.docs_only != 'true'
@@ -60,3 +60,50 @@ jobs:
       - name: Check
         if: steps.changes.outputs.docs_only != 'true'
         run: task check
+
+  security:
+    # Fast and independent of the gate: secrets in the new commits, workflow security and
+    # known vulnerabilities in the locked dependencies. `task security` runs the same locally.
+    name: Security checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Set up Task
+        uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      # The same version as the template's pre-commit hook, verified by checksum.
+      - name: Install gitleaks
+        env:
+          VERSION: 8.24.2
+          SHA256: fa0500f6b7e41d28791ebc680f5dd9899cd42b58629218a5f041efa899151a8e
+        run: |
+          archive="gitleaks_${VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/${archive}"
+          echo "${SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$RUNNER_TEMP" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      # Pull requests scan their own commits; pushes scan what they add. Without a usable
+      # base commit, the whole history is scanned with the fingerprints in .gitleaksignore.
+      - name: Secrets (gitleaks)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            gitleaks git --redact --no-banner --log-opts="${BASE}..${HEAD}" .
+          else
+            gitleaks git --redact --no-banner .
+          fi
+
+      - name: Workflows and dependencies
+        run: task security

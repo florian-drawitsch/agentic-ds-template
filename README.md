@@ -381,6 +381,8 @@ task check
 - `task test-e2e` renders a pairwise set of projects and runs each one's `task check`.
 - `task dev` registers this working copy as a local marketplace in Claude Code and Codex.
 - `task eval` scores the skills against a no-plugin baseline. It spends model tokens.
+- `task security` lints the workflows with zizmor and audits the locked dependencies. CI also
+  scans new commits for secrets with gitleaks.
 - Board mode develops this repository too: `task factory:init`, `factory:loop`,
   `factory:secrets` and `.github/workflows/factory.yml` work as in generated projects. The
   root `factory.toml` also protects the delivery guard, the factory itself, decision records
