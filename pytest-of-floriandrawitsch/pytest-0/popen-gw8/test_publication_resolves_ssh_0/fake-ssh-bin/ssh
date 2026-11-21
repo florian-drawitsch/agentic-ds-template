@@ -1,3 +1,0 @@
-#!/bin/sh
-[ "$1" = "-G" ] || exit 2
-case "$2" in github-private) echo "hostname github.com" ;; *) echo "hostname $2" ;; esac

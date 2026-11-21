@@ -1,3 +1,0 @@
-[sandbox]
-extra_hosts = ["packages.example.test"]
-gate = "env-scrub"

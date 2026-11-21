@@ -1254,6 +1254,14 @@ def run_triage(config: Config, path: Path, run: Runner = run_command) -> TriageR
     role = _skill_asset("roles", "triage.md").read_text(encoding="utf-8")
     vendor = _vendors(config)[1]
     prompt = f"{role}\nThe issue file is {path.name} in the current directory."
+    with tempfile.TemporaryDirectory(prefix="factory-policy-") as policy_dir_name:
+        return _triage_with(config, path, run, vendor, prompt, Path(policy_dir_name))
+
+
+def _triage_with(
+    config: Config, path: Path, run: Runner, vendor: str, prompt: str, policy_dir: Path
+) -> TriageResult:
+    """Build the vendor's read-only triage command, run it and validate the answer."""
     if vendor == "claude":
         command = ["claude", "-p", prompt, "--output-format", "json", "--tools", "Read"]
         command += ["--permission-mode", "dontAsk", "--max-budget-usd", "1"]
@@ -1262,7 +1270,7 @@ def run_triage(config: Config, path: Path, run: Runner = run_command) -> TriageR
         # An admin policy denies mode changes, writes and shell commands: plan mode alone does
         # not, because Gemini CLI approves exit_plan_mode in headless runs. It sits beside the
         # issue file's directory so the agent's file tools never need it.
-        policy = Path(tempfile.mkdtemp(prefix="factory-policy-")) / "deny.toml"
+        policy = policy_dir / "deny.toml"
         policy.write_text(GEMINI_DENY_POLICY, encoding="utf-8")
         command = ["gemini", "--admin-policy", str(policy), "--approval-mode", "plan"]
         command += ["--output-format", "json", "--skip-trust", "-m", GEMINI_TRIAGE_MODEL]
