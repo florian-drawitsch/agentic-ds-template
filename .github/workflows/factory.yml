@@ -9,9 +9,10 @@ name: Factory
 
 on:
   schedule:
-    # Every 30 minutes; this also polls the board for cards moved to Ready. That is about
-    # 1,500 Actions minutes a month, within the Free plan's 2,000 for private repositories.
-    - cron: '*/30 * * * *'
+    # Every hour, at minute 23 to avoid the top-of-hour load; this also polls the board for
+    # cards moved to Ready. That is about 750 Actions minutes a month, well within the Free
+    # plan's 2,000 for private repositories.
+    - cron: '23 * * * *'
     - cron: '0 6 * * *'
     - cron: '0 7 * * 1'
   workflow_dispatch:
@@ -31,7 +32,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || (github.event_name == 'issues' && github.event.label.name == 'factory:ready')
-      || (github.event_name == 'schedule' && github.event.schedule == '*/30 * * * *')
+      || (github.event_name == 'schedule' && github.event.schedule == '23 * * * *')
     runs-on: ubuntu-latest
     # The hosted-runner maximum. One tick runs at most one delivery; if the job is cut
     # off, the next tick resumes the saved run.

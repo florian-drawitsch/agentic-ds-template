@@ -1,0 +1,3 @@
+# Public GUID of Azure's built-in "Key Vault Secrets User" role, not a secret.
+9a71051f8e2287317dfd1d71f8df457a4b72d7e0:template/infra/stack.py.jinja:generic-api-key:38
+92c475ecccfb8cc54cfa1ad88eee771d0a6d7706:template/infra/stack.py.jinja:generic-api-key:38

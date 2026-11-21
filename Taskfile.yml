@@ -78,6 +78,12 @@ tasks:
       - task: test
       - task: validate
 
+  security:
+    desc: 'Workflow security (zizmor) and known vulnerabilities in locked dependencies'
+    cmds:
+      - uv run zizmor --no-progress --min-severity low .github/workflows template/.github/workflows/ci.yml template/.github/workflows/deploy.yml
+      - uv audit --locked --preview-features audit-command
+
   factory:init:
     desc: Create the factory labels and the Kanban board for this repository (ADR-0033)
     summary: |

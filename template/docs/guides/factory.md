@@ -33,7 +33,7 @@ model tokens and Actions minutes: set the spend caps in `factory.toml` before th
    | Mode | Runs on | Credentials | Cost |
    | --- | --- | --- | --- |
    | Local | your machine, while `task factory:loop` runs | your `gh`, `claude` and `codex` logins (browser, app or CLI) | your subscriptions; no Actions minutes |
-   | GitHub Actions | GitHub's runners, every 30 minutes, with your machine off | repository secrets | Actions minutes (free for public repositories) and model usage |
+   | GitHub Actions | GitHub's runners, every hour, with your machine off | repository secrets | Actions minutes (free for public repositories) and model usage |
 
    **Local:** sign in once, then start the loop. It needs no secrets.
 
@@ -84,15 +84,15 @@ model tokens and Actions minutes: set the spend caps in `factory.toml` before th
    approval.
 6. Enable Codex code review for the repository. The factory waits for its review before it
    marks a pull request verified.
-7. Private repositories on the Free plan have limited Actions minutes: about 1,500 of the 2,000
-   a month are spent on idle polling every 30 minutes. Lengthen the cron interval in the workflow,
+7. Private repositories on the Free plan have limited Actions minutes: about 750 of the 2,000
+   a month are spent on idle polling every hour. Lengthen the cron interval in the workflow,
    or use the local mode.
 
 ## Use
 
 1. Write an issue with a clear goal and acceptance criteria.
 2. Start the ticket: a maintainer adds the label `factory:ready`, or moves its card to
-   Ready on the board and waits up to 30 minutes for the next scheduled run. Only users with
+   Ready on the board and waits up to an hour for the next scheduled run. Only users with
    write access count; the factory ignores issues released by anyone else.
 3. `task factory:status` shows the issues per state, spend against the caps and the next
    action. `task factory:tick -- --dry-run` prints that action without changing anything.
