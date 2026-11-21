@@ -72,19 +72,19 @@ on a developer machine. On macOS none of the four steps is needed.
 
 ## Implementation sequence
 
-- [ ] **Shared sandbox rules.** Split `claude_sandbox_settings` into a builder that returns
+- [x] **Shared sandbox rules.** Split `claude_sandbox_settings` into a builder that returns
   the rule set (filesystem, network, credentials) and a Claude wrapper that adds Claude's keys
   (`enabled`, `autoAllowBashIfSandboxed`, `allowUnsandboxedCommands`, `failIfUnavailable`).
   Claude's settings stay byte-identical. Tests: the existing Claude settings tests pass
   unchanged, and the shared builder is tested on its own.
-- [ ] **`srt` settings for Gemini.**
+- [x] **`srt` settings for Gemini.**
   - From the shared rules, with the Gemini hosts added and `GEMINI_API_KEY` left out of the
     credential variables.
   - Written to the run directory, outside the worktree.
 
   Tests: hosts, denied paths, protected git paths, the shared `.git` writable, and the key not
   withheld.
-- [ ] **Gemini rounds run under `srt`.**
+- [x] **Gemini rounds run under `srt`.**
   - Each round runs `srt --settings <run-dir>/srt.json -- gemini ...` without Gemini's own
     `-s` sandbox.
   - `require_gemini_implementer` checks for `srt`, plus bubblewrap, socat and ripgrep on
@@ -93,25 +93,25 @@ on a developer machine. On macOS none of the four steps is needed.
 
   Tests with a fake runner: the command per round, resume, refusal when `srt` is missing,
   directories created.
-- [ ] **Remove the Seatbelt path.** Delete `gemini_bundle_profile`, `seatbelt_quote`,
+- [x] **Remove the Seatbelt path.** Delete `gemini_bundle_profile`, `seatbelt_quote`,
   `gemini_denials`, the profile copy and its `.git/info/exclude` entry, the proxy script and
   the proxy variables. Tests that covered them are replaced by the tests above.
-- [ ] **No network for agent commands (D3).** The headless prompt for a Gemini round says
+- [x] **No network for agent commands (D3).** The headless prompt for a Gemini round says
   that shell commands have no network and that a needed new dependency is a reason to block.
   Test: the prompt text for Gemini rounds.
-- [ ] **Pin and doctor (D4).** `srt` version in `deliver.toml` and the template's copy, and in
+- [x] **Pin and doctor (D4).** `srt` version in `deliver.toml` and the template's copy, and in
   `deliver doctor`. Tests: doctor output with and without `srt`.
-- [ ] **Factory workflow (D5).** When the implementer is Gemini, the template workflow:
+- [x] **Factory workflow (D5).** When the implementer is Gemini, the template workflow:
   - installs the pinned `srt` with the CLIs;
   - adds a "Prepare the sandbox" step with findings steps 1 to 4.
 
   The root workflow follows its render. Tests: render with Gemini implementing (step present,
   pinned `srt`) and with Claude implementing (step absent). zizmor stays clean.
-- [ ] **Docs.**
+- [x] **Docs.**
   - ADR-0034 records the probe results, D1 to D5, and that Gemini implements on Linux too.
   - `deliver`'s skill text, the factory guide and the feature index describe the
     requirements.
-- [ ] **Final gate** `task check` and the configured review.
+- [x] **Final gate** `task check` and the configured review.
 
 ## Acceptance and verification
 
@@ -135,4 +135,16 @@ credit usage:
 
 ## Rulings
 
-None yet.
+- Where the `srt` version is pinned: `srt_version` under `[sandbox]` in the template's
+  `deliver.toml`, plus the workflow's npm install line. Costs a double edit on a bump.
+- "Implementer is Gemini" cannot be known at render time, because the template orders vendors
+  Claude, Codex, Gemini. The workflow installs `srt` and has a "Prepare the sandbox" step whenever
+  Gemini is one of the two vendors; the step exits early unless `factory.toml` has
+  `harness = "gemini"`. If wrong, a runner pays one skipped step.
+- `deliver doctor` reads the implementer from `factory.toml`; other projects get no check
+  beyond preflight, which refuses at launch.
+- The `srt` settings also make `~/.gemini` writable, which Gemini needs for sessions.
+- Final gate: this run verified focused checks only (ruff, ty, and the deliver, template, factory
+  and cross-review tests). The delivery controller runs `task check` and the review outside the
+  sandbox. The two live checks under "External checks" are pending, not passed: they need the
+  `GEMINI_API_KEY` secret and spend usage.
