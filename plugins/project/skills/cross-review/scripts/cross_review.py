@@ -6,7 +6,8 @@
 
 Claude Code reviews with only read and git-read tools allowed. Codex reviews in its read-only
 sandbox. Gemini reviews in plan mode, which is read-only. All return structured findings, which
-are saved next to the delivery run so the completion guard can match the review to the exact state it reviewed.
+are saved next to the delivery run so the completion guard can match the review to the exact
+state it reviewed.
 
 Exit codes: 0 the review passed, 2 changes were requested, 1 the review could not run.
 """
