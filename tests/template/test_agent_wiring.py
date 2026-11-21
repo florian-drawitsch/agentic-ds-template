@@ -247,6 +247,8 @@ def test_factory_workflow_skips_until_secrets_exist_and_accepts_both_claude_logi
             assert {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY"} <= set(
                 step["env"]
             )
+            # `codex exec` authenticates only from CODEX_API_KEY.
+            assert step["env"]["CODEX_API_KEY"] == "${{ secrets.OPENAI_API_KEY }}"
 
 
 def test_this_repository_runs_the_same_factory_workflow() -> None:
