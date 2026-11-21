@@ -298,7 +298,8 @@ def test_factory_workflow_uses_only_the_configured_vendors(tmp_path: Path, harne
     assert ("@anthropic-ai/sandbox-runtime@0.0.83" in install) == ("gemini" in pair)
     prepare = [s for s in steps if s["name"] == "Prepare the sandbox"]
     # The tick and daily-report jobs can both run a delivery.
-    assert len(prepare) == (2 if "gemini" in pair else 0)
+    # Claude Code and srt both need bubblewrap and socat, so every pair prepares the runner.
+    assert len(prepare) == 2
     if prepare:
         assert "bubblewrap socat ripgrep" in prepare[0]["run"]
         assert "apparmor_restrict_unprivileged_userns=0" in prepare[0]["run"]
