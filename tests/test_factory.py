@@ -142,6 +142,19 @@ def test_changed_files_lists_both_rename_paths():
     assert gh.changed_files(3) == ["new.py", "old.py", "b"]
 
 
+@pytest.mark.parametrize(
+    ("pages", "names"),
+    [
+        ([{"total_count": 2, "secrets": [{"name": "A"}, {"name": "B"}]}], ["A", "B"]),
+        ([{"total_count": 1, "secrets": [{"name": "A"}]}, {"secrets": [{"name": "C"}]}], ["A", "C"]),
+        ([{"total_count": 0, "secrets": []}], []),
+    ],
+)
+def test_secret_names_unwraps_each_page(pages, names):
+    gh = RecordingGitHub([json.dumps(pages)])
+    assert gh.secret_names() == names
+
+
 def test_issue_text_goes_to_input_not_args():
     gh = RecordingGitHub(["null"])
     body = "$(rm -rf /); `x`"

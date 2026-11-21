@@ -524,7 +524,8 @@ class GitHub:
 
     def secret_names(self) -> list[str]:
         """Return the names of the repository's Actions secrets."""
-        return [s["name"] for s in self._pages("repos/{owner}/{repo}/actions/secrets")]
+        pages = self._pages("repos/{owner}/{repo}/actions/secrets")
+        return [s["name"] for page in pages for s in page.get("secrets") or []]
 
     def set_secret(self, name: str, value: str) -> None:
         """Create or replace one Actions secret; the value is read by gh from stdin."""
