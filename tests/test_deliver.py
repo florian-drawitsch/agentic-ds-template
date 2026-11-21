@@ -1570,6 +1570,8 @@ def test_secret_scan_invokes_gitleaks_and_records_report(
         ("claude", "3", "haiku", "high"),
         ("codex", "1", "gpt-6.1-sol", "medium"),
         ("claude", "1", "sonnet", "medium"),
+        ("gemini", "1", "gemini-4-neon", "medium"),
+        ("gemini", "3", "gemini-4-carbon", "medium"),
     ],
 )
 def test_dialog_model_effort_defaults(monkeypatch, harness, answer, model, effort) -> None:
@@ -1597,14 +1599,13 @@ def test_small_reviewer_is_rejected(model) -> None:
         deliver.reviewer_model("codex", model)
 
 
-def test_gemini_reviews_but_never_implements_and_defaults_follow_installed_clis(
+def test_gemini_parses_and_defaults_follow_installed_clis(
     monkeypatch,
 ) -> None:
     assert deliver.reviewer_model("gemini", None) == "gemini-4-carbon"
     assert deliver.reviewer_model("gemini", "gemini-4-neon") == "gemini-4-neon"
     assert deliver.parser().parse_args(["resume", "--reviewer", "gemini"]).reviewer == "gemini"
-    with pytest.raises(SystemExit):
-        deliver.parser().parse_args(["headless", "--harness", "gemini"])
+    assert deliver.parser().parse_args(["headless", "--harness", "gemini"]).harness == "gemini"
     installed = {"claude", "gemini"}
     monkeypatch.setattr(deliver.shutil, "which", lambda name: name if name in installed else None)
     assert deliver.default_reviewer("claude") == "gemini"
@@ -1913,3 +1914,77 @@ def test_codex_without_permission_profiles_refuses_denied_paths(
     assert deliver.agent_command(
         "codex", "Run", None, True, None, "acceptEdits", root=delivery_repo
     )
+
+
+def test_gemini_round_command_and_resume() -> None:
+    first = deliver.agent_command("gemini", "Go", None, True, None, "x")
+    later = deliver.agent_command("gemini", "Go", "sess-1", False, "gemini-4-hydrogen", "x")
+    assert first[:2] == ["gemini", "-m"] and first[2] == "gemini-4-neon"
+    for command in (first, later):
+        assert "-s" in command and "--skip-trust" in command
+        assert command[command.index("--approval-mode") + 1] == "yolo"
+        assert command[command.index("--output-format") + 1] == "json"
+        assert command[-2:] == ["-p", "Go"]
+    assert "-r" not in first
+    assert later[later.index("-r") + 1] == "sess-1"
+
+
+def test_gemini_implementer_refused_without_seatbelt(monkeypatch) -> None:
+    monkeypatch.setattr(deliver.sys, "platform", "linux")
+    with pytest.raises(SystemExit, match="only on macOS"):
+        deliver.require_gemini_implementer()
+    monkeypatch.setattr(deliver.sys, "platform", "darwin")
+    monkeypatch.setattr(deliver, "gemini_bundle_profile", lambda: None)
+    with pytest.raises(SystemExit, match="cannot deny paths"):
+        deliver.require_gemini_implementer()
+
+
+def test_gemini_environment_keeps_only_its_login_and_writes_profile(tmp_path, monkeypatch) -> None:
+    bundle = tmp_path / "strict.sb"
+    bundle.write_text("(version 1)\n")
+    monkeypatch.setattr(deliver, "gemini_bundle_profile", lambda: bundle)
+    for name in ("GEMINI_API_KEY", "OPENAI_API_KEY", "GH_TOKEN"):
+        monkeypatch.setenv(name, "secret")
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    run = deliver.Run(token="dr-g", plan="p.md", check="true", harness="gemini")
+    env = deliver.gemini_environment(run, root)
+    assert env["GEMINI_API_KEY"] == "secret"
+    assert not {"OPENAI_API_KEY", "GH_TOKEN"} & set(env)
+    assert env["SEATBELT_PROFILE"] == "deliver"
+    assert "generativelanguage.googleapis.com" in env["GEMINI_PROXY_ALLOW"].split(",")
+    profile = (root / ".gemini/sandbox-macos-deliver.sb").read_text()
+    assert str((root / ".git").resolve()) in profile
+    assert "sandbox-macos-deliver.sb" in (root / ".git/info/exclude").read_text()
+    settings = json.loads(Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text())
+    blocked = settings["security"]["environmentVariableRedaction"]["blocked"]
+    assert "GEMINI_API_KEY" in blocked and "GH_TOKEN" in blocked
+
+
+def test_gemini_round_parses_session_usage_and_cost(tmp_path, monkeypatch) -> None:
+    tokens = {"input": 1_000_000, "cached": 400_000, "candidates": 100_000, "thoughts": 100_000}
+    out = json.dumps(
+        {
+            "session_id": "s9",
+            "response": "ok",
+            "stats": {"models": {"gemini-4-neon": {"tokens": tokens}}},
+        }
+    )
+    monkeypatch.setattr(
+        deliver.subprocess, "run", lambda c, **k: subprocess.CompletedProcess(c, 0, out, "")
+    )
+    result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {})
+    deliver.price_codex(result)
+    assert (result.thread, result.started, result.model) == ("s9", True, "gemini-4-neon")
+    assert result.cost_usd == pytest.approx(0.6 * 3.0 + 0.4 * 0.15 + 0.2 * 15.0)
+
+
+def test_gemini_round_failure_and_rate_limit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        deliver.subprocess,
+        "run",
+        lambda c, **k: subprocess.CompletedProcess(c, 1, "", "429 RESOURCE_EXHAUSTED"),
+    )
+    result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {})
+    assert result.failed and result.rejected

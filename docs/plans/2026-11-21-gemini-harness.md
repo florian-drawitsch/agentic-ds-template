@@ -128,7 +128,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
   Tests: triage command and parsing for Gemini, verification command, the secret
   specifications per vendor pair.
-- [ ] **Gemini implementer in `deliver headless`.**
+- [x] **Gemini implementer in `deliver headless`.**
   - Each round runs `gemini -p` with `--approval-mode yolo` inside the sandbox from the spike,
     with the worktree as the only writable root, denied paths and no network beyond the
     allowlist.
@@ -138,7 +138,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
     Codex versions.
 
   Tests: command per round, resume, deny refusal, cost parsing.
-- [ ] **Interactive `task deliver` menus.**
+- [x] **Interactive `task deliver` menus.**
   - Gemini appears as a reviewer for every run, and as an implementer that selects headless
     mode.
   - `--harness` and `--reviewer` accept `gemini` in `start`, `headless` and `resume`.
@@ -197,12 +197,11 @@ External checks, which need the repository secrets and spend API credit:
   the render for Claude and Gemini and a test keeps it equal.
 - `gemini-cli` is pinned to 0.70.0, the probe version. Costs a bump when Google ships a
   fixed release.
-- Not done, pending the Gemini CLI: the spike, the Gemini implementer in `deliver headless`,
-  and the `--harness gemini` menu and flag. The CLI is not installed in the delivery sandbox,
-  so session resume, path denial and the sandbox cannot be established, and the plan requires
-  refusing to start without path denial. `--harness gemini` stays rejected by the parser.
-  ADR-0034 lists the open spike items. External acceptance (Claude implementing with Gemini
-  reviewing, and the Actions triage) is pending, not passed.
+- Gemini implements in `deliver headless` on macOS only, in single mode, with the cost cap
+  checked after each round because the CLI has no per-round budget flag. The round, profile,
+  proxy and parsing are built from the spike results and covered by fake-runner tests; no live
+  Gemini round ran in the delivery sandbox. External acceptance (both `deliver` runs and the
+  Actions triage) is pending, not passed.
 - Spike ran outside the delivery sandbox, on macOS with the user's key, because the sandbox has
   neither the CLI nor network access to Google; results and the implementer design are in
   ADR-0034 under "Spike results" and "Gemini as implementer"; if wrong, Gemini rounds fail

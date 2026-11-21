@@ -271,7 +271,7 @@ def test_secrets_task_exists_in_both_taskfiles(factory_project: Path) -> None:
     assert "--dry-run" not in str(root["factory:tick"]["cmds"])
 
 
-PAIRS = {
+PAIRS: dict[tuple[str, ...], tuple[set[str], set[str]]] = {
     ("claude", "codex"): ({"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}, {"GEMINI_API_KEY"}),
     ("claude", "gemini"): ({"GEMINI_API_KEY", "ANTHROPIC_API_KEY"}, {"OPENAI_API_KEY"}),
     ("codex", "gemini"): ({"GEMINI_API_KEY", "OPENAI_API_KEY"}, {"ANTHROPIC_API_KEY"}),

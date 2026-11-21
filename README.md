@@ -274,7 +274,7 @@ The most important questions:
 | `config` | Hydra, TOML with dataclasses |
 | `tracking` | MLflow with a local SQLite store, none |
 | `infrastructure` | none, Azure with Pulumi |
-| `agent_harnesses` | Claude Code, Codex and Gemini (review and factory only), any subset |
+| `agent_harnesses` | Claude Code, Codex and Gemini (headless on macOS), any subset |
 | `factory` | no, yes: board mode; needs GitHub CI and two harnesses |
 
 Optional context questions seed `docs/context/` and AGENTS.md. All questions are in the
