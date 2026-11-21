@@ -84,7 +84,22 @@ Non-goals:
   This matches the issue and Osmani's definition.
 - D3 (decided): factory deliveries run without `--cross-review final`. This removes a
   duplicate Codex review per ticket.
-- Approval: the user approved this named plan with D1 to D3 on 2026-11-21. Delivery may not
+- D5 (decided): one model per factory stage, the same in both modes. The strongest model
+  goes wherever no person checks the output next; subscriptions and free tiers pay where they
+  can.
+
+  | Stage | Model | Paid from |
+  | --- | --- | --- |
+  | Triage | Gemini `gemini-4-hydrogen` | free tier |
+  | Plan | Claude `opus`, high effort | Claude subscription |
+  | Implementation | Claude `sonnet`, medium effort | Claude subscription |
+  | Verification | Gemini `gemini-4-carbon` | AI Pro credits |
+
+  Opus plans in both modes: in dark mode nobody reads the plan, and in lit mode a better plan
+  costs the reviewer less time. Running locally (`task factory:loop`), triage and
+  verification may use Codex `gpt-6.1-sol` at high effort on the ChatGPT login instead.
+  Depends on [Gemini as a third harness](2026-11-21-gemini-harness.md) for the Gemini stages.
+- Approval: the user approved this named plan with D1 to D3 on 2026-11-21, and D5 on the same day. Delivery may not
   publish a pull request until the user says so.
 
 ## Implementation sequence
@@ -99,6 +114,11 @@ Non-goals:
   Redraw its state diagram.
 - [ ] **Config.** `mode` in `factory.toml`: `"dark"` (default) or `"lit"`, with validation.
   Tests: default, both values, a wrong value rejected.
+- [ ] **Stage models (D5).** A `[models]` table in `factory.toml` with `triage`, `plan`,
+  `implement` and `verify`, each a model ID with an optional effort, defaulting to D5. The
+  controller passes them to triage, the planner session, `deliver headless` and the verifier.
+  Tests: defaults, overrides, a model ID passed to each stage's command, an unknown key
+  rejected.
 - [ ] **States and board.**
   - Add states `PLAN_REVIEW` (`factory:plan-review`, column "Plan review") and `APPROVED`
     (`factory:approved`, column "Approved") to the labels, the transitions and
@@ -175,6 +195,7 @@ Non-goals:
   workflow is ignored. An approval by a maintainer leads to implementation of exactly the
   approved plan commit. Check: `uv run pytest tests/test_factory.py -q`.
 - Factory deliveries no longer run the in-run cross-review. Check: the delivery command test.
+- Each stage runs on its D5 model unless `[models]` overrides it. Check: `uv run pytest tests/test_factory_stages.py -q`.
 - The triage evals pass, including the new risky issue. Check: `task eval` (spends tokens; run
   once before merge).
 - The final gate is `task check`, run by the delivery controller.
