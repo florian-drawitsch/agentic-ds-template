@@ -1398,20 +1398,32 @@ def allowed_hosts(root: Path) -> list[str]:
     return list(dict.fromkeys([*PACKAGE_HOSTS, *extras]))
 
 
-def protected_git_paths(root: Path) -> list[str]:
-    """Return shared Git hook/config paths that sandboxed rounds must not edit."""
+def protected_git_candidates(root: Path) -> list[Path]:
+    """Return the shared Git hook/config paths that sandboxed rounds must not edit."""
     common = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     own = Path(git(root, "rev-parse", "--absolute-git-dir"))
-    paths = [common / "hooks", common / "config", own / "config.worktree"]
-    return [str(path) for path in paths if path.exists()]
+    return [common / "hooks", common / "config", own / "config.worktree"]
+
+
+def protected_git_paths(root: Path) -> list[str]:
+    """Return the protected Git paths that exist, for sandbox deny lists."""
+    return [str(path) for path in protected_git_candidates(root) if path.exists()]
 
 
 def protected_git_hashes(root: Path) -> dict[str, str]:
-    """Hash protected Git configuration files/directories for round integrity checks."""
+    """Hash protected Git configuration files/directories for round integrity checks.
+
+    A missing path hashes like an empty file: sandboxes create an empty `config.worktree` as a
+    mount point, which holds no settings and must not count as tampering.
+    """
     hashes: dict[str, str] = {}
-    for raw in protected_git_paths(root):
-        path = Path(raw)
+    for path in protected_git_candidates(root):
+        raw = str(path)
         digest = hashlib.sha256()
+        if not path.exists():
+            digest.update(path.name.encode())
+            hashes[raw] = digest.hexdigest()
+            continue
         files = (
             sorted(item for item in path.rglob("*") if item.is_file()) if path.is_dir() else [path]
         )

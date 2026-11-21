@@ -81,13 +81,13 @@ jobs:
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
         run: npm install --global @anthropic-ai/claude-code@2.1.329 @google/gemini-cli@0.70.0 @anthropic-ai/sandbox-runtime@0.0.83 # zizmor: ignore[adhoc-packages]
 
-      # A Gemini implementer runs under srt (ADR-0034). The runner is throwaway, so weakening
-      # Ubuntu's user-namespace hardening is acceptable here. Skipped unless factory.toml
-      # selects Gemini as the implementer.
+
+      # Claude Code's sandbox and srt, which runs a Gemini implementer (ADR-0034), both need
+      # bubblewrap and socat on Linux; without them the agent refuses to start. The runner is
+      # throwaway, so weakening Ubuntu's user-namespace hardening is acceptable here.
       - name: Prepare the sandbox
         if: steps.ready.outputs.ok == 'true'
         run: |
-          grep -q '^harness = "gemini"' factory.toml || exit 0
           sudo apt-get install -y bubblewrap socat ripgrep
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict || true
@@ -156,13 +156,13 @@ jobs:
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
         run: npm install --global @anthropic-ai/claude-code@2.1.329 @google/gemini-cli@0.70.0 @anthropic-ai/sandbox-runtime@0.0.83 # zizmor: ignore[adhoc-packages]
 
-      # A Gemini implementer runs under srt (ADR-0034). The runner is throwaway, so weakening
-      # Ubuntu's user-namespace hardening is acceptable here. Skipped unless factory.toml
-      # selects Gemini as the implementer.
+
+      # Claude Code's sandbox and srt, which runs a Gemini implementer (ADR-0034), both need
+      # bubblewrap and socat on Linux; without them the agent refuses to start. The runner is
+      # throwaway, so weakening Ubuntu's user-namespace hardening is acceptable here.
       - name: Prepare the sandbox
         if: steps.ready.outputs.ok == 'true'
         run: |
-          grep -q '^harness = "gemini"' factory.toml || exit 0
           sudo apt-get install -y bubblewrap socat ripgrep
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict || true
