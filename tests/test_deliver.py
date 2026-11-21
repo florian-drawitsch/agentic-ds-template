@@ -1581,17 +1581,36 @@ def test_dialog_model_effort_defaults(monkeypatch, harness, answer, model, effor
     assert (args.model, args.effort) == (model, effort)
 
 
-@pytest.mark.parametrize(("harness", "model"), [("codex", "gpt-6.1-sol"), ("claude", "opus")])
+@pytest.mark.parametrize(
+    ("harness", "model"),
+    [("codex", "gpt-6.1-sol"), ("claude", "opus"), ("gemini", "gemini-4-carbon")],
+)
 def test_reviewer_menu_only_offers_frontier(monkeypatch, harness, model) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _: "")
     assert deliver.select_model("Review model", harness, review=True) == model
 
 
-@pytest.mark.parametrize("model", ["gpt-6-luna", "haiku", "claude-haiku-4-5"])
+@pytest.mark.parametrize("model", ["gpt-6-luna", "haiku", "claude-haiku-4-5", "gemini-4-hydrogen"])
 def test_small_reviewer_is_rejected(model) -> None:
     with pytest.raises(SystemExit, match="frontier"):
         deliver.reviewer_model("codex", model)
+
+
+def test_gemini_reviews_but_never_implements_and_defaults_follow_installed_clis(
+    monkeypatch,
+) -> None:
+    assert deliver.reviewer_model("gemini", None) == "gemini-4-carbon"
+    assert deliver.reviewer_model("gemini", "gemini-4-neon") == "gemini-4-neon"
+    assert deliver.parser().parse_args(["resume", "--reviewer", "gemini"]).reviewer == "gemini"
+    with pytest.raises(SystemExit):
+        deliver.parser().parse_args(["headless", "--harness", "gemini"])
+    installed = {"claude", "gemini"}
+    monkeypatch.setattr(deliver.shutil, "which", lambda name: name if name in installed else None)
+    assert deliver.default_reviewer("claude") == "gemini"
+    assert deliver.default_reviewer("codex") == "claude"
+    monkeypatch.setattr(deliver.shutil, "which", lambda name: None)
+    assert deliver.default_reviewer("claude") == "codex"
 
 
 @pytest.mark.parametrize("supported", [True, False])

@@ -104,6 +104,8 @@ CREDENTIAL_ENV = [
     "CLAUDE_CODE_OAUTH_TOKEN",
     "OPENAI_API_KEY",
     "CODEX_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
 ]
 # Without a stored login, as in CI, each vendor CLI authenticates from these variables. The
 # CLI keeps them from the commands it runs: Claude through CLAUDE_CODE_SUBPROCESS_ENV_SCRUB and
@@ -111,6 +113,16 @@ CREDENTIAL_ENV = [
 VENDOR_ENV = {
     "claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
     "codex": ("OPENAI_API_KEY", "CODEX_API_KEY"),
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+}
+# Vendors in the order a default reviewer is chosen (D1). Gemini reviews only; it does not
+# implement yet.
+VENDORS = ("codex", "claude", "gemini")
+# Default and menu models per reviewer vendor. Never use Gemini CLI aliases.
+REVIEW_MODELS = {
+    "codex": ["gpt-6.1-sol"],
+    "claude": ["opus"],
+    "gemini": ["gemini-4-carbon", "gemini-4-neon"],
 }
 # Tools a headless Claude round may use without a prompt. Claude Code forces the default
 # permission mode when CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set unless tools are listed, and a
@@ -501,7 +513,7 @@ def preflight(root: Path, args: argparse.Namespace) -> None:
     commands: list[list[str]] = []
     if args.cross_review == "final":
         if args.reviewer is None:
-            args.reviewer = "codex" if getattr(args, "harness", "claude") == "claude" else "claude"
+            args.reviewer = default_reviewer(getattr(args, "harness", "claude"))
         args.reviewer_model = reviewer_model(args.reviewer, args.reviewer_model)
         if args.reviewer == "codex":
             args.codex_bin = args.codex_bin or os.environ.get("CODEX_BIN") or shutil.which("codex")
@@ -815,8 +827,10 @@ def create_run(root: Path, args: argparse.Namespace) -> Run:
     check = args.check or default_check(root)
     if not check:
         raise SystemExit("Pass --check: no Taskfile found to infer the check command")
-    if args.cross_review == "final" and args.reviewer not in {"claude", "codex"}:
-        raise SystemExit("Pass --reviewer claude or codex together with --cross-review final")
+    if args.cross_review == "final" and args.reviewer not in VENDORS:
+        raise SystemExit(
+            "Pass --reviewer claude, codex or gemini together with --cross-review final"
+        )
     run = Run(
         token=getattr(args, "run_token", None) or f"dr-{secrets.token_hex(4)}",
         plan=relative,
@@ -2503,7 +2517,8 @@ def select_model(label: str, harness: str, *, review: bool = False) -> str:
         else [("Claude Sonnet", "sonnet"), ("Claude Opus", "opus"), ("Claude Haiku", "haiku")]
     )
     if review:
-        choices = [choices[0]] if harness == "codex" else [choices[1]]
+        titles = {"gpt-6.1-sol": "GPT-6.1 Sol", "opus": "Claude Opus"}
+        choices = [(titles.get(m, m), m) for m in REVIEW_MODELS[harness]]
     default = 0
     if not sys.stdin.isatty():
         return choices[default][1]
@@ -2517,12 +2532,18 @@ def default_effort(model: str | None) -> str:
     return "high" if any(name in (model or "").lower() for name in ("luna", "haiku")) else "medium"
 
 
+def default_reviewer(harness: str) -> str:
+    """Return the first other vendor whose CLI is installed (D1), else the first other vendor."""
+    others = [vendor for vendor in VENDORS if vendor != harness]
+    return next((v for v in others if shutil.which(v)), others[0])
+
+
 def reviewer_model(harness: str, model: str | None) -> str:
     """Require a frontier reviewer, including for explicit flags and saved runs."""
-    model = model or ("gpt-6.1-sol" if harness == "codex" else "opus")
-    if any(name in model.lower() for name in ("luna", "haiku")):
+    model = model or REVIEW_MODELS[harness][0]
+    if any(name in model.lower() for name in ("luna", "haiku", "hydrogen")):
         raise SystemExit(
-            "Review requires a frontier model (Codex Sol or Claude Opus), at high effort."
+            "Review requires a frontier model (Codex Sol, Claude Opus or Gemini Carbon or Neon)."
         )
     return model
 
@@ -2568,18 +2589,17 @@ def configure_dialog(args: argparse.Namespace, saved: Run | None = None) -> None
             else default
         )
     args.effort = effort
-    other = "claude" if args.harness == "codex" else "codex"
-    default_reviewer = saved.reviewer if saved and saved.reviewer != args.harness else other
+    others = [vendor for vendor in VENDORS if vendor != args.harness]
+    other = default_reviewer(args.harness)
+    saved_reviewer = saved.reviewer if saved and saved.reviewer != args.harness else other
     reviewer = getattr(args, "reviewer", None)
     budget = getattr(args, "review_rounds", None)
     if reviewer is None and budget != 0:
         reviewer = select_option(
             "Reviewer",
-            [
-                (other.title(), other),
-                ("No review", "off"),
-            ],
-            1 if saved and saved.cross_review == "off" else 0,
+            [(vendor.title(), vendor) for vendor in sorted(others, key=other.__ne__)]
+            + [("No review", "off")],
+            len(others) if saved and saved.cross_review == "off" else 0,
         )
     args.reviewer = None if reviewer in {None, "off"} else reviewer
     if budget is None:
@@ -2590,7 +2610,7 @@ def configure_dialog(args: argparse.Namespace, saved: Run | None = None) -> None
     args.review_rounds = budget
     args.cross_review = "final" if budget else "off"
     if budget and not args.reviewer:
-        args.reviewer = default_reviewer
+        args.reviewer = saved_reviewer
     if budget and args.reviewer == args.harness:
         raise SystemExit("Choose the other vendor for cross-review, or zero review rounds.")
     args.reviewer_model = getattr(args, "reviewer_model", None) or (
@@ -3710,7 +3730,7 @@ def add_run_options(parser: argparse.ArgumentParser, *, require_plan: bool = Tru
         help="one review followed by verified autonomous fixes",
     )
     parser.add_argument("--cross-review", choices=["off", "final"], default="off")
-    parser.add_argument("--reviewer", choices=["claude", "codex"])
+    parser.add_argument("--reviewer", choices=VENDORS)
     parser.add_argument(
         "--reviewer-model", help="final reviewer model (Codex default: gpt-6.1-sol)"
     )
@@ -3833,7 +3853,7 @@ def parser() -> argparse.ArgumentParser:
     resume.add_argument("--harness", choices=["codex", "claude"])
     resume.add_argument("--model")
     resume.add_argument("--effort", choices=["low", "medium", "high"])
-    resume.add_argument("--reviewer", choices=["codex", "claude"])
+    resume.add_argument("--reviewer", choices=VENDORS)
     resume.add_argument("--reviewer-model")
     resume.add_argument("--review-rounds", type=int, choices=range(4))
     resume.add_argument("--max-rounds", type=int)
