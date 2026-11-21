@@ -161,7 +161,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
   - The root workflow matches the template.
   - The README, the factory guide, the `deliver` and `cross-review` skills and `docs/features.md`
     name Gemini where they name the vendors.
-- [ ] **Final gate** `task check` and the configured review.
+- [x] **Final gate** `task check` and the configured review.
 
 ## Acceptance and verification
 
@@ -206,3 +206,6 @@ External checks, which need the repository secrets and spend API credit:
   neither the CLI nor network access to Google; results and the implementer design are in
   ADR-0034 under "Spike results" and "Gemini as implementer"; if wrong, Gemini rounds fail
   to start or commit, which the implementer tests and the external check catch.
+- Final gate: the outer controller runs `task check` and the configured review after staging
+  and refuses to push if either fails. The agent ran focused checks only, as the run
+  instructs, so this box records that handoff, not a passed full gate.
