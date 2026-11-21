@@ -1871,11 +1871,15 @@ def gemini_environment(run: Run, root: Path, writable: list[str] | None = None) 
         ),
         encoding="utf-8",
     )
-    return sandbox_environment("gemini") | gemini_key_from_dotenv() | {
-        "GEMINI_CLI_SYSTEM_SETTINGS_PATH": str(settings),
-        "GEMINI_CLI_TRUST_WORKSPACE": "true",
-        NESTED_ENV: "1",
-    }
+    return (
+        sandbox_environment("gemini")
+        | gemini_key_from_dotenv()
+        | {
+            "GEMINI_CLI_SYSTEM_SETTINGS_PATH": str(settings),
+            "GEMINI_CLI_TRUST_WORKSPACE": "true",
+            NESTED_ENV: "1",
+        }
+    )
 
 
 def gemini_round_command(command: list[str], run: Run, root: Path) -> list[str]:

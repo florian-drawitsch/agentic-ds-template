@@ -2068,7 +2068,7 @@ def test_gemini_round_timeout_stops_the_process_group(tmp_path, monkeypatch) -> 
     [
         ({"GEMINI_API_KEY": "from-env"}, "GEMINI_API_KEY=from-file\n", {}),
         ({}, "export GEMINI_API_KEY='from-file'\n", {"GEMINI_API_KEY": "from-file"}),
-        ({}, "# comment\nGOOGLE_API_KEY=\"g\"\n", {"GOOGLE_API_KEY": "g"}),
+        ({}, '# comment\nGOOGLE_API_KEY="g"\n', {"GOOGLE_API_KEY": "g"}),
         ({}, "OTHER=x\n", {}),
         ({}, None, {}),
     ],
