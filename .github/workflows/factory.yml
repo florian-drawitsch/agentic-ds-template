@@ -3,7 +3,7 @@ name: Factory
 # Ticket factory (ADR-0033). The controller moves labeled issues to verified pull requests.
 # All GitHub writes use FACTORY_GH_TOKEN so that the pull requests it opens start CI; the
 # workflow's own token stays read-only. `task factory:secrets` sets the secrets. A board
-# owned by a personal account needs a classic token with the repo and project scopes.
+# owned by a personal account needs a classic token with the repo, project and read:org scopes.
 # Claude signs in with ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`).
 
 on:

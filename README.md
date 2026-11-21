@@ -181,7 +181,7 @@ controller, not a model, picks the next action. A person still merges every pull
      task factory:secrets
      ```
 
-     It sets `FACTORY_GH_TOKEN` (a classic token with the `repo` and `project` scopes, or the
+     It sets `FACTORY_GH_TOKEN` (a classic token with the `repo`, `project` and `read:org` scopes, or the
      token of your `gh` login), the Claude login (`CLAUDE_CODE_OAUTH_TOKEN` from
      `claude setup-token`, using your subscription, or `ANTHROPIC_API_KEY`) and
      `OPENAI_API_KEY`. Until they exist, the workflow skips each run with a notice. Public
