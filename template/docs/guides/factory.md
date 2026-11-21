@@ -99,11 +99,24 @@ model tokens and Actions minutes: set the spend caps in `factory.toml` before th
 2. Start the ticket: a maintainer adds the label `factory:ready`, or moves its card to
    Ready on the board and waits up to an hour for the next scheduled run. Only users with
    write access count; the factory ignores issues released by anyone else.
-3. `task factory:status` shows the issues per state, spend against the caps and the next
+3. Triage accepts or asks for information, then the planner writes the plan and commits it.
+   In **dark** mode (default) a low-risk plan with no open question goes straight to
+   implementation. A ticket stops in **Plan review** when `factory.toml` sets `mode = "lit"`,
+   triage rated it `risk: high`, a maintainer added `factory:lit`, or the plan has an open
+   question. Only escalation exists per ticket: no label removes the gate in lit mode.
+4. In Plan review, read the plan in the ticket body (between the `factory:plan` markers, below
+   your own text). Open questions are listed in a comment. Answer in a comment, then approve:
+   add `factory:approved`, or move the card from Plan review to Building. Only users with
+   write access count, and the latest signal wins. After answers the planner revises the plan
+   and the ticket returns to Plan review until no question is open. If you change the branch
+   after approval, the ticket returns to Plan review.
+5. To reject a plan, move the card to Needs info (Blocked) with a comment, or back to Ready to
+   plan again.
+6. `task factory:status` shows the issues per state, spend against the caps and the next
    action. `task factory:tick -- --dry-run` prints that action without changing anything.
-4. `task factory:sync` mirrors the labels into the board after manual label changes.
-5. `task factory:loop 300` runs the tick on your machine every 300 seconds (default 1800).
-6. `task factory:report -- daily` or `weekly` posts the report on the "Factory status" issue.
+7. `task factory:sync` mirrors the labels into the board after manual label changes.
+8. `task factory:loop 300` runs the tick on your machine every 300 seconds (default 1800).
+9. `task factory:report -- daily` or `weekly` posts the report on the "Factory status" issue.
    The workflow posts the daily report at 06:00 UTC and the weekly one on Mondays at 07:00
    UTC. After `retro_every` merged pull requests, the daily run also starts a retrospective.
 
@@ -123,31 +136,35 @@ or estimates. `init` adds three views:
 
 | View | Shows |
 | --- | --- |
-| Board | One column per factory state, from Ready to Done |
-| Backlog | Tickets not started yet: Ready, Needs info, Accepted |
-| Needs attention | Tickets waiting for a person: Needs info, Needs human, Verified |
+| Board | One column per owner, from Ready to Done |
+| Backlog | Tickets not started yet: Ready, Planning, Plan review |
+| Needs attention | Tickets waiting for a person: Plan review, Blocked, Ready to merge |
 
 Order the queue with the labels `priority:high`, `priority:medium` and `priority:low`; the
-factory picks higher priority first, then the lower issue number. To show the factory's
-limits on the board, set a column limit of 1 on In progress and 3 on Verified in the board
-settings. Labels drive the factory: moving a card does not change its label, so change the
-label instead.
+factory picks higher priority first, then the lower issue number. Labels keep every state and
+the board groups them. Two card moves are input: a card moved into Ready releases a ticket,
+and a card moved from Plan review into Building approves its plan. Any other move goes back to
+the column of the card's label at the next mirror.
 
-| Label | Board column | Meaning |
+| Column | Labels | Whose move |
 | --- | --- | --- |
-| `factory:ready` | Ready | Released by a maintainer |
-| `factory:needs-info` | Needs info | Triage needs more information |
-| `factory:accepted` | Accepted | Triaged and queued |
-| `factory:in-progress` | In progress | Claimed, implementation running |
-| `factory:in-review` | In review | Pull request open and under review |
-| `factory:verified` | Verified | All checks passed, waiting for a human merge |
-| `factory:needs-human` | Needs human | Stopped, a human must decide |
+| Ready | `factory:ready` | you released it; the factory triages next |
+| Planning | `factory:accepted` | factory: triage done, planner working |
+| Plan review | `factory:plan-review` | you: read the plan, answer questions, approve |
+| Building | `factory:approved`, `factory:in-progress` | factory: queued or implementing |
+| In review | `factory:in-review` | factory: pull request, CI, repairs, verification |
+| Ready to merge | `factory:verified` | you: merge |
+| Blocked | `factory:needs-info`, `factory:needs-human` | you: the reason is in the last comment |
+| Done | closed | none |
+
+`factory:lit` marks a ticket whose plan needs approval. `task factory:init` migrates an older
+board: it moves each card to its new column and removes old columns that are empty.
 
 Closed issues move to Done through the board's built-in workflow.
 
 ## Limits
 
-`factory.toml` sets the limits: one issue in progress, at most three verified pull requests
+`factory.toml` sets the limits: one issue in progress (deliveries run one at a time today, so a higher value has no effect), at most three verified pull requests
 waiting, USD 20 per day and USD 100 per calendar week by default. Pull requests that touch
 `factory.toml`, agent configuration, CI or infrastructure always go to a human.
 

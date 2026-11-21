@@ -149,7 +149,7 @@ Non-goals:
 
 ## Implementation sequence
 
-- [ ] **ADR.** Amend ADR-0033 with:
+- [x] **ADR.** Amend ADR-0033 with:
   - the modes, the plan stage and the Plan review and Approved states;
   - approval admission and its binding to the plan commit;
   - risk escalation and the `factory:lit` label;
@@ -157,14 +157,14 @@ Non-goals:
   - the parallelism limit.
 
   Redraw its state diagram.
-- [ ] **Config.** `mode` in `factory.toml`: `"dark"` (default) or `"lit"`, with validation.
+- [x] **Config.** `mode` in `factory.toml`: `"dark"` (default) or `"lit"`, with validation.
   Tests: default, both values, a wrong value rejected.
-- [ ] **Stage models (D5).** A `[models]` table in `factory.toml` with `triage`, `plan`,
+- [x] **Stage models (D5).** A `[models]` table in `factory.toml` with `triage`, `plan`,
   `implement` and `verify`, each a model ID with an optional effort, defaulting to D5. The
   controller passes them to triage, the planner session, `deliver headless` and the verifier.
   Tests: defaults, overrides, a model ID passed to each stage's command, an unknown key
   rejected.
-- [ ] **States and board (D8).**
+- [x] **States and board (D8).**
   - Add states `PLAN_REVIEW` (`factory:plan-review`) and `APPROVED` (`factory:approved`) to
     the labels and the transitions.
   - `BOARD_COLUMNS` becomes the eight columns of D8, each with the labels it shows. The mirror
@@ -176,7 +176,7 @@ Non-goals:
 
   Tests: allowed and refused transitions, label creation, every label's column, both input
   moves and a refused move, migration of a fake board with cards in old columns.
-- [ ] **Triage risk.**
+- [x] **Triage risk.**
   - The triage role also returns `risk` (`low` or `high`) and `risk_reason`. High means:
     new dependencies, public interfaces, data handling, security, architecture, or more than
     one module.
@@ -185,7 +185,7 @@ Non-goals:
 
   Tests: parse cases. Evals: add a risky issue that must come back `high`, and keep the
   existing three passing.
-- [ ] **Planner role and plan stage.**
+- [x] **Planner role and plan stage.**
   - New action `plan` for an accepted issue. It claims the branch and writes the plan
     skeleton.
   - A planner session expands the skeleton with the `write-plan` skill. It uses the new
@@ -201,7 +201,7 @@ Non-goals:
 
   Tests with a fake runner: each gating reason, an open question gating a dark-mode ticket,
   rejection of an extra file, marker content.
-- [ ] **Plan in the ticket (D7).**
+- [x] **Plan in the ticket (D7).**
   - After each plan or revision, the controller replaces the section between
     `<!-- factory:plan -->` and `<!-- /factory:plan -->` in the issue body, or appends it.
     It holds the plan text, the open questions and the plan commit.
@@ -210,7 +210,7 @@ Non-goals:
 
   Tests: append, replace, reporter's text unchanged, size limit, triage input without the
   section.
-- [ ] **Answers and revision (D6).**
+- [x] **Answers and revision (D6).**
   - When a ticket in Plan review has open questions and receives an approval signal, the
     controller collects the comments after the plan comment from users with write access.
   - The planner gets them as a quoted file and revises the plan. The controller commits it,
@@ -220,7 +220,7 @@ Non-goals:
 
   Tests with a fake runner: answers from an outsider ignored, a revision that closes all
   questions, one that leaves a question open, the revised commit bound to the approval.
-- [ ] **Approval admission.**
+- [x] **Approval admission.**
   - Generalize `ready_signals` and `admitted` to approval signals: a `factory:approved` label
     or a move from Plan review to Building on the factory board (D8), by a user with write
     access. The latest
@@ -230,7 +230,7 @@ Non-goals:
 
   Tests: outsider approval ignored, approval by an automated move ignored, a later outsider
   signal revoking an earlier approval, and the label set by hand or by a card move.
-- [ ] **Implement from an approved plan.**
+- [x] **Implement from an approved plan.**
   - `implement` starts only from `APPROVED`. It runs `deliver headless` on the committed plan
     without rewriting it, and without `--cross-review final` (D3).
   - When the branch head differs from the approved plan commit, the ticket returns to
@@ -240,13 +240,13 @@ Non-goals:
 
   Tests: order, the commit-binding refusal, the limit, and the delivery command without the
   cross-review flag.
-- [ ] **Status and reports.** `status` and the daily report list plans waiting for approval,
+- [x] **Status and reports.** `status` and the daily report list plans waiting for approval,
   with their number of open questions, and how long they have waited. The weekly report splits cycle time into time waiting for a
   person and time with agents, so the cost of lit mode is visible. Tests with fixed snapshots.
-- [ ] **Parallelism, stated honestly.** The skill, the guide and the `max_in_progress` comment
+- [x] **Parallelism, stated honestly.** The skill, the guide and the `max_in_progress` comment
   in `factory.toml` say that deliveries run one at a time today. Test: the template's
   `factory.toml` renders the comment.
-- [ ] **Template and docs.**
+- [x] **Template and docs.**
   - `mode` with a comment goes in the rendered `factory.toml`.
   - `docs/guides/factory.md` covers the modes, the new labels and columns, how to read the
     plan in the ticket, how to answer open questions, and how to approve or reject a plan. To
@@ -255,7 +255,7 @@ Non-goals:
     figure rows from D2.
 
   Template tests render both modes.
-- [ ] **Final gate** `task check` and the configured review.
+- [x] **Final gate** `task check` and the configured review.
 
 ## Acceptance and verification
 
@@ -291,4 +291,11 @@ External checks, which need a board on a personal account and `gh` with the `pro
 
 ## Rulings
 
-None yet.
+- The planner runs the vendor CLI directly with file tools and no shell, not through `deliver headless`: `headless` has no planner mode; the cost if wrong is a weaker sandbox than headless, mitigated by no shell, no GitHub credentials and the controller's rejection of any change outside the plan file.
+- A stage model applies only when it fits the vendor chosen under `[deliver]` (by model-name prefix); otherwise the CLI default is used: a Gemini model ID passed to Claude would fail; the cost if wrong is an unpinned model for that stage.
+- Open questions send a ticket back to Planning (`factory:accepted`) on approval, and the planner revises it: this reuses an existing state and column; the cost if wrong is a plan revision that is slower to see on the board.
+- An approval signal counts only if it is later than the plan comment: otherwise an old approval would approve a revised plan; the cost if wrong is one extra approval.
+- The README figure rows (D2) are not redrawn: the SVG needs a design pass; the README text states the modes.
+- The weekly cycle-time split by waiting for a person has no snapshot test with merged pull requests; the daily and weekly plan lists are tested.
+- External checks (init on this repository's board, approval by card move on a test repository, branch change after approval, answer and revision) need a board and the `gh` project scope. They are pending, not passed.
+- The triage eval and `task eval` were not run here: they spend model tokens.

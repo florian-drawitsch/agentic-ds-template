@@ -121,6 +121,7 @@ FACTORY_FILES = (
     ".github/workflows/factory.yml",
     "scripts/assets/issue-plan.md",
     "scripts/assets/roles/triage.md",
+    "scripts/assets/roles/planner.md",
 )
 FACTORY_INIT = "uv run --script scripts/agent/factory.py init --skip-unavailable"
 
@@ -134,6 +135,13 @@ def test_factory_files_follow_the_answer(project: Path, factory_project: Path) -
     for path in FACTORY_FILES:
         assert not (project / path).exists(), path
         assert (factory_project / path).is_file(), path
+
+
+def test_factory_toml_states_the_mode_and_the_parallelism_limit(factory_project: Path) -> None:
+    text = (factory_project / "factory.toml").read_text()
+    assert '# mode = "dark"' in text and "[models]" in text
+    assert "one at a time" in text
+    assert "Plan review" in (factory_project / "docs/guides/factory.md").read_text()
 
 
 def test_factory_question_needs_github_ci_and_both_harnesses(tmp_path: Path) -> None:

@@ -7,7 +7,23 @@
 # missing. Set a URL only to use another board.
 # project = "https://github.com/users/<owner>/projects/<number>"
 
+# Mode (ADR-0033). "dark" (default): a plan needs no approval unless triage rates the ticket
+# risk high, a maintainer adds the label factory:lit, or the plan has an open question.
+# "lit": every plan waits in Plan review until a maintainer approves it.
+# mode = "dark"
+# max_plan_review = 3   # stop planning while this many plans wait for a person
+
+# One model per stage, as "<model id>" or "<model id>:<effort>". A model is used only when it
+# fits the harness selected under [deliver] or the stage's vendor.
+# [models]   (a table: add it at the end of this file)
+# triage = "gemini-4-hydrogen"
+# plan = "opus:high"
+# implement = "sonnet:medium"
+# verify = "gemini-4-carbon"
+
 # Work in progress: issues being implemented at once, and verified PRs waiting for a merge.
+# Deliveries run one at a time today: a tick runs the delivery to its end, so a value above 1
+# has no effect until deliveries run as separate jobs.
 # max_in_progress = 1
 # max_verified = 3
 # max_repair_cycles = 2
