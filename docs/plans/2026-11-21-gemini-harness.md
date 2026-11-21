@@ -38,6 +38,27 @@ returned `OK` from `gemini-3.5-flash-lite`.
   `--skip-trust` or `GEMINI_CLI_TRUST_WORKSPACE=true`.
 - **Credentials:** the CLI authenticates from `GEMINI_API_KEY`. A Google AI Pro plan adds
   USD 10 of API credit each month.
+- **Models:** `gemini-4-carbon`, `gemini-4-neon` and `gemini-4-hydrogen` answer through the
+  CLI with `-m` (checked 2026-11-21). Carbon and Neon have no free tier, so the key draws on
+  billing or credits.
+- **Stale aliases:** the CLI's own aliases point at older models. `pro` resolves to
+  `gemini-3.1-pro-preview-customtools`, `flash` to `gemini-3.8-flash`, and `auto` routes
+  between `gemini-3.5-flash-lite` and `gemini-3.8-flash`. Defaults therefore name exact
+  model IDs.
+- **Google's model guide:** Hydrogen for everyday coding and agents, Neon for multi-file
+  refactors and repository-wide debugging, Carbon for deep verification and the strongest
+  reasoning. The CLI says it is not optimized for Argon, the flagship.
+- **Prices** per million tokens (input / cached input / output):
+
+  | Model | Price | Free tier |
+  | --- | --- | --- |
+  | `gemini-4-hydrogen` | 1.50 / 0.075 / 7.50 | yes |
+  | `gemini-4-neon` | 3.00 / 0.15 / 15.00 | no |
+  | `gemini-4-carbon` | 2.00 / 0.10 / 10.00 until 30 November 2026, then 4.00 / 0.20 / 20.00 | no |
+
+- **CLI future:** Google replaced Gemini CLI with Antigravity CLI for unpaid and Google One
+  users on 18 June 2026. Use with an API key still works. ADR-0034 records this as a risk to
+  recheck.
 
 ## Prerequisites and decisions
 
@@ -52,6 +73,17 @@ returned `OK` from `gemini-3.5-flash-lite`.
   of exactly Claude Code and Codex.
 - **D3:** Gemini runs headless only. Interactive `task deliver` offers Gemini as implementer
   for headless runs and as reviewer for any run.
+- **D4, model defaults:** each vendor's defaults live in its vendor table, not in scattered
+  literals.
+
+  | Role | Gemini default | Why | Menu alternatives |
+  | --- | --- | --- | --- |
+  | Implementer (`deliver`) | `gemini-4-neon` | Google's pick for multi-file changes, which plans usually are | `gemini-4-hydrogen` (half the price), `gemini-4-carbon` |
+  | Reviewer (`cross-review`, factory verification) | `gemini-4-carbon` | strongest reasoning and deep verification, like Opus and GPT-6.1 Sol for the other vendors | `gemini-4-neon` |
+  | Factory triage | `gemini-4-hydrogen` | a short read-only classification; cheap and on the free tier | none |
+
+  Never use the CLI aliases. `prices.toml` carries Carbon's price from 1 December 2026, so
+  cost caps err on the high side.
 - **Approval:** pending. Record the user's approval of this named plan and whether delivery
   may publish a pull request.
 
@@ -72,7 +104,9 @@ returned `OK` from `gemini-3.5-flash-lite`.
   - the command builder;
   - the credential environment variables;
   - the output parser;
-  - the pricing source.
+  - the pricing source;
+  - the default model per role and the models the menus offer (D4). The current literals
+    (`sonnet`, `opus`, `gpt-6.1-sol`) move into the table unchanged.
 
   The scripts stay standalone and stdlib-only, so each keeps its own table. Tests: the
   existing suites pass unchanged, and a parametrized test checks that every vendor has every
@@ -81,12 +115,13 @@ returned `OK` from `gemini-3.5-flash-lite`.
   - `--reviewer gemini` runs `gemini -p` with `--approval-mode plan`, `--output-format json`
     and `--skip-trust`, using the same review prompt and verdict contract.
   - The environment keeps only Gemini credentials.
-  - Cost comes from the token stats and new Gemini entries in `prices.toml`, with the source
+  - Cost comes from the token stats and new entries in `prices.toml` for Hydrogen, Neon and Carbon (D4), with the source
     and the verification date.
 
   Tests with a fake runner: command shape, parsed verdict, cost, scrubbed environment.
 - [ ] **Gemini in the factory.**
-  - Triage and verification run on `reviewer = "gemini"`.
+  - Triage and verification run on `reviewer = "gemini"`: triage with
+    `gemini-4-hydrogen`, verification with `gemini-4-carbon` (D4).
   - `_vendors` and the role prompts accept any vendor pair.
   - `required_secrets` asks for `GEMINI_API_KEY` when Gemini is used, and only for the two
     configured vendors.
