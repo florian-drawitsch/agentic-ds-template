@@ -63,6 +63,9 @@ It combines:
   [Lit factory](#lit-factory).
 - **Dark factory, board mode:** agents run from the issue to the pull request. You write the
   issue and merge the result. [Dark factory](#dark-factory).
+- **Board modes:** `mode = "dark"` (default) needs no plan approval except for risky tickets or
+  open design questions. `mode = "lit"` stops every plan in Plan review until you approve it.
+  Interactive mode above is a separate way of working.
 
 Both modes end at the same gate: nothing merges without you.
 
