@@ -146,7 +146,10 @@ def test_changed_files_lists_both_rename_paths():
     ("pages", "names"),
     [
         ([{"total_count": 2, "secrets": [{"name": "A"}, {"name": "B"}]}], ["A", "B"]),
-        ([{"total_count": 1, "secrets": [{"name": "A"}]}, {"secrets": [{"name": "C"}]}], ["A", "C"]),
+        (
+            [{"total_count": 1, "secrets": [{"name": "A"}]}, {"secrets": [{"name": "C"}]}],
+            ["A", "C"],
+        ),
         ([{"total_count": 0, "secrets": []}], []),
     ],
 )
