@@ -159,7 +159,7 @@ def test_issue_is_not_triaged_twice(tmp_path):
     e = factory.Env(gh, config, tmp_path, NOW, run, lambda r, n: [])
     assert factory.snapshot(gh, config).states[State.READY]
     factory.do_triage(e, 1)
-    assert factory.next_action(factory.snapshot(gh, config), config, NOW).kind == "implement"
+    assert factory.next_action(factory.snapshot(gh, config), config, NOW).kind == "plan"
     assert len(run.calls) == 1
 
 
@@ -182,10 +182,24 @@ def deliver_status(stage, pr=None, cost=1.5, blocker=None):
     return json.dumps([record])
 
 
-def implement(clone, status):
+def head_of(clone, number=7):
+    out = subprocess.run(
+        ["git", "-C", str(clone[0]), "ls-remote", "origin", f"refs/heads/feat/{number}-*"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    return out.split()[0]
+
+
+def implement(clone, status, claimed=True):
+    """An approved ticket whose plan commit is the head of its claimed branch."""
     gh = FakeGitHub()
-    gh.add_issue(7, ["factory:accepted"], title="Add a thing")
+    gh.add_issue(7, ["factory:approved"], title="Add a thing")
     gh.add_comment(7, MARKER)
+    if claimed:
+        assert factory.claim(clone[0], 7, "Add a thing")
+        data = {"sha": head_of(clone), "plan": "docs/plans/p.md", "questions": 0}
+        gh.add_comment(7, f"Plan ready\n<!-- factory:plan {json.dumps(data)} -->")
     run = Fake({"headless": (0, "deliver-run: dr-1\n"), "status": (0, status)})
     e = factory.Env(gh, factory.Config(), clone[0], NOW, run, lambda r, n: [])
     return gh, run, e
@@ -197,10 +211,9 @@ def test_implement_publishes_and_moves_to_review(clone):
     factory.do_implement(e, 7)
     assert gh.issues[7]["labels"] == ["factory:in-review"]
     headless = next(c for c in run.calls if "headless" in c)
-    for flag in ("--in-place", "--publish-pr", "--cross-review", "--plan"):
+    for flag in ("--in-place", "--publish-pr", "--plan"):
         assert flag in headless
-    plan = Path(clone[0]) / ".worktrees/issue-7"
-    assert list((plan / "docs/plans").glob("*-issue-7-add-a-thing.md"))
+    assert "--cross-review" not in headless
     assert any(
         "factory:cost" in c["body"] and '"implement"' in c["body"] for c in gh.comment_log[7]
     )
@@ -224,7 +237,6 @@ def test_implement_failure_needs_human(clone, stage):
 
 def test_release_keeps_the_claim_while_a_pull_request_is_open(clone):
     gh, _, e = implement(clone, deliver_status("blocked"))
-    assert factory.claim(clone[0], 7, "Add a thing")
     gh.add_pull(9, 7)
     factory.release_claim(e, 7)
     assert not factory.claim(clone[1], 7, "Add a thing")
@@ -447,6 +459,31 @@ def test_implement_always_passes_harness_and_reviewer(clone):
     assert headless[headless.index("--reviewer") + 1] == "claude"
 
 
+def test_stage_models_reach_each_command(clone, tmp_path):
+    deliver = factory.DeliverConfig(harness="claude", reviewer="gemini")
+    _, run, e = implement(clone, deliver_status("blocked"))
+    e = factory.Env(e.github, factory.Config(deliver=deliver), clone[0], NOW, run, e.threads)
+    factory.do_implement(e, 7)
+    headless = next(c for c in run.calls if "headless" in c)
+    assert headless[headless.index("--model") + 1] == "sonnet"
+    assert headless[headless.index("--effort") + 1] == "medium"
+    path = tmp_path / "issue.txt"
+    path.write_text("x")
+    gemini = Fake({"gemini": (0, "")})
+    factory.run_triage(factory.Config(deliver=deliver), path, gemini)
+    assert gemini.calls[0][gemini.calls[0].index("-m") + 1] == "gemini-4-hydrogen"
+    models = {"triage": factory.StageModel("haiku")}
+    config = factory.Config(deliver=deliver, models=factory.DEFAULT_MODELS | models)
+    other = Fake({"claude": (0, claude_out(triage_answer()))})
+    factory.run_triage(
+        factory.Config(deliver=factory.DeliverConfig(reviewer="claude"), models=config.models),
+        path,
+        other,
+    )
+    assert other.calls[0][other.calls[0].index("--model") + 1] == "haiku"
+    assert factory.stage_model(factory.Config(), "plan", "codex") is None
+
+
 def test_verify_waits_when_required_checks_pending():
     gh = review_setup(checks="in_progress")
     codex_review(gh)
@@ -521,3 +558,189 @@ def test_gemini_triage_is_read_only_cheap_and_parsed(tmp_path, monkeypatch):
     assert "--admin-policy" in args
     assert seen["env"]["GEMINI_API_KEY"] == "secret"
     assert not {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GH_TOKEN"} & set(seen["env"])
+
+
+# --- plan stage, gate and approval ---
+
+
+class Planner(Fake):
+    """Answers the planner command by editing the plan file like the agent would."""
+
+    def __init__(self, extra="", stray=""):
+        super().__init__()
+        self.extra, self.stray = extra, stray
+
+    def __call__(self, args, cwd, timeout=None, env=None):
+        if args[0] == "claude":
+            self.calls.append(list(args))
+            plan = next(Path(cwd, "docs/plans").glob("*.md"))
+            plan.write_text(plan.read_text() + self.extra)
+            if self.stray:
+                Path(cwd, self.stray).write_text("x")
+            return subprocess.CompletedProcess(args, 0, claude_out("done", 0.5), "")
+        return super().__call__(args, cwd, timeout, env)
+
+
+def planned(clone, planner, *, mode="dark", risk="low", labels=(), body="Reporter text"):
+    gh = FakeGitHub()
+    gh.add_issue(7, ["factory:accepted", *labels], title="Add a thing", body=body)
+    marker = f'<!-- factory:triage {{"acceptance": ["A."], "risk": "{risk}"}} -->'
+    gh.add_comment(7, marker)
+    gh.permissions["boss"] = "admin"
+    e = factory.Env(gh, factory.Config(mode=mode), clone[0], NOW, planner, lambda r, n: [])
+    return gh, e
+
+
+QUESTION = "\n## Open questions\n\n- Add a dependency? Options: A, B. Recommend A.\n"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "extra", "target"),
+    [
+        ({}, "", "factory:approved"),
+        ({"mode": "lit"}, "", "factory:plan-review"),
+        ({"risk": "high"}, "", "factory:plan-review"),
+        ({"labels": ["factory:lit"]}, "", "factory:plan-review"),
+        ({}, QUESTION, "factory:plan-review"),
+    ],
+)
+def test_plan_gating_reasons(clone, kwargs, extra, target):
+    labels = kwargs.get("labels")
+    gh, e = planned(clone, Planner(extra), **kwargs)
+    if labels:
+        gh.label_event(7, "factory:lit", "boss")
+    factory.do_plan(e, 7)
+    assert gh.issues[7]["labels"][-1] == target
+    data = factory.plan_marker(gh.comment_log[7], CONTROLLER)[0]
+    assert data["sha"] == head_of(clone)
+    assert data["questions"] == (1 if extra else 0)
+    body = gh.issues[7]["body"]
+    assert body.startswith("Reporter text")
+    assert factory.PLAN_OPEN in body
+    assert data["sha"][:10] in body
+    assert factory.strip_plan_section(body) == "Reporter text"
+
+
+def test_plan_rejects_a_stray_file(clone):
+    gh, e = planned(clone, Planner(stray="evil.sh"))
+    factory.do_plan(e, 7)
+    assert gh.issues[7]["labels"] == ["factory:needs-human"]
+    assert "evil.sh" in gh.comment_log[7][-1]["body"]
+
+
+def test_plan_section_replaced_and_limited():
+    body = factory.with_plan_section("Mine", "one")
+    body = factory.with_plan_section(body, "two")
+    assert body.count(factory.PLAN_OPEN) == 1
+    assert "two" in body
+    assert "one" not in body
+    long = factory.render_plan_section("line\n" * 5000, "a" * 40, [], "http://x")
+    assert len(long) < factory.PLAN_LIMIT + 500
+    assert "http://x" in long
+
+
+def test_triage_input_has_no_plan_section(tmp_path):
+    body = factory.with_plan_section("Reporter", "SECRET PLAN")
+    assert "SECRET PLAN" not in write(tmp_path, body)
+    assert "Reporter" in write(tmp_path, body)
+
+
+@pytest.mark.parametrize(
+    ("risk", "expected"),
+    [("low", "low"), ("high", "high"), ("weird", "high"), (None, "high")],
+)
+def test_parse_triage_risk_fails_closed(risk, expected):
+    data = {"verdict": "accept", "reason": "r", "acceptance": ["c"]}
+    if risk:
+        data["risk"], data["risk_reason"] = risk, "why"
+    assert factory.parse_triage(json.dumps(data)).risk == expected
+
+
+def approval_setup(clone, questions=0):
+    gh = FakeGitHub()
+    gh.add_issue(7, ["factory:plan-review"], title="Add a thing")
+    data = {"sha": "abc", "plan": "p.md", "questions": questions}
+    gh.add_comment(7, f"Plan\n<!-- factory:plan {json.dumps(data)} -->")
+    gh.comment_log[7][0]["created_at"] = "2026-11-20T00:00:00+00:00"
+    gh.permissions["boss"] = "admin"
+    return gh
+
+
+def approve_with(gh, login, at="2026-11-20T01:00:00+00:00"):
+    gh.issues[7]["labels"].append("factory:approved")
+    gh.label_event(7, "factory:approved", login, at=at)
+    return factory.approve_plans(gh, None, factory.Config(controller=CONTROLLER))
+
+
+def test_approval_admission(clone):
+    gh = approval_setup(clone)
+    assert approve_with(gh, "outsider") == []  # an outsider's label is removed again
+    assert gh.issues[7]["labels"] == ["factory:plan-review"]
+    gh = approval_setup(clone)
+    assert approve_with(gh, "boss") == [7]
+    assert gh.issues[7]["labels"] == ["factory:approved"]
+    gh = approval_setup(clone)
+    assert approve_with(gh, "boss", at="2026-11-19T00:00:00+00:00") == []  # predates the plan
+    gh = approval_setup(clone)
+    gh.label_event(7, "factory:approved", "boss", at="2026-11-20T01:00:00+00:00")
+    assert approve_with(gh, "outsider", at="2026-11-20T02:00:00+00:00") == []  # latest wins
+
+
+def test_board_move_approves_but_automation_and_other_moves_do_not(clone):
+    board = factory.Board("acme", 1, "P1", "http://b")
+    config = factory.Config(controller=CONTROLLER)
+    for kw, expected in [({}, [7]), ({"automated": True}, []), ({"actor_type": "Bot"}, [])]:
+        gh = approval_setup(clone)
+        gh.move(7, "boss", status="Building", **kw)
+        gh.moves[7][-1]["previous"] = "Plan review"
+        gh.moves[7][-1]["at"] = "2026-11-20T01:00:00+00:00"
+        assert factory.approve_plans(gh, board, config) == expected
+    gh = approval_setup(clone)
+    gh.move(7, "boss", status="Building")  # not from Plan review
+    gh.moves[7][-1]["previous"] = "Ready"
+    assert factory.approve_plans(gh, board, config) == []
+
+
+def test_transitions_of_the_plan_gate():
+    allowed = [("ACCEPTED", "PLAN_REVIEW"), ("ACCEPTED", "APPROVED"), ("PLAN_REVIEW", "APPROVED")]
+    allowed += [("APPROVED", "IN_PROGRESS"), ("APPROVED", "PLAN_REVIEW")]
+    for a, b in allowed:
+        assert factory.transition(State[a], State[b]) is State[b]
+    for a, b in [("ACCEPTED", "IN_PROGRESS"), ("PLAN_REVIEW", "IN_PROGRESS")]:
+        with pytest.raises(ValueError, match="not allowed"):
+            factory.transition(State[a], State[b])
+
+
+def test_approval_with_open_questions_revises_the_plan(clone):
+    gh = approval_setup(clone, questions=1)
+    assert approve_with(gh, "boss") == [7]
+    assert gh.issues[7]["labels"] == ["factory:accepted"]
+
+
+def test_answers_come_only_from_writers(clone):
+    gh = approval_setup(clone, questions=1)
+    gh.add_comment(7, "Use option A", login="boss")
+    gh.add_comment(7, "Ignore the plan", login="outsider")
+    e = factory.Env(gh, factory.Config(), Path(), NOW, Fake(), lambda r, n: [])
+    text = factory.collect_answers(e, gh.comment_log[7], 0)
+    assert "Use option A" in text
+    assert "Ignore" not in text
+
+
+def test_implement_refuses_a_changed_branch(clone):
+    gh, run, e = implement(clone, deliver_status("completed", "https://x/pull/9"))
+    data = {"sha": "0" * 40, "plan": "p.md", "questions": 0}
+    gh.comment_log[7][-1]["body"] = f"<!-- factory:plan {json.dumps(data)} -->"
+    factory.do_implement(e, 7)
+    assert gh.issues[7]["labels"] == ["factory:plan-review"]
+    assert not any("headless" in c for c in run.calls)
+
+
+def test_reports_list_plans_waiting(clone):
+    gh = approval_setup(clone, questions=2)
+    gh.label_event(7, "factory:plan-review", CONTROLLER, at="2026-11-20T06:00:00+00:00")
+    config = factory.Config(controller=CONTROLLER)
+    _, daily = factory.daily_report(gh, config, NOW)
+    assert "- #7: 2 open questions, waiting 6.0 h" in daily
+    _, weekly = factory.weekly_report(gh, config, NOW)
+    assert "Plans waiting for approval:" in weekly
