@@ -173,7 +173,7 @@ controller, not a model, picks the next action. A person still merges every pull
      task factory:loop
      ```
 
-   - **In GitHub Actions**, every 30 minutes with your machine off. Set three repository
+   - **In GitHub Actions**, every hour with your machine off. Set three repository
      secrets step by step; the command opens each page in the browser and stores each value
      without printing it:
 
@@ -185,7 +185,7 @@ controller, not a model, picks the next action. A person still merges every pull
      token of your `gh` login), the Claude login (`CLAUDE_CODE_OAUTH_TOKEN` from
      `claude setup-token`, using your subscription, or `ANTHROPIC_API_KEY`) and
      `OPENAI_API_KEY`. Until they exist, the workflow skips each run with a notice. Public
-     repositories pay no Actions minutes; private ones on the Free plan spend about 1,500
+     repositories pay no Actions minutes; private ones on the Free plan spend about 750
      of their 2,000 monthly minutes on idle polling, so lengthen the interval if other
      workflows need minutes too, or run locally.
 
