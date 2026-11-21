@@ -1,6 +1,6 @@
 # Gemini implementer in sandbox-runtime
 
-Status: Proposed; not approved for implementation.
+Status: Approved for implementation on 2026-11-21.
 
 ## Goal and scope
 
@@ -67,8 +67,8 @@ on a developer machine. On macOS none of the four steps is needed.
   `deliver doctor` reports it missing when Gemini is configured as the implementer.
 - **D5:** the factory workflow prepares the runner (findings steps 1 to 4) only when Gemini is
   the implementer.
-- **Approval:** pending. Record the user's approval of this named plan and whether delivery
-  may publish a pull request.
+- **Approval:** the user approved this named plan with D1 to D5 on 2026-11-21. Delivery may
+  publish a pull request. It never merges.
 
 ## Implementation sequence
 
