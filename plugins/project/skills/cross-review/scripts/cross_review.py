@@ -5,8 +5,8 @@
 """Have the other vendor's coding agent review the current change, read-only.
 
 Claude Code reviews with only read and git-read tools allowed. Codex reviews in its read-only
-sandbox. Both return structured findings, which are saved next to the delivery run so the
-completion guard can match the review to the exact state it reviewed.
+sandbox. Gemini reviews in plan mode, which is read-only. All return structured findings, which
+are saved next to the delivery run so the completion guard can match the review to the exact state it reviewed.
 
 Exit codes: 0 the review passed, 2 changes were requested, 1 the review could not run.
 """
@@ -32,6 +32,10 @@ RUNS_DIRNAME = "agent-runs"
 NESTED_ENV = "AGENTIC_NESTED"
 BLOCKING = {"blocking", "major"}
 DEFAULT_CODEX_MODEL = "gpt-6.1-sol"
+DEFAULT_GEMINI_MODEL = "gemini-4-carbon"
+# Default reviewer model per vendor (None: the CLI default). Never use Gemini CLI aliases.
+DEFAULT_MODELS = {"claude": None, "codex": DEFAULT_CODEX_MODEL, "gemini": DEFAULT_GEMINI_MODEL}
+REVIEWERS = tuple(DEFAULT_MODELS)
 MIN_CODEX_VERSION = (0, 162, 0)
 SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -134,7 +138,9 @@ def build_prompt(
         )
     else:
         spec = "Infer the intent from the commits and the diff."
-    if reviewer == "codex":
+    if reviewer == "gemini":
+        how = "with your read-only file tools. Do not run commands that write files."
+    elif reviewer == "codex":
         # Codex reads files through its read-only shell; it has no Read, Grep or Glob tools.
         how = (
             "with read-only shell commands such as `cat`, `sed -n`, `rg` and `git show`. Do not "
@@ -224,10 +230,13 @@ CREDENTIAL_ENV = (
     "CLAUDE_CODE_OAUTH_TOKEN",
     "OPENAI_API_KEY",
     "CODEX_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
 )
 VENDOR_ENV = {
     "claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
     "codex": ("OPENAI_API_KEY", "CODEX_API_KEY"),
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
 }
 
 
@@ -257,6 +266,52 @@ def codex_command(
     command += ["--ephemeral", "--output-schema", str(schema), "-o", str(output)]
     command += ["-m", model] if model else []
     return [*command, prompt]
+
+
+def gemini_command(prompt: str, model: str | None, binary: str = "gemini") -> list[str]:
+    """Return a Gemini review invocation in read-only plan mode."""
+    command = [
+        binary,
+        "--approval-mode",
+        "plan",
+        "--output-format",
+        "json",
+        "--skip-trust",
+    ]
+    command += ["-m", model] if model else []
+    return [*command, "-p", prompt]
+
+
+def parse_gemini_output(stdout: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return the review and the usage from Gemini CLI's JSON output."""
+    data = json.loads(stdout)
+    review = parse_json_text(data.get("response", ""))
+    input_tokens = cached = output_tokens = 0
+    for details in ((data.get("stats") or {}).get("models") or {}).values():
+        tokens = details.get("tokens") or {}
+        input_tokens += int(tokens.get("input", 0) or 0)
+        cached += int(tokens.get("cached", 0) or 0)
+        # Thinking tokens are billed as output.
+        output_tokens += int(tokens.get("candidates", 0) or 0) + int(tokens.get("thoughts", 0) or 0)
+    return review, {
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached,
+        "output_tokens": output_tokens,
+    }
+
+
+def price_usage(model: str, input_tokens: int, cached: int, output_tokens: int) -> float | None:
+    """Price tokens from prices.toml; cached input is a subset of input. None if unpriced."""
+    try:
+        table = tomllib.loads(prices_file().read_text())["prices"][model]
+    except (OSError, KeyError, tomllib.TOMLDecodeError):
+        return None
+    uncached = max(0, input_tokens - cached)
+    return (
+        uncached * table.get("input", 0)
+        + cached * table.get("cached_input", 0)
+        + output_tokens * table.get("output", 0)
+    ) / 1_000_000
 
 
 def codex_binary(explicit: str | None = None) -> str:
@@ -343,6 +398,33 @@ def run_review(
         }
         return review
 
+    if reviewer == "gemini":
+        model_name = model or DEFAULT_GEMINI_MODEL
+        binary = os.environ.get("GEMINI_BIN") or shutil.which("gemini") or "gemini"
+        result = subprocess.run(
+            gemini_command(prompt, model_name, binary),
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"gemini exited with {result.returncode}: {result.stderr[-2000:]}")
+        raw_review, usage = parse_gemini_output(result.stdout)
+        review = normalize(raw_review)
+        review["_usage"] = usage | {
+            "cost_usd": price_usage(
+                model_name,
+                usage["input_tokens"],
+                usage["cached_input_tokens"],
+                usage["output_tokens"],
+            ),
+            "num_turns": 1,
+        }
+        return review
+
     binary = codex_binary(codex_bin)
     with tempfile.TemporaryDirectory() as tmp:
         schema, output = Path(tmp) / "schema.json", Path(tmp) / "review.json"
@@ -413,7 +495,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--reviewer", choices=["claude", "codex"], required=True)
+    parser.add_argument("--reviewer", choices=REVIEWERS, required=True)
     parser.add_argument("--token", help="delivery run that the review belongs to")
     parser.add_argument("--base", help="commit to compare against (default: merge base with main)")
     source = parser.add_mutually_exclusive_group()
@@ -421,22 +503,31 @@ def main(argv: list[str] | None = None) -> int:
     source.add_argument(
         "--acceptance", help="file with acceptance criteria; the reviewer has no plan"
     )
-    parser.add_argument("--model", help="reviewer model (Codex default: gpt-6.1-sol)")
+    parser.add_argument(
+        "--model", help="reviewer model (Codex: gpt-6.1-sol, Gemini: gemini-4-carbon)"
+    )
     parser.add_argument("--codex-bin", help="Codex executable (default: CODEX_BIN or PATH)")
     parser.add_argument("--preflight", action="store_true", help="check reviewer installation only")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds")
     parser.add_argument("--dry-run", action="store_true", help="print the command only")
     args = parser.parse_args(argv)
 
-    if args.reviewer == "codex" and args.model is None:
-        args.model = DEFAULT_CODEX_MODEL
+    if args.model is None:
+        args.model = DEFAULT_MODELS[args.reviewer]
     if args.preflight:
         try:
             binary = (
-                codex_binary(args.codex_bin) if args.reviewer == "codex" else shutil.which("claude")
+                codex_binary(args.codex_bin)
+                if args.reviewer == "codex"
+                else os.environ.get("GEMINI_BIN") or shutil.which("gemini")
+                if args.reviewer == "gemini"
+                else shutil.which("claude")
             )
             if not binary:
-                print("Reviewer preflight failed: Claude CLI is not installed", file=sys.stderr)
+                print(
+                    f"Reviewer preflight failed: {args.reviewer} CLI is not installed",
+                    file=sys.stderr,
+                )
                 return 1
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             print(f"Reviewer preflight failed: {exc}", file=sys.stderr)
@@ -476,6 +567,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         if args.reviewer == "claude":
             command = claude_command(prompt, args.model, review_budget)
+        elif args.reviewer == "gemini":
+            command = gemini_command(prompt, args.model)
         else:
             command = codex_command(
                 prompt,

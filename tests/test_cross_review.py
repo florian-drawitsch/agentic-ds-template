@@ -400,3 +400,61 @@ def test_codex_reviewer_shell_never_sees_credentials() -> None:
     command = review.codex_command("Review", None, Path("schema"), Path("output"))
     exclude = next(c for c in command if c.startswith("shell_environment_policy.exclude="))
     assert set(json.loads(exclude.split("=", 1)[1])) == set(review.CREDENTIAL_ENV)
+
+
+def _gemini_stdout(verdict: str = "pass", findings: list | None = None) -> str:
+    body = {"verdict": verdict, "summary": "s", "findings": findings or []}
+    tokens = {"input": 1_000_000, "cached": 400_000, "candidates": 100_000, "thoughts": 100_000}
+    stats = {"models": {"gemini-4-carbon": {"tokens": tokens}}}
+    return json.dumps({"session_id": "s1", "response": json.dumps(body), "stats": stats})
+
+
+def test_gemini_review_command_is_read_only() -> None:
+    command = review.gemini_command("Review", "gemini-4-carbon", "/bin/gemini")
+    assert command[0] == "/bin/gemini"
+    assert command[command.index("--approval-mode") + 1] == "plan"
+    assert command[command.index("--output-format") + 1] == "json"
+    assert "--skip-trust" in command
+    assert command[command.index("-m") + 1] == "gemini-4-carbon"
+    assert command[-2:] == ["-p", "Review"]
+    assert review.DEFAULT_MODELS["gemini"] == "gemini-4-carbon"
+
+
+@pytest.mark.parametrize(
+    ("verdict", "findings", "expected"),
+    [
+        ("pass", [], "pass"),
+        (
+            "changes_requested",
+            [{"severity": "major", "file": "a.py", "issue": "x"}],
+            "changes_requested",
+        ),
+    ],
+)
+def test_gemini_review_verdict_cost_and_scrubbed_env(
+    tmp_path, monkeypatch, verdict: str, findings: list, expected: str
+) -> None:
+    for name in ("GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GH_TOKEN"):
+        monkeypatch.setenv(name, "secret")
+    seen: dict = {}
+
+    def fake_run(command, **kwargs):
+        seen["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(command, 0, _gemini_stdout(verdict, findings), "")
+
+    monkeypatch.setattr(review.subprocess, "run", fake_run)
+    result = review.run_review(tmp_path, "gemini", "Review", None, 60)
+    assert result["verdict"] == expected
+    assert "GEMINI_API_KEY" in seen["env"]
+    assert not {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GH_TOKEN"} & set(seen["env"])
+    # 0.6M uncached at 4.0, 0.4M cached at 0.20, 0.2M output at 20.0
+    assert result["_usage"]["cost_usd"] == pytest.approx(0.6 * 4.0 + 0.4 * 0.20 + 0.2 * 20.0)
+
+
+def test_gemini_prompt_and_failure(tmp_path, monkeypatch) -> None:
+    assert "read-only file tools" in review.build_prompt("b", "p.md", tmp_path, reviewer="gemini")
+    monkeypatch.setattr(
+        review.subprocess, "run", lambda c, **k: subprocess.CompletedProcess(c, 55, "", "trust")
+    )
+    with pytest.raises(RuntimeError, match="gemini exited with 55"):
+        review.run_review(tmp_path, "gemini", "Review", None, 60)
