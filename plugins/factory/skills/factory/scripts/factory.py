@@ -1088,6 +1088,8 @@ SECRET_ENV = (
     "CLAUDE_CODE_OAUTH_TOKEN",
     "OPENAI_API_KEY",
     "CODEX_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
 )
 SECRET_NAME = re.compile(
     r"(^GH_|^GITHUB_|TOKEN|SECRET|PASSWORD|API_KEY|^AWS_|^SSH_)", re.IGNORECASE
@@ -1107,7 +1109,24 @@ VERIFY_ESTIMATE_USD = 1.0
 VENDOR_ENV = {
     "claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
     "codex": ("OPENAI_API_KEY", "CODEX_API_KEY"),
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
 }
+# Vendors in the order a default reviewer is chosen. Gemini reviews and triages only.
+VENDORS = ("codex", "claude", "gemini")
+# Triage is a short read-only classification: the cheapest model. Never use CLI aliases.
+GEMINI_TRIAGE_MODEL = "gemini-4-hydrogen"
+GEMINI_DENY_POLICY = "".join(
+    f'[[rule]]\ntoolName = "{tool}"\ndecision = "deny"\npriority = 999\n\n'
+    for tool in (
+        "exit_plan_mode",
+        "enter_plan_mode",
+        "write_file",
+        "replace",
+        "run_shell_command",
+        "web_fetch",
+        "google_web_search",
+    )
+)
 
 
 def agent_env(vendor: str | None = None) -> dict[str, str]:
@@ -1183,7 +1202,7 @@ def _skill_asset(*parts: str) -> Path:
 def _vendors(config: Config) -> tuple[str, str]:
     """Return (implementer, reviewer); the reviewer defaults to the other vendor."""
     harness = config.deliver.harness or "codex"
-    other = "claude" if harness == "codex" else "codex"
+    other = next(vendor for vendor in VENDORS if vendor != harness)
     return harness, config.deliver.reviewer or other
 
 
@@ -1193,6 +1212,9 @@ def _agent_text(vendor: str, stdout: str) -> tuple[str, float]:
         data = json.loads(stdout)
         cost = data.get("total_cost_usd")
         return str(data.get("result", "")), float(cost) if isinstance(cost, int | float) else 0.0
+    if vendor == "gemini":
+        data = json.loads(stdout)
+        return str(data.get("response", "")), 0.0
     text = ""
     for line in stdout.splitlines():
         try:
@@ -1232,10 +1254,27 @@ def run_triage(config: Config, path: Path, run: Runner = run_command) -> TriageR
     role = _skill_asset("roles", "triage.md").read_text(encoding="utf-8")
     vendor = _vendors(config)[1]
     prompt = f"{role}\nThe issue file is {path.name} in the current directory."
+    with tempfile.TemporaryDirectory(prefix="factory-policy-") as policy_dir_name:
+        return _triage_with(config, path, run, vendor, prompt, Path(policy_dir_name))
+
+
+def _triage_with(
+    config: Config, path: Path, run: Runner, vendor: str, prompt: str, policy_dir: Path
+) -> TriageResult:
+    """Build the vendor's read-only triage command, run it and validate the answer."""
     if vendor == "claude":
         command = ["claude", "-p", prompt, "--output-format", "json", "--tools", "Read"]
         command += ["--permission-mode", "dontAsk", "--max-budget-usd", "1"]
         command += ["--disallowedTools", *(f"Read({path}/**)" for path in DENIED_READS)]
+    elif vendor == "gemini":
+        # An admin policy denies mode changes, writes and shell commands: plan mode alone does
+        # not, because Gemini CLI approves exit_plan_mode in headless runs. It sits beside the
+        # issue file's directory so the agent's file tools never need it.
+        policy = policy_dir / "deny.toml"
+        policy.write_text(GEMINI_DENY_POLICY, encoding="utf-8")
+        command = ["gemini", "--admin-policy", str(policy), "--approval-mode", "plan"]
+        command += ["--output-format", "json", "--skip-trust", "-m", GEMINI_TRIAGE_MODEL]
+        command += ["-p", prompt]
     else:
         command = ["codex", "exec", "--json", "-c", 'sandbox_mode="read-only"']
         command += ["-c", 'approval_policy="never"', "--ephemeral", "--skip-git-repo-check"]
@@ -2364,6 +2403,19 @@ def required_secrets(config: Config) -> list[SecretSpec]:
                         "OpenAI API key, billed per token",
                         "OPENAI_API_KEY",
                         url="https://platform.openai.com/api-keys",
+                    ),
+                ),
+            )
+        )
+    if "gemini" in vendors:
+        specs.append(
+            SecretSpec(
+                "Gemini login",
+                (
+                    SecretChoice(
+                        "Gemini API key, billed per token (a Google AI Pro plan adds API credit)",
+                        "GEMINI_API_KEY",
+                        url="https://aistudio.google.com/apikey",
                     ),
                 ),
             )

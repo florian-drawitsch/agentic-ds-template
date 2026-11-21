@@ -104,6 +104,8 @@ CREDENTIAL_ENV = [
     "CLAUDE_CODE_OAUTH_TOKEN",
     "OPENAI_API_KEY",
     "CODEX_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
 ]
 # Without a stored login, as in CI, each vendor CLI authenticates from these variables. The
 # CLI keeps them from the commands it runs: Claude through CLAUDE_CODE_SUBPROCESS_ENV_SCRUB and
@@ -111,6 +113,21 @@ CREDENTIAL_ENV = [
 VENDOR_ENV = {
     "claude": ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"),
     "codex": ("OPENAI_API_KEY", "CODEX_API_KEY"),
+    "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+}
+# Vendors in the order a default reviewer is chosen (D1). Gemini implements only in headless
+# runs on macOS (ADR-0034).
+VENDORS = ("codex", "claude", "gemini")
+IMPLEMENTERS = ("claude", "codex", "gemini")
+VENDOR_TITLES = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini"}
+GEMINI_HOSTS = ("generativelanguage.googleapis.com", "play.googleapis.com")
+GEMINI_PROXY_PORT = 8877
+GEMINI_IMPLEMENT_MODELS = ["gemini-4-neon", "gemini-4-hydrogen", "gemini-4-carbon"]
+# Default and menu models per reviewer vendor. Never use Gemini CLI aliases.
+REVIEW_MODELS = {
+    "codex": ["gpt-6.1-sol"],
+    "claude": ["opus"],
+    "gemini": ["gemini-4-carbon", "gemini-4-neon"],
 }
 # Tools a headless Claude round may use without a prompt. Claude Code forces the default
 # permission mode when CLAUDE_CODE_SUBPROCESS_ENV_SCRUB is set unless tools are listed, and a
@@ -498,10 +515,14 @@ def publication_environment(root: Path, command: list[str]) -> list[str]:
 def preflight(root: Path, args: argparse.Namespace) -> None:
     """Check reviewer installation and publication access before creating a delivery worktree."""
     model_defaults(args)
+    if getattr(args, "harness", None) == "gemini":
+        require_gemini_implementer()
+        if getattr(args, "mode", "single") == "subagents":
+            raise SystemExit("Gemini implements in single mode only (ADR-0034)")
     commands: list[list[str]] = []
     if args.cross_review == "final":
         if args.reviewer is None:
-            args.reviewer = "codex" if getattr(args, "harness", "claude") == "claude" else "claude"
+            args.reviewer = default_reviewer(getattr(args, "harness", "claude"))
         args.reviewer_model = reviewer_model(args.reviewer, args.reviewer_model)
         if args.reviewer == "codex":
             args.codex_bin = args.codex_bin or os.environ.get("CODEX_BIN") or shutil.which("codex")
@@ -815,8 +836,10 @@ def create_run(root: Path, args: argparse.Namespace) -> Run:
     check = args.check or default_check(root)
     if not check:
         raise SystemExit("Pass --check: no Taskfile found to infer the check command")
-    if args.cross_review == "final" and args.reviewer not in {"claude", "codex"}:
-        raise SystemExit("Pass --reviewer claude or codex together with --cross-review final")
+    if args.cross_review == "final" and args.reviewer not in VENDORS:
+        raise SystemExit(
+            "Pass --reviewer claude, codex or gemini together with --cross-review final"
+        )
     run = Run(
         token=getattr(args, "run_token", None) or f"dr-{secrets.token_hex(4)}",
         plan=relative,
@@ -1474,6 +1497,12 @@ def agent_command(
             "This Codex CLI cannot deny paths to the worker (permission profiles need a newer "
             "version); upgrade it or use Claude Code as the implementer"
         )
+    if harness == "gemini":
+        # The sandbox profile, proxy and settings come from the environment: see gemini_environment.
+        command = ["gemini", "-m", model or GEMINI_IMPLEMENT_MODELS[0], "-s"]
+        command += ["--approval-mode", "yolo", "--output-format", "json", "--skip-trust"]
+        command += [] if first else ["-r", str(session)]
+        return [*command, "-p", prompt]
     if harness == "claude":
         command = ["claude", "-p", "--permission-mode", mode]
         # One `=` token, so the variadic option cannot swallow the prompt.
@@ -1713,6 +1742,226 @@ def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -
         result.seconds = time.monotonic() - started_at
         result.started_at = started_iso
         selector.close()
+    return result
+
+
+# --- Gemini rounds (ADR-0034) ----------------------------------------------------------------
+
+GEMINI_PROXY = """\
+import os, select, socket, sys, threading, time
+ALLOW = set(filter(None, os.environ.get("GEMINI_PROXY_ALLOW", "").split(",")))
+def pipe(a, b):
+    try:
+        while True:
+            ready, _, _ = select.select([a, b], [], [], 60)
+            if not ready:
+                return
+            for src in ready:
+                data = src.recv(65536)
+                if not data:
+                    return
+                (b if src is a else a).sendall(data)
+    except OSError:
+        pass
+    finally:
+        a.close(); b.close()
+def handle(client):
+    try:
+        head = b""
+        while b"\\r\\n\\r\\n" not in head and len(head) < 65536:
+            chunk = client.recv(4096)
+            if not chunk:
+                return client.close()
+            head += chunk
+        method, target, *_ = head.split(b"\\r\\n")[0].decode("latin-1").split()
+        host, _, port = target.rpartition(":")
+        if method != "CONNECT" or host not in ALLOW:
+            client.sendall(b"HTTP/1.1 403 Forbidden\\r\\n\\r\\n")
+            return client.close()
+        upstream = socket.create_connection((host, int(port)), timeout=30)
+        client.sendall(b"HTTP/1.1 200 Connection Established\\r\\n\\r\\n")
+        pipe(client, upstream)
+    except Exception:
+        client.close()
+def watch(parent):
+    while os.getppid() == parent:
+        time.sleep(2)
+    os._exit(0)
+threading.Thread(target=watch, args=(os.getppid(),), daemon=True).start()
+server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+server.bind(("::", int(sys.argv[1])))
+server.listen(64)
+while True:
+    conn, _ = server.accept()
+    threading.Thread(target=handle, args=(conn,), daemon=True).start()
+"""
+
+
+def gemini_bundle_profile() -> Path | None:
+    """Locate the Gemini CLI's strict-proxied Seatbelt profile next to its executable."""
+    binary = shutil.which("gemini")
+    if not binary:
+        return None
+    path = Path(binary).resolve().parent / "sandbox-macos-strict-proxied.sb"
+    return path if path.is_file() else None
+
+
+def require_gemini_implementer() -> None:
+    """Refuse Gemini as implementer unless the sandbox can deny paths and limit the network."""
+    if sys.platform != "darwin":
+        raise SystemExit(
+            "Gemini implements only on macOS, where its Seatbelt sandbox can deny paths and "
+            "limit the network; use Claude Code or Codex as the implementer (ADR-0034)"
+        )
+    if gemini_bundle_profile() is None:
+        raise SystemExit(
+            "This Gemini CLI has no strict-proxied Seatbelt profile, so it cannot deny paths to "
+            "the worker; install a current Gemini CLI or use another implementer"
+        )
+
+
+def seatbelt_quote(value: str) -> str:
+    """Quote a path for a Seatbelt profile, refusing characters that cannot be escaped safely."""
+    if any(char in value for char in '"\\\n'):
+        raise SystemExit(
+            f"Gemini cannot deny the path {value!r}; rename it or use another implementer"
+        )
+    return value
+
+
+def gemini_denials(root: Path, deny: Sequence[str]) -> str:
+    """Return Seatbelt rules that deny the run's denied paths and the controller's credentials."""
+    rules = []
+    for path in [*(str((root / d).resolve()) for d in deny), *credential_file_paths(root)]:
+        quoted = seatbelt_quote(path)
+        if any(char in quoted for char in "*?["):  # a glob such as `<root>/.env*`
+            regex = re.escape(quoted).replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
+            rules.append(f'(deny file-read* file-write* (regex #"^{regex}$"))')
+        else:
+            rules.append(f'(deny file-read* file-write* (subpath "{quoted}"))')
+    return "\n".join(rules) + "\n"
+
+
+def gemini_environment(run: Run, root: Path) -> dict[str, str]:
+    """Prepare the sandbox files for one Gemini round and return its environment.
+
+    The settings live in the run directory, outside the worktree, and are loaded as system
+    settings, so the agent cannot weaken them. The profile is copied into the worktree's
+    `.gemini/` because the CLI looks it up there; `.git/info/exclude` keeps it out of commits
+    and every round rewrites it.
+    """
+    bundle = gemini_bundle_profile()
+    assert bundle is not None
+    directory = run.directory(root)
+    directory.mkdir(parents=True, exist_ok=True)
+    git_dir = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    extra = f'\n(allow file-read* file-write* (subpath "{git_dir}"))\n'
+    # Later rules win in Seatbelt, so these denials follow the allowance above.
+    extra += gemini_denials(root, run.deny_paths)
+    profile = root / ".gemini" / "sandbox-macos-deliver.sb"
+    profile.parent.mkdir(exist_ok=True)
+    profile.write_text(bundle.read_text(encoding="utf-8") + extra, encoding="utf-8")
+    exclude = git_dir / "info" / "exclude"
+    exclude.parent.mkdir(exist_ok=True)
+    text = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+    if "/.gemini/sandbox-macos-deliver.sb" not in text:
+        exclude.write_text(text + "/.gemini/sandbox-macos-deliver.sb\n", encoding="utf-8")
+    settings = directory / "gemini-settings.json"
+    settings.write_text(
+        json.dumps(
+            {
+                "security": {
+                    "folderTrust": {"enabled": True},
+                    "environmentVariableRedaction": {"enabled": True, "blocked": CREDENTIAL_ENV},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    proxy = directory / "gemini_proxy.py"
+    proxy.write_text(GEMINI_PROXY, encoding="utf-8")
+    hosts = [*GEMINI_HOSTS, *allowed_hosts(root)]
+    return sandbox_environment("gemini") | {
+        "SEATBELT_PROFILE": "deliver",
+        "GEMINI_SANDBOX_PROXY_COMMAND": f"{sys.executable} {proxy} {GEMINI_PROXY_PORT}",
+        "GEMINI_PROXY_ALLOW": ",".join(dict.fromkeys(hosts)),
+        "GEMINI_CLI_SYSTEM_SETTINGS_PATH": str(settings),
+        "GEMINI_CLI_TRUST_WORKSPACE": "true",
+        NESTED_ENV: "1",
+    }
+
+
+def parse_gemini_round(stdout: str, result: RoundResult) -> None:
+    """Fill a round result from Gemini CLI's single JSON document."""
+    try:
+        data = json.loads(stdout[stdout.index("{") :])
+    except ValueError:
+        result.failed = True
+        result.errors.append(stdout.strip()[-2000:] or "no JSON output")
+        return
+    if not isinstance(data, dict):
+        return
+    result.thread = result.session_id = data.get("session_id")
+    result.started = bool(result.thread)
+    if data.get("error"):
+        result.failed = True
+        error = data["error"]
+        result.errors.append(str(error.get("message") if isinstance(error, dict) else error))
+    for model, details in ((data.get("stats") or {}).get("models") or {}).items():
+        tokens = details.get("tokens") or {}
+        result.model = result.model or model
+        result.turns += 1
+        result.input_tokens += int(tokens.get("input", 0) or 0)
+        result.cached_input_tokens += int(tokens.get("cached", 0) or 0)
+        # Thinking tokens are billed as output.
+        result.output_tokens += int(tokens.get("candidates", 0) or 0) + int(
+            tokens.get("thoughts", 0) or 0
+        )
+
+
+def run_gemini_round(
+    command: list[str], cwd: Path, log: Path, env: dict[str, str], timeout: float = 5400
+) -> RoundResult:
+    """Run one Gemini round headless and return what it reported."""
+    started_at = time.monotonic()
+    started_iso = now()
+    result = RoundResult(code=0)
+    with subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    ) as process:
+        try:
+            out, err = process.communicate(timeout=timeout)
+            result.code = process.returncode
+        except subprocess.TimeoutExpired:
+            result.subtype = "wall_clock_limit"
+            result.code = 1
+            stop_process_group(process)
+            out, err = process.communicate()
+        except BaseException:
+            stop_process_group(process)
+            raise
+        # The sandbox and its proxy are descendants; none may outlive the round.
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)
+    with log.open("a", encoding="utf-8") as sink:
+        sink.write(out + err)
+    if result.code != 0 and result.subtype != "wall_clock_limit":
+        result.failed = True
+        result.errors.append((err or out).strip()[-2000:])
+        if re.search(r"\b429\b|RESOURCE_EXHAUSTED|quota", err + out, re.IGNORECASE):
+            result.rejected = True
+    if out.strip():
+        parse_gemini_round(out, result)
+    result.seconds = time.monotonic() - started_at
+    result.started_at = started_iso
     return result
 
 
@@ -2238,8 +2487,7 @@ def session_settings(args: argparse.Namespace, root: Path) -> dict[str, str]:
     if args.harness == "claude" and not args.effort and os.environ.get("CLAUDE_CODE_EFFORT_LEVEL"):
         effort, effort_origin = os.environ["CLAUDE_CODE_EFFORT_LEVEL"], "CLAUDE_CODE_EFFORT_LEVEL"
     rows = {
-        "vendor": f"{'Claude Code' if args.harness == 'claude' else 'Codex'} "
-        f"{cli_version(args.harness)}",
+        "vendor": f"{VENDOR_TITLES[args.harness]} {cli_version(args.harness)}",
         "model": f"{model or 'CLI default'}" + (f"  ({origin})" if origin else ""),
         "effort": f"{effort or 'CLI default'}" + (f"  ({effort_origin})" if effort_origin else ""),
         "mode": args.mode,
@@ -2497,13 +2745,14 @@ def implementation_harness(root: Path, run: Run) -> str:
 
 def select_model(label: str, harness: str, *, review: bool = False) -> str:
     """Choose a model interactively, retaining defaults for explicit CLI workflows."""
-    choices = (
-        [("GPT-6.1 Sol", "gpt-6.1-sol"), ("GPT-6 Luna", "gpt-6-luna")]
-        if harness == "codex"
-        else [("Claude Sonnet", "sonnet"), ("Claude Opus", "opus"), ("Claude Haiku", "haiku")]
-    )
+    choices = {
+        "codex": [("GPT-6.1 Sol", "gpt-6.1-sol"), ("GPT-6 Luna", "gpt-6-luna")],
+        "claude": [("Claude Sonnet", "sonnet"), ("Claude Opus", "opus"), ("Claude Haiku", "haiku")],
+        "gemini": [(m, m) for m in GEMINI_IMPLEMENT_MODELS],
+    }[harness]
     if review:
-        choices = [choices[0]] if harness == "codex" else [choices[1]]
+        titles = {"gpt-6.1-sol": "GPT-6.1 Sol", "opus": "Claude Opus"}
+        choices = [(titles.get(m, m), m) for m in REVIEW_MODELS[harness]]
     default = 0
     if not sys.stdin.isatty():
         return choices[default][1]
@@ -2517,12 +2766,18 @@ def default_effort(model: str | None) -> str:
     return "high" if any(name in (model or "").lower() for name in ("luna", "haiku")) else "medium"
 
 
+def default_reviewer(harness: str) -> str:
+    """Return the first other vendor whose CLI is installed (D1), else the first other vendor."""
+    others = [vendor for vendor in VENDORS if vendor != harness]
+    return next((v for v in others if shutil.which(v)), others[0])
+
+
 def reviewer_model(harness: str, model: str | None) -> str:
     """Require a frontier reviewer, including for explicit flags and saved runs."""
-    model = model or ("gpt-6.1-sol" if harness == "codex" else "opus")
-    if any(name in model.lower() for name in ("luna", "haiku")):
+    model = model or REVIEW_MODELS[harness][0]
+    if any(name in model.lower() for name in ("luna", "haiku", "hydrogen")):
         raise SystemExit(
-            "Review requires a frontier model (Codex Sol or Claude Opus), at high effort."
+            "Review requires a frontier model (Codex Sol, Claude Opus or Gemini Carbon or Neon)."
         )
     return model
 
@@ -2530,7 +2785,11 @@ def reviewer_model(harness: str, model: str | None) -> str:
 def model_defaults(args: argparse.Namespace) -> None:
     """Apply the same role defaults to terminal and fully specified CLI runs."""
     if getattr(args, "harness", None) and not args.model:
-        args.model = "gpt-6.1-sol" if args.harness == "codex" else "sonnet"
+        args.model = {
+            "codex": "gpt-6.1-sol",
+            "claude": "sonnet",
+            "gemini": GEMINI_IMPLEMENT_MODELS[0],
+        }[args.harness]
     if hasattr(args, "effort"):
         args.effort = args.effort or default_effort(args.model)
     if args.cross_review == "final" and args.reviewer:
@@ -2543,8 +2802,8 @@ def configure_dialog(args: argparse.Namespace, saved: Run | None = None) -> None
     default_harness = saved.harness if saved else "codex"
     args.harness = harness or select_option(
         "Implementer",
-        [("Codex", "codex"), ("Claude", "claude")],
-        1 if default_harness == "claude" else 0,
+        [("Codex", "codex"), ("Claude", "claude"), ("Gemini (headless only)", "gemini")],
+        {"claude": 1, "gemini": 2}.get(default_harness, 0),
     )
     same_harness = saved is not None and args.harness == saved.harness
     args.model = getattr(args, "model", None) or (
@@ -2553,6 +2812,8 @@ def configure_dialog(args: argparse.Namespace, saved: Run | None = None) -> None
         else select_model("Implementation model", args.harness)
     )
     effort = getattr(args, "effort", None)
+    if not effort and args.harness == "gemini":
+        effort = default_effort(args.model)  # Gemini CLI has no effort setting
     if not effort and same_harness and saved.model == args.model:
         effort = saved.effort
     if not effort:
@@ -2568,18 +2829,17 @@ def configure_dialog(args: argparse.Namespace, saved: Run | None = None) -> None
             else default
         )
     args.effort = effort
-    other = "claude" if args.harness == "codex" else "codex"
-    default_reviewer = saved.reviewer if saved and saved.reviewer != args.harness else other
+    others = [vendor for vendor in VENDORS if vendor != args.harness]
+    other = default_reviewer(args.harness)
+    saved_reviewer = saved.reviewer if saved and saved.reviewer != args.harness else other
     reviewer = getattr(args, "reviewer", None)
     budget = getattr(args, "review_rounds", None)
     if reviewer is None and budget != 0:
         reviewer = select_option(
             "Reviewer",
-            [
-                (other.title(), other),
-                ("No review", "off"),
-            ],
-            1 if saved and saved.cross_review == "off" else 0,
+            [(vendor.title(), vendor) for vendor in sorted(others, key=other.__ne__)]
+            + [("No review", "off")],
+            len(others) if saved and saved.cross_review == "off" else 0,
         )
     args.reviewer = None if reviewer in {None, "off"} else reviewer
     if budget is None:
@@ -2590,7 +2850,7 @@ def configure_dialog(args: argparse.Namespace, saved: Run | None = None) -> None
     args.review_rounds = budget
     args.cross_review = "final" if budget else "off"
     if budget and not args.reviewer:
-        args.reviewer = default_reviewer
+        args.reviewer = saved_reviewer
     if budget and args.reviewer == args.harness:
         raise SystemExit("Choose the other vendor for cross-review, or zero review rounds.")
     args.reviewer_model = getattr(args, "reviewer_model", None) or (
@@ -3092,7 +3352,12 @@ def continue_run(
                 deny=run.deny_paths,
             )
             protected_before = protected_git_hashes(workdir)
-            result = run_round(command, workdir, log, run.round_minutes * 60)
+            if args.harness == "gemini":
+                result = run_gemini_round(
+                    command, workdir, log, gemini_environment(run, workdir), run.round_minutes * 60
+                )
+            else:
+                result = run_round(command, workdir, log, run.round_minutes * 60)
             protected_after = protected_git_hashes(workdir)
             changed_protected = sorted(
                 path
@@ -3116,7 +3381,9 @@ def continue_run(
                 run.session_id = session
                 run.save(workdir)
             result.session_id = run.session_id or session
-            if args.harness == "codex":
+            if args.harness == "gemini":
+                price_codex(result, run.model)  # token-times-list-price; same cached-subset rule
+            elif args.harness == "codex":
                 price_codex(result, run.model or configured_codex_model(workdir))
             else:
                 result.model = result.model or run.model
@@ -3710,7 +3977,7 @@ def add_run_options(parser: argparse.ArgumentParser, *, require_plan: bool = Tru
         help="one review followed by verified autonomous fixes",
     )
     parser.add_argument("--cross-review", choices=["off", "final"], default="off")
-    parser.add_argument("--reviewer", choices=["claude", "codex"])
+    parser.add_argument("--reviewer", choices=VENDORS)
     parser.add_argument(
         "--reviewer-model", help="final reviewer model (Codex default: gpt-6.1-sol)"
     )
@@ -3799,7 +4066,7 @@ def parser() -> argparse.ArgumentParser:
     head.add_argument(
         "--preview", action="store_true", help="choose options without changing anything"
     )
-    head.add_argument("--harness", choices=["claude", "codex"])
+    head.add_argument("--harness", choices=IMPLEMENTERS)
     head.add_argument("--model")
     head.add_argument("--effort", choices=["low", "medium", "high"], help="reasoning effort")
     head.add_argument("--in-place", action="store_true", help="use this worktree")
@@ -3830,10 +4097,10 @@ def parser() -> argparse.ArgumentParser:
     resume.add_argument("--token")
     resume.add_argument("--plan", help="select the run of this plan")
     resume.add_argument("--pr", type=int, help="select the repair run of this PR number")
-    resume.add_argument("--harness", choices=["codex", "claude"])
+    resume.add_argument("--harness", choices=IMPLEMENTERS)
     resume.add_argument("--model")
     resume.add_argument("--effort", choices=["low", "medium", "high"])
-    resume.add_argument("--reviewer", choices=["codex", "claude"])
+    resume.add_argument("--reviewer", choices=VENDORS)
     resume.add_argument("--reviewer-model")
     resume.add_argument("--review-rounds", type=int, choices=range(4))
     resume.add_argument("--max-rounds", type=int)

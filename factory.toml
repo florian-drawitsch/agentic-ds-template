@@ -25,7 +25,7 @@ protected_paths = [
 ]
 
 [deliver]
-# The implementer; the verifier is always the other vendor.
+# The implementer; the verifier is always the other vendor (Gemini here, so the factory runs without OpenAI credit).
 harness = "claude"
-reviewer = "codex"
+reviewer = "gemini"
 max_cost = 10.0

@@ -89,7 +89,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
 ## Implementation sequence
 
-- [ ] **Spike, recorded in ADR-0034.** With the installed Gemini CLI, establish:
+- [x] **Spike, recorded in ADR-0034.** With the installed Gemini CLI, establish:
   1. resuming a session by its `session_id`;
   2. that `plan` mode can still read files;
   3. how the sandbox works: Docker or Podman on Linux, Seatbelt on macOS;
@@ -98,7 +98,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
   Write ADR-0034 with the results and the decisions above. Mark in ADR-0017 that ADR-0034
   amends it.
-- [ ] **Vendor table, no behavior change.** Replace the two-vendor branches (`other = "claude"
+- [x] **Vendor table, no behavior change.** Replace the two-vendor branches (`other = "claude"
   if harness == "codex" else "codex"` and similar) in `deliver.py`, `cross_review.py` and
   `factory.py` with one table per script. Each entry holds:
   - the command builder;
@@ -111,7 +111,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
   The scripts stay standalone and stdlib-only, so each keeps its own table. Tests: the
   existing suites pass unchanged, and a parametrized test checks that every vendor has every
   field.
-- [ ] **Gemini reviewer in `cross-review`.**
+- [x] **Gemini reviewer in `cross-review`.**
   - `--reviewer gemini` runs `gemini -p` with `--approval-mode plan`, `--output-format json`
     and `--skip-trust`, using the same review prompt and verdict contract.
   - The environment keeps only Gemini credentials.
@@ -119,7 +119,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
     and the verification date.
 
   Tests with a fake runner: command shape, parsed verdict, cost, scrubbed environment.
-- [ ] **Gemini in the factory.**
+- [x] **Gemini in the factory.**
   - Triage and verification run on `reviewer = "gemini"`: triage with
     `gemini-4-hydrogen`, verification with `gemini-4-carbon` (D4).
   - `_vendors` and the role prompts accept any vendor pair.
@@ -128,7 +128,7 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
   Tests: triage command and parsing for Gemini, verification command, the secret
   specifications per vendor pair.
-- [ ] **Gemini implementer in `deliver headless`.**
+- [x] **Gemini implementer in `deliver headless`.**
   - Each round runs `gemini -p` with `--approval-mode yolo` inside the sandbox from the spike,
     with the worktree as the only writable root, denied paths and no network beyond the
     allowlist.
@@ -138,13 +138,13 @@ returned `OK` from `gemini-3.5-flash-lite`.
     Codex versions.
 
   Tests: command per round, resume, deny refusal, cost parsing.
-- [ ] **Interactive `task deliver` menus.**
+- [x] **Interactive `task deliver` menus.**
   - Gemini appears as a reviewer for every run, and as an implementer that selects headless
     mode.
   - `--harness` and `--reviewer` accept `gemini` in `start`, `headless` and `resume`.
 
   Tests: menu choices and the argument parser.
-- [ ] **Template.**
+- [x] **Template.**
   - `agent_harnesses` gains `gemini`. It renders `.gemini/settings.json`, which sets
     `AGENTS.md` as the context file, enables folder trust for the project and denies
     credential paths.
@@ -156,12 +156,12 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
   Tests: render with Gemini alone, Gemini with Claude, and all three. Workflow assertions per
   pair. The pairwise matrix gets the new value.
-- [ ] **This repository.**
+- [x] **This repository.**
   - `factory.toml` sets `reviewer = "gemini"`.
   - The root workflow matches the template.
   - The README, the factory guide, the `deliver` and `cross-review` skills and `docs/features.md`
     name Gemini where they name the vendors.
-- [ ] **Final gate** `task check` and the configured review.
+- [x] **Final gate** `task check` and the configured review.
 
 ## Acceptance and verification
 
@@ -183,4 +183,29 @@ External checks, which need the repository secrets and spend API credit:
 
 ## Rulings
 
-None yet.
+- Vendor tables hold the credential variables and the default and menu models per vendor
+  (`VENDOR_ENV`, `DEFAULT_MODELS`, `REVIEW_MODELS`, `VENDORS`) instead of full command-builder
+  entries: the command builders differ in shape per script, so a field-per-vendor table would
+  add indirection without removing branches. A parametrized test checks every vendor has every
+  entry. Costs a later refactor if a fourth vendor needs more fields.
+- The default reviewer is the first other vendor whose CLI is installed, in the order Codex,
+  Claude, Gemini (D1). `deliver` checks `shutil.which`; the factory, which cannot see the
+  runner, orders by vendor only. Costs a wrong default when the CLI is missing, which
+  preflight reports.
+- The template workflow and `factory.toml` render from the first two of Claude, Codex, Gemini
+  in `agent_harnesses`, so Gemini is never the implementer there. This repository's workflow is
+  the render for Claude and Gemini and a test keeps it equal.
+- `gemini-cli` is pinned to 0.70.0, the probe version. Costs a bump when Google ships a
+  fixed release.
+- Gemini implements in `deliver headless` on macOS only, in single mode, with the cost cap
+  checked after each round because the CLI has no per-round budget flag. The round, profile,
+  proxy and parsing are built from the spike results and covered by fake-runner tests; no live
+  Gemini round ran in the delivery sandbox. External acceptance (both `deliver` runs and the
+  Actions triage) is pending, not passed.
+- Spike ran outside the delivery sandbox, on macOS with the user's key, because the sandbox has
+  neither the CLI nor network access to Google; results and the implementer design are in
+  ADR-0034 under "Spike results" and "Gemini as implementer"; if wrong, Gemini rounds fail
+  to start or commit, which the implementer tests and the external check catch.
+- Final gate: the outer controller runs `task check` and the configured review after staging
+  and refuses to push if either fails. The agent ran focused checks only, as the run
+  instructs, so this box records that handoff, not a passed full gate.

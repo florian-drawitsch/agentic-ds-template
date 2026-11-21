@@ -480,3 +480,28 @@ def test_triage_keeps_only_the_reviewer_login(tmp_path, monkeypatch, reviewer, o
     assert "GH_TOKEN" not in seen["env"]
     if reviewer == "codex":
         assert any(a.startswith("shell_environment_policy.exclude=") for a in seen["args"])
+
+
+def test_gemini_triage_is_read_only_cheap_and_parsed(tmp_path, monkeypatch):
+    for name in factory.SECRET_ENV:
+        monkeypatch.setenv(name, "secret")
+    seen = {}
+
+    def run(args, cwd, timeout=None, env=None):
+        seen["args"], seen["env"] = list(args), env
+        out = json.dumps({"session_id": "s", "response": triage_answer()})
+        return subprocess.CompletedProcess(args, 0, out, "")
+
+    path = tmp_path / "issue.txt"
+    path.write_text("x")
+    config = factory.Config(deliver=factory.DeliverConfig(harness="claude", reviewer="gemini"))
+    result = factory.run_triage(config, path, run)
+    args = seen["args"]
+    assert result.verdict == "accept"
+    assert args[0] == "gemini"
+    assert args[args.index("--approval-mode") + 1] == "plan"
+    assert args[args.index("-m") + 1] == "gemini-4-hydrogen"
+    assert "--skip-trust" in args
+    assert "--admin-policy" in args
+    assert seen["env"]["GEMINI_API_KEY"] == "secret"
+    assert not {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GH_TOKEN"} & set(seen["env"])

@@ -1570,6 +1570,8 @@ def test_secret_scan_invokes_gitleaks_and_records_report(
         ("claude", "3", "haiku", "high"),
         ("codex", "1", "gpt-6.1-sol", "medium"),
         ("claude", "1", "sonnet", "medium"),
+        ("gemini", "1", "gemini-4-neon", "medium"),
+        ("gemini", "3", "gemini-4-carbon", "medium"),
     ],
 )
 def test_dialog_model_effort_defaults(monkeypatch, harness, answer, model, effort) -> None:
@@ -1581,17 +1583,35 @@ def test_dialog_model_effort_defaults(monkeypatch, harness, answer, model, effor
     assert (args.model, args.effort) == (model, effort)
 
 
-@pytest.mark.parametrize(("harness", "model"), [("codex", "gpt-6.1-sol"), ("claude", "opus")])
+@pytest.mark.parametrize(
+    ("harness", "model"),
+    [("codex", "gpt-6.1-sol"), ("claude", "opus"), ("gemini", "gemini-4-carbon")],
+)
 def test_reviewer_menu_only_offers_frontier(monkeypatch, harness, model) -> None:
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _: "")
     assert deliver.select_model("Review model", harness, review=True) == model
 
 
-@pytest.mark.parametrize("model", ["gpt-6-luna", "haiku", "claude-haiku-4-5"])
+@pytest.mark.parametrize("model", ["gpt-6-luna", "haiku", "claude-haiku-4-5", "gemini-4-hydrogen"])
 def test_small_reviewer_is_rejected(model) -> None:
     with pytest.raises(SystemExit, match="frontier"):
         deliver.reviewer_model("codex", model)
+
+
+def test_gemini_parses_and_defaults_follow_installed_clis(
+    monkeypatch,
+) -> None:
+    assert deliver.reviewer_model("gemini", None) == "gemini-4-carbon"
+    assert deliver.reviewer_model("gemini", "gemini-4-neon") == "gemini-4-neon"
+    assert deliver.parser().parse_args(["resume", "--reviewer", "gemini"]).reviewer == "gemini"
+    assert deliver.parser().parse_args(["headless", "--harness", "gemini"]).harness == "gemini"
+    installed = {"claude", "gemini"}
+    monkeypatch.setattr(deliver.shutil, "which", lambda name: name if name in installed else None)
+    assert deliver.default_reviewer("claude") == "gemini"
+    assert deliver.default_reviewer("codex") == "claude"
+    monkeypatch.setattr(deliver.shutil, "which", lambda name: None)
+    assert deliver.default_reviewer("claude") == "codex"
 
 
 @pytest.mark.parametrize("supported", [True, False])
@@ -1894,3 +1914,111 @@ def test_codex_without_permission_profiles_refuses_denied_paths(
     assert deliver.agent_command(
         "codex", "Run", None, True, None, "acceptEdits", root=delivery_repo
     )
+
+
+def test_gemini_round_command_and_resume() -> None:
+    first = deliver.agent_command("gemini", "Go", None, True, None, "x")
+    later = deliver.agent_command("gemini", "Go", "sess-1", False, "gemini-4-hydrogen", "x")
+    assert first[:2] == ["gemini", "-m"]
+    assert first[2] == "gemini-4-neon"
+    for command in (first, later):
+        assert "-s" in command
+        assert "--skip-trust" in command
+        assert command[command.index("--approval-mode") + 1] == "yolo"
+        assert command[command.index("--output-format") + 1] == "json"
+        assert command[-2:] == ["-p", "Go"]
+    assert "-r" not in first
+    assert later[later.index("-r") + 1] == "sess-1"
+
+
+def test_gemini_implementer_refused_without_seatbelt(monkeypatch) -> None:
+    monkeypatch.setattr(deliver.sys, "platform", "linux")
+    with pytest.raises(SystemExit, match="only on macOS"):
+        deliver.require_gemini_implementer()
+    monkeypatch.setattr(deliver.sys, "platform", "darwin")
+    monkeypatch.setattr(deliver, "gemini_bundle_profile", lambda: None)
+    with pytest.raises(SystemExit, match="cannot deny paths"):
+        deliver.require_gemini_implementer()
+
+
+def test_gemini_environment_keeps_only_its_login_and_writes_profile(tmp_path, monkeypatch) -> None:
+    bundle = tmp_path / "strict.sb"
+    bundle.write_text("(version 1)\n")
+    monkeypatch.setattr(deliver, "gemini_bundle_profile", lambda: bundle)
+    for name in ("GEMINI_API_KEY", "OPENAI_API_KEY", "GH_TOKEN"):
+        monkeypatch.setenv(name, "secret")
+    root = tmp_path / "repo"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    run = deliver.Run(token="dr-g", plan="p.md", check="true", harness="gemini")
+    env = deliver.gemini_environment(run, root)
+    assert env["GEMINI_API_KEY"] == "secret"
+    assert not {"OPENAI_API_KEY", "GH_TOKEN"} & set(env)
+    assert env["SEATBELT_PROFILE"] == "deliver"
+    assert "generativelanguage.googleapis.com" in env["GEMINI_PROXY_ALLOW"].split(",")
+    profile = (root / ".gemini/sandbox-macos-deliver.sb").read_text()
+    assert str((root / ".git").resolve()) in profile
+    assert "sandbox-macos-deliver.sb" in (root / ".git/info/exclude").read_text()
+    settings = json.loads(Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text())
+    blocked = settings["security"]["environmentVariableRedaction"]["blocked"]
+    assert {"GEMINI_API_KEY", "GH_TOKEN"} <= set(blocked)
+
+
+class FakeProcess:
+    """Stands in for Popen: communicate returns the scripted output or times out once."""
+
+    def __init__(self, out: str, err: str = "", code: int = 0, hang: bool = False) -> None:
+        self.out, self.err, self.returncode, self.hang = out, err, code, hang
+        self.pid = 999_999_999
+        self.calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def communicate(self, timeout=None):
+        self.calls += 1
+        if self.hang and self.calls == 1:
+            raise subprocess.TimeoutExpired("gemini", timeout or 0)
+        return self.out, self.err
+
+
+def test_gemini_round_parses_session_usage_and_cost(tmp_path, monkeypatch) -> None:
+    tokens = {"input": 1_000_000, "cached": 400_000, "candidates": 100_000, "thoughts": 100_000}
+    stats = {"models": {"gemini-4-neon": {"tokens": tokens}}}
+    out = json.dumps({"session_id": "s9", "response": "ok", "stats": stats})
+    monkeypatch.setattr(deliver.subprocess, "Popen", lambda *a, **k: FakeProcess(out))
+    result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {})
+    deliver.price_codex(result)
+    assert (result.thread, result.started, result.model) == ("s9", True, "gemini-4-neon")
+    assert result.cost_usd == pytest.approx(0.6 * 3.0 + 0.4 * 0.15 + 0.2 * 15.0)
+
+
+def test_gemini_round_failure_and_rate_limit(tmp_path, monkeypatch) -> None:
+    process = FakeProcess("", "429 RESOURCE_EXHAUSTED", 1)
+    monkeypatch.setattr(deliver.subprocess, "Popen", lambda *a, **k: process)
+    result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {})
+    assert result.failed
+    assert result.rejected
+
+
+def test_gemini_round_timeout_stops_the_process_group(tmp_path, monkeypatch) -> None:
+    stopped = []
+    monkeypatch.setattr(deliver.subprocess, "Popen", lambda *a, **k: FakeProcess("", hang=True))
+    monkeypatch.setattr(deliver, "stop_process_group", stopped.append)
+    result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {}, timeout=1)
+    assert len(stopped) == 1
+    assert result.subtype == "wall_clock_limit"
+
+
+def test_gemini_profile_denies_holdout_and_credentials(tmp_path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "holdout").mkdir()
+    rules = deliver.gemini_denials(tmp_path, ["holdout"])
+    assert f'(subpath "{(tmp_path / "holdout").resolve()}")' in rules
+    assert "/.ssh" in rules
+    assert '(regex #"^' in rules  # the `.env*` glob
+    with pytest.raises(SystemExit, match="cannot deny"):
+        deliver.gemini_denials(tmp_path, ['bad"name'])

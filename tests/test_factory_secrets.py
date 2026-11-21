@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from tests.factory_fakes import FakeGitHub
 from tests.helpers import load_script
 
@@ -146,3 +148,17 @@ def test_secret_values_go_to_gh_on_stdin():
     github = Recording()
     github.set_secret("OPENAI_API_KEY", "sk-secret")
     assert calls == [(["secret", "set", "OPENAI_API_KEY"], "sk-secret")]
+
+
+@pytest.mark.parametrize(
+    ("harness", "reviewer", "expected"),
+    [
+        ("claude", "gemini", ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GEMINI_API_KEY"]),
+        ("codex", "gemini", ["GEMINI_API_KEY", "OPENAI_API_KEY"]),
+        ("claude", None, ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "OPENAI_API_KEY"]),
+    ],
+)
+def test_secrets_cover_only_the_two_configured_vendors(harness, reviewer, expected):
+    config = factory.Config(deliver=factory.DeliverConfig(harness=harness, reviewer=reviewer))
+    names = sorted(name for spec in factory.required_secrets(config)[1:] for name in spec.names)
+    assert names == expected

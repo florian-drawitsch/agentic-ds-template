@@ -28,6 +28,8 @@ _exclude:
   - "{% if 'claude' not in agent_harnesses %}.claude{% endif %}"
   - "{% if 'claude' not in agent_harnesses %}CLAUDE.md{% endif %}"
   - "{% if 'codex' not in agent_harnesses %}.codex{% endif %}"
+  - "{% if 'gemini' not in agent_harnesses %}.gemini{% endif %}"
+  - "{% if 'gemini' not in agent_harnesses %}.geminiignore{% endif %}"
   - "{% if not agent_harnesses %}scripts/agent{% endif %}"
   - "{% if not agent_harnesses %}deliver.toml{% endif %}"
   - "{% if ci != 'github' %}.github{% endif %}"
@@ -71,7 +73,7 @@ _message_after_copy: |
 
   Ticket factory: after pushing to GitHub, run `gh auth refresh -s project` once, then
   `task factory:init` creates the labels and the board. Then either run it locally with
-  `task factory:loop` (uses your gh, claude and codex logins) or set the GitHub Actions
+  `task factory:loop` (uses your gh and agent logins) or set the GitHub Actions
   secrets with `task factory:secrets`. See docs/guides/factory.md.
   {%- endif %}
 
@@ -225,6 +227,7 @@ agent_harnesses:
   choices:
     Claude Code: claude
     Codex: codex
+    Gemini (reviews and implements headless only): gemini
   default: [claude, codex]
 
 marketplace_repo:
@@ -245,11 +248,10 @@ factory:
     Add the ticket factory (ADR-0033, in development): labeled GitHub issues move through a
     project board to verified pull requests. Needs gh with the project scope; spends model tokens
   default: false
-  when: "{{ ci == 'github' and 'claude' in agent_harnesses and 'codex' in agent_harnesses }}"
+  when: "{{ ci == 'github' and agent_harnesses | length >= 2 }}"
   validator: >-
-    {% if factory and not (ci == 'github' and 'claude' in agent_harnesses
-    and 'codex' in agent_harnesses) %}The factory needs GitHub CI and both agent harnesses:
-    the verifier must be the other vendor{% endif %}
+    {% if factory and not (ci == 'github' and agent_harnesses | length >= 2) %}The factory
+    needs GitHub CI and two agent harnesses: the verifier must be the other vendor{% endif %}
 
 # --- Optional context (leave empty to fill later) ---------------------------------------------
 

@@ -1,4 +1,4 @@
-# Codex cost estimates for delivery runs and cross-reviews.
+# Codex and Gemini cost estimates for delivery runs and cross-reviews.
 # OpenAI Standard token rates in USD per million tokens, verified 2026-10-21.
 # Source: https://developers.openai.com/api/docs/pricing
 [prices."gpt-6.1-sol"]
@@ -18,3 +18,21 @@ input = 10.0
 cached_input = 1.0
 cache_creation = 12.50
 output = 50.0
+
+# Gemini rates in USD per million tokens, from the harness plan probe, verified 2026-11-21.
+# Thinking tokens are billed as output. Carbon is 2.00 / 0.10 / 10.00 until 30 November 2026;
+# the table carries the higher rate from 1 December 2026, so caps err on the high side.
+[prices."gemini-4-hydrogen"]
+input = 1.50
+cached_input = 0.075
+output = 7.50
+
+[prices."gemini-4-neon"]
+input = 3.0
+cached_input = 0.15
+output = 15.0
+
+[prices."gemini-4-carbon"]
+input = 4.0
+cached_input = 0.20
+output = 20.0
