@@ -212,6 +212,22 @@ def test_implement_failure_needs_human(clone, stage):
     factory.do_implement(e, 7)
     assert gh.issues[7]["labels"] == ["factory:needs-human"]
     assert any("tests fail" in c["body"] for c in gh.comment_log[7])
+    # The attempt opened no pull request, so its lock and branch are gone and the ticket can
+    # be released again.
+    refs = subprocess.run(
+        ["git", "-C", str(clone[0]), "ls-remote", "origin"], capture_output=True, text=True
+    ).stdout
+    assert "feat/7-" not in refs
+    assert "refs/factory/claims/7" not in refs
+    assert factory.claim(clone[1], 7, "Add a thing")
+
+
+def test_release_keeps_the_claim_while_a_pull_request_is_open(clone):
+    gh, _, e = implement(clone, deliver_status("blocked"))
+    assert factory.claim(clone[0], 7, "Add a thing")
+    gh.add_pull(9, 7)
+    factory.release_claim(e, 7)
+    assert not factory.claim(clone[1], 7, "Add a thing")
 
 
 def test_implement_protected_path_goes_to_human(clone):

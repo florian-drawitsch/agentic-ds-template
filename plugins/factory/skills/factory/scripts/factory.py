@@ -1026,6 +1026,23 @@ def claim(root: Path, issue: int, title: str) -> bool:
     return _git(root, "push", "origin", f"{base}:refs/heads/{branch}").returncode == 0
 
 
+def release_claim(env: Env, number: int) -> None:
+    """Drop the claim lock and the issue branch of an attempt that opened no pull request.
+
+    The lock outlives a deleted branch on purpose (see claim), so the factory releases it itself
+    when it gives up an attempt. A maintainer can then release the ticket again. With a pull
+    request open, nothing is removed: the work is there to review.
+    """
+    if env.github.pull_for_branch(f"feat/{int(number)}-") is not None:
+        return
+    heads = _git(env.root, "ls-remote", "--heads", "origin", f"refs/heads/feat/{int(number)}-*")
+    refs = [line.split()[1] for line in heads.stdout.splitlines() if line.strip()]
+    for ref in [*refs, f"refs/factory/claims/{int(number)}"]:
+        done = _git(env.root, "push", "origin", f":{ref}")
+        if done.returncode != 0 and "remote ref does not exist" not in done.stderr:
+            log_error(env, f"#{number}: could not delete {ref}: {done.stderr.strip()}")
+
+
 # --- protected paths ---------------------------------------------------------------------
 
 
@@ -1499,6 +1516,7 @@ def do_implement(env: Env, number: int) -> None:
     stage = info.get("stage") or "unknown"
     github.comment(number, f"Delivery ended in state `{stage}`: {note}")
     move(env, number, State.NEEDS_HUMAN)
+    release_claim(env, number)
 
 
 # review
@@ -1509,6 +1527,13 @@ def _pull(env: Env, number: int) -> dict[str, Any]:
     if pr is None:
         raise RuntimeError(f"no open pull request for #{number}")
     return pr
+
+
+def escalate_and_release(env: Env, number: int, reason: str) -> None:
+    """Escalate, and release the claim of an attempt that never opened a pull request."""
+    escalate(env, number, reason)
+    if reason == "delivery was interrupted":
+        release_claim(env, number)
 
 
 def escalate(env: Env, number: int, reason: str) -> None:
@@ -2301,7 +2326,7 @@ def _tick(
         "implement": do_implement,
         "repair": do_repair,
         "verify": do_verify,
-        "escalate": lambda e, n: escalate(e, n, action.reason),
+        "escalate": lambda e, n: escalate_and_release(e, n, action.reason),
     }
     try:
         stages[action.kind](env, action.issue)
