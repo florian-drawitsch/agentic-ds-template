@@ -1804,7 +1804,10 @@ def gemini_srt_settings(
     The `gemini` process needs its API key, so the key is not withheld. Gemini's own redaction
     setting still keeps it out of the agent's shell commands.
     """
-    rules = sandbox_rules([*writable, str(Path.home() / ".gemini")], root, deny)
+    # srt, unlike Claude's sandbox, does not make the working directory writable by itself.
+    rules = sandbox_rules(
+        [str(root.resolve()), *writable, str(Path.home() / ".gemini")], root, deny
+    )
     domains = rules["network"]["allowedDomains"]
     rules["network"]["allowedDomains"] = list(dict.fromkeys([*GEMINI_HOSTS, *domains]))
     keep = set(VENDOR_ENV["gemini"])

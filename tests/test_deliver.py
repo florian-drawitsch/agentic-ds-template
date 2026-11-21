@@ -1980,6 +1980,7 @@ def test_gemini_environment_writes_srt_settings_and_keeps_only_its_login(
     assert srt["network"]["allowedDomains"][0] == "generativelanguage.googleapis.com"
     assert "pypi.org" in srt["network"]["allowedDomains"]
     assert "/cache" in srt["filesystem"]["allowWrite"]
+    assert str(root.resolve()) in srt["filesystem"]["allowWrite"]
     assert any(path.endswith(".git/hooks") for path in srt["filesystem"]["denyWrite"])
     withheld = {entry["name"] for entry in srt["credentials"]["envVars"]}
     assert "GH_TOKEN" in withheld

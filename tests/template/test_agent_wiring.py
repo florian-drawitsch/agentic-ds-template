@@ -297,7 +297,8 @@ def test_factory_workflow_uses_only_the_configured_vendors(tmp_path: Path, harne
     assert ("@google/gemini-cli@" in install) == ("gemini" in pair)
     assert ("@anthropic-ai/sandbox-runtime@0.0.83" in install) == ("gemini" in pair)
     prepare = [s for s in steps if s["name"] == "Prepare the sandbox"]
-    assert bool(prepare) == ("gemini" in pair)
+    # The tick and daily-report jobs can both run a delivery.
+    assert len(prepare) == (2 if "gemini" in pair else 0)
     if prepare:
         assert "bubblewrap socat ripgrep" in prepare[0]["run"]
         assert "apparmor_restrict_unprivileged_userns=0" in prepare[0]["run"]
