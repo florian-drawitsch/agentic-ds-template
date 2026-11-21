@@ -6,3 +6,6 @@
 extra_hosts = []
 # Final gate isolation: "env-scrub" (default) or "srt" (needs the optional srt wrapper).
 gate = "env-scrub"
+# Pinned sandbox-runtime (`srt`) release that sandboxes a Gemini implementer.
+# Install it with `npm install --global @anthropic-ai/sandbox-runtime@<version>`.
+srt_version = "0.0.83"
