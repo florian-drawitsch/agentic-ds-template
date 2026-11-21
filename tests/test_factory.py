@@ -736,15 +736,20 @@ def test_init_reuses_a_board_found_by_title_before_the_url_was_saved(tmp_path):
 def test_init_migrates_an_arranged_board(tmp_path, capsys):
     gh = board_gh()
     gh.add_board("acme", 3, "Roadmap", ["Backlog", "Doing", "Done", "Accepted"])
-    gh.cards = [{"number": 1, "state": "open", "status": "Doing"}]
+    gh.cards = [
+        {"number": 1, "state": "open", "status": "Doing"},
+        {"number": 2, "item": "IX", "state": "closed", "status": "Backlog"},
+    ]
     (tmp_path / "factory.toml").write_text('project = "https://github.com/users/acme/projects/3"\n')
     assert run_main(["init"], gh, root=tmp_path) == 0
     first = [o["name"] for o in gh.option_updates[0]]
     assert first[: len(COLUMNS)] == COLUMNS
     assert {"Backlog", "Doing", "Accepted"} <= set(first)  # old columns stay until empty
     last = [o["name"] for o in gh.option_updates[-1]]
-    assert last == [*COLUMNS, "Doing"]  # empty old columns are removed, a used one stays
-    assert "still hold cards: Doing" in capsys.readouterr().out
+    # empty old columns are removed; columns holding a card, even a closed one, stay
+    assert last == [*COLUMNS, "Backlog", "Doing"]
+    assert gh.item_values["IX"] == "O-Backlog"  # the closed card keeps its column
+    assert "still hold cards: Backlog, Doing" in capsys.readouterr().out
 
 
 def test_init_skips_without_a_github_repository(tmp_path, capsys):

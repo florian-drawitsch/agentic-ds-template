@@ -727,6 +727,50 @@ def test_answers_come_only_from_writers(clone):
     assert "Ignore" not in text
 
 
+def test_answers_include_a_maintainer_who_is_the_controller(clone):
+    gh = approval_setup(clone, questions=1)
+    gh.add_comment(7, "Use option A", login=CONTROLLER)
+    gh.add_comment(7, "Plan again\n<!-- factory:plan {} -->", login=CONTROLLER)
+    gh.permissions[CONTROLLER] = "admin"
+    e = factory.Env(gh, factory.Config(), Path(), NOW, Fake(), lambda r, n: [])
+    text = factory.collect_answers(e, gh.comment_log[7], 0)
+    assert "Use option A" in text
+    assert "Plan again" not in text
+
+
+def test_new_triage_after_a_plan_starts_a_fresh_plan(clone):
+    gh, e = planned(clone, Planner())
+    factory.do_plan(e, 7)
+    gh.issues[7]["labels"] = ["factory:accepted"]
+    gh.add_comment(7, '<!-- factory:triage {"acceptance": ["B."], "risk": "low"} -->')
+    factory.do_plan(e, 7)
+    assert "B." in next(Path(clone[0]).glob("**/docs/plans/*issue-7*.md")).read_text()
+
+
+def test_planner_is_claude_only_without_grep_and_denies_the_holdout(tmp_path):
+    holdout = factory.HoldoutConfig(source="/abs/holdout", command="x")
+    config = factory.Config(holdout=holdout)
+    e = factory.Env(FakeGitHub(), config, Path(), NOW, Fake(), lambda r, n: [])
+    command, vendor = factory._planner_command(e, "p")
+    assert vendor == "claude"
+    assert command[command.index("--tools") + 1] == "Read,Write,Edit,Glob"
+    assert "Read(//abs/holdout/**)" in command
+    codex = factory.Config(
+        models={**factory.DEFAULT_MODELS, "plan": factory.StageModel("gpt-6", None)}
+    )
+    with pytest.raises(RuntimeError, match="needs a Claude model"):
+        factory._planner_command(
+            factory.Env(FakeGitHub(), codex, Path(), NOW, Fake(), lambda r, n: []), "p"
+        )
+    unprovisioned = factory.Config(
+        deliver=factory.DeliverConfig(harness="codex", reviewer="gemini")
+    )
+    with pytest.raises(RuntimeError, match="does not provision"):
+        factory._planner_command(
+            factory.Env(FakeGitHub(), unprovisioned, Path(), NOW, Fake(), lambda r, n: []), "p"
+        )
+
+
 def test_implement_refuses_a_changed_branch(clone):
     gh, run, e = implement(clone, deliver_status("completed", "https://x/pull/9"))
     data = {"sha": "0" * 40, "plan": "p.md", "questions": 0}
@@ -734,6 +778,8 @@ def test_implement_refuses_a_changed_branch(clone):
     factory.do_implement(e, 7)
     assert gh.issues[7]["labels"] == ["factory:plan-review"]
     assert not any("headless" in c for c in run.calls)
+    # the new marker names the current head, so the next approval can be implemented
+    assert factory.plan_marker(gh.comment_log[7], CONTROLLER)[0]["sha"] == head_of(clone)
 
 
 def test_reports_list_plans_waiting(clone):

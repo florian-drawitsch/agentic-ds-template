@@ -578,6 +578,7 @@ class GitHub:
         nodes = data["data"]["node"]["items"]["nodes"]
         return [
             {
+                "item": n.get("id"),
                 "number": n["content"]["number"],
                 "state": str(n["content"]["state"]).lower(),
                 "status": (n.get("status") or {}).get("name"),
@@ -740,6 +741,7 @@ query($id: ID!) {
     ... on ProjectV2 {
       items(first: 100) {
         nodes {
+          id
           status: fieldValueByName(name: "Status") {
             ... on ProjectV2ItemFieldSingleSelectValue { name }
           }
@@ -1484,6 +1486,17 @@ def triage_marker(comments: Sequence[dict[str, Any]], controller: str) -> dict[s
     return found
 
 
+def triage_index(comments: Sequence[dict[str, Any]], controller: str) -> int:
+    """Return the index of the controller's latest triage comment, or -1."""
+    for index in range(len(comments) - 1, -1, -1):
+        comment = comments[index]
+        if (comment.get("user") or {}).get("login") == controller and TRIAGE_MARKER.search(
+            comment.get("body") or ""
+        ):
+            return index
+    return -1
+
+
 def set_state(github: GitHub, number: int, target: State) -> None:
     """Move an issue to target; the label write is the last step so a failure leaves it as is."""
     current = state_of(github.issue(number)["labels"])
@@ -1680,17 +1693,23 @@ def _planner_command(env: Env, prompt: str) -> tuple[list[str], str]:
     )
     if vendor is None:
         raise RuntimeError(f"no vendor for plan model {chosen.model}")
-    if vendor == "claude":
-        command = ["claude", "-p", prompt, "--output-format", "json", "--model", chosen.model]
-        command += ["--effort", chosen.effort] if chosen.effort else []
-        command += ["--tools", "Read,Write,Edit,Glob,Grep", "--permission-mode", "acceptEdits"]
-        command += ["--max-budget-usd", "3"]
-        command += ["--disallowedTools", *(f"Read({path}/**)" for path in DENIED_READS)]
-    elif vendor == "codex":
-        command = ["codex", "exec", "--json", "-c", 'sandbox_mode="workspace-write"']
-        command += ["-c", 'approval_policy="never"', "--ephemeral", "-m", chosen.model, prompt]
-    else:
-        raise RuntimeError("the planner does not run on Gemini yet")
+    if vendor != "claude":
+        # Only Claude Code can drop the shell and deny paths; Codex and Gemini keep a shell.
+        raise RuntimeError(f"the planner needs a Claude model, not {chosen.model}")
+    if "claude" not in _vendors(env.config):
+        raise RuntimeError(
+            "the planner needs the Claude CLI, which this factory does not provision: "
+            "set [deliver] harness or reviewer to claude"
+        )
+    command = ["claude", "-p", prompt, "--output-format", "json", "--model", chosen.model]
+    command += ["--effort", chosen.effort] if chosen.effort else []
+    # No Grep: the deny rules below cover Read only. No shell either.
+    command += ["--tools", "Read,Write,Edit,Glob", "--permission-mode", "acceptEdits"]
+    command += ["--max-budget-usd", "3"]
+    holdout = env.config.holdout.local_path if env.config.holdout else None
+    denied = [f"Read({path}/**)" for path in DENIED_READS]
+    denied += [f"{tool}(/{holdout}/**)" for tool in ("Read", "Glob")] if holdout else []
+    command += ["--disallowedTools", *denied]
     return command, vendor
 
 
@@ -1720,7 +1739,12 @@ def collect_answers(env: Env, comments: Sequence[dict[str, Any]], after: int) ->
     texts = []
     for comment in comments[after + 1 :]:
         login = (comment.get("user") or {}).get("login") or ""
-        if login == controller or env.github.permission(login) not in WRITE_PERMISSIONS:
+        body = comment.get("body") or ""
+        if login == controller and (
+            "<!-- factory:" in body or body.startswith((NEEDS_HUMAN_PREFIX, "Delivery ended"))
+        ):
+            continue  # the controller's own output; its login may also be a maintainer's
+        if env.github.permission(login) not in WRITE_PERMISSIONS:
             continue
         texts.append(f"{login}: {neutralize(comment.get('body') or '')}")
     return "\n\n".join(texts)[:ISSUE_LIMIT]
@@ -1750,9 +1774,12 @@ def do_plan(env: Env, number: int) -> None:
         raise RuntimeError(f"no triage marker on #{number}")
     branch = branch_name(number, issue["title"])
     prior = plan_marker(comments, controller)
+    replanned = bool(prior) and triage_index(comments, controller) > prior[1]
+    if replanned:
+        prior = None  # triaged again after the plan: plan from the new criteria
     answers = ""
     if prior is None:
-        if not claim(env.root, number, issue["title"]):
+        if not replanned and not claim(env.root, number, issue["title"]):
             print(f"claim lost for #{number}", file=sys.stderr)
             return
         workdir = issue_worktree(env, number, branch)
@@ -1823,10 +1850,13 @@ def do_implement(env: Env, number: int) -> None:
     workdir = issue_worktree(env, number, branch)
     head = _git(workdir, "rev-parse", "HEAD").stdout.strip()
     if head != prior[0]["sha"]:
+        # A new marker for the current commit makes the earlier approval stale and lets the
+        # next approval name the commit that will be implemented.
+        data = {**prior[0], "sha": head}
         github.comment(
             number,
             f"The branch changed after approval (plan commit {prior[0]['sha'][:10]}, now "
-            f"{head[:10]}). Review the plan again.",
+            f"{head[:10]}). Review the plan again.\n\n<!-- factory:plan {marker_json(data)} -->",
         )
         move(env, number, State.PLAN_REVIEW)
         return
@@ -2162,6 +2192,22 @@ def find_board(
     return Board(owner, int(found["number"]), found["id"], found["url"]), False
 
 
+def _replace_options(
+    github: GitHub, board: Board, field: dict[str, Any], options: list[dict[str, str]]
+) -> None:
+    """Replace the Status options and give every card, open or closed, its column back.
+
+    Replacing options clears the card values, so the old ones are read first and restored by
+    column name where the column still exists.
+    """
+    saved = [c for c in github.board_items(board.id) if c.get("item") and c.get("status")]
+    github.set_field_options(field["id"], options)
+    ids = {o["name"]: o["id"] for o in _status_field(github, board)["options"]}
+    for card in saved:
+        if card["status"] in ids:
+            github.set_item_option(board.id, card["item"], field["id"], ids[card["status"]])
+
+
 def ensure_columns(github: GitHub, board: Board, created: bool) -> bool:
     """Give the Status field the factory columns; return True when it changed.
 
@@ -2178,7 +2224,7 @@ def ensure_columns(github: GitHub, board: Board, created: bool) -> bool:
     if not created and names != GITHUB_DEFAULT_STATUS:
         old = [n for n in names if n not in wanted]
         options += [{"name": n, "color": "GRAY", "description": "Old column"} for n in old]
-    github.set_field_options(field["id"], options)
+    _replace_options(github, board, field, options)
     return True
 
 
@@ -2193,13 +2239,12 @@ def prune_columns(github: GitHub, board: Board, issues: Sequence[dict[str, Any]]
     if not old:
         return []
     sync_board(github, board, issues)
-    used = {c["status"] for c in github.board_items(board.id) if c["state"] == "open"}
+    used = {c["status"] for c in github.board_items(board.id)}
     keep = [n for n in old if n in used]
     if len(keep) < len(old):
         options = [{"name": n, "color": c, "description": d} for n, c, d, _ in BOARD_COLUMNS]
         options += [{"name": n, "color": "GRAY", "description": "Old column"} for n in keep]
-        github.set_field_options(field["id"], options)
-        sync_board(github, board, issues)  # replacing options clears card values; set them again
+        _replace_options(github, board, field, options)
     return keep
 
 
