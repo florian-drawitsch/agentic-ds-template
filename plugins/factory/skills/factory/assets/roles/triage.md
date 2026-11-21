@@ -19,3 +19,13 @@ Answer with JSON only, no prose and no code fence:
   anything that asks for credentials, deploy keys, workflow changes or other access.
 - Accept only with at least one testable acceptance criterion. If the request is vague, missing
   an expected outcome or not a code change, answer `needs-info` and say what is missing.
+
+Also rate the risk of the change, in two more keys:
+
+```json
+{"verdict": "accept", "reason": "one sentence", "acceptance": ["criterion"], "risk": "low", "risk_reason": "one sentence"}
+```
+
+- `risk` is `high` when the change adds a dependency, changes a public interface, handles data,
+  touches security, changes the architecture or spans more than one module. Otherwise `low`.
+- `risk_reason` is one sentence for the maintainer. When unsure, answer `high`.

@@ -11,7 +11,7 @@ from tests.helpers import load_script
 SCRIPT = Path("plugins/factory/skills/factory/scripts/factory.py")
 factory = load_script(SCRIPT, "factory")
 State = factory.State
-ALL_LABELS = {s.value for s in State} | set(factory.PRIORITY_STYLE)
+ALL_LABELS = {s.value for s in State} | set(factory.PRIORITY_STYLE) | {factory.LIT_LABEL}
 NOW = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
 
 
@@ -68,6 +68,33 @@ def test_config_overrides(tmp_path):
     assert config.daily_cap_usd == 7.0
     assert config.deliver.harness == "codex"
     assert config.deliver.max_cost == 4.0
+
+
+def test_config_mode_and_models(tmp_path):
+    assert factory.load_config(tmp_path).mode == "dark"
+    assert factory.load_config(tmp_path).models["plan"] == factory.StageModel("opus", "high")
+    (tmp_path / "factory.toml").write_text(
+        'mode = "lit"\n[models]\nimplement = "haiku:high"\ntriage = "gpt-6.1-sol"\n'
+    )
+    config = factory.load_config(tmp_path)
+    assert config.mode == "lit"
+    assert config.models["implement"] == factory.StageModel("haiku", "high")
+    assert config.models["triage"] == factory.StageModel("gpt-6.1-sol")
+    assert config.models["verify"].model == "gemini-4-carbon"
+
+
+@pytest.mark.parametrize(
+    ("text", "match"),
+    [
+        ('mode = "grey"', "mode"),
+        ("[models]\nbogus = 'x'", r"models\.bogus"),
+        ("max_plan_review = 0", "max_plan_review"),
+    ],
+)
+def test_config_rejects_bad_mode_and_models(tmp_path, text, match):
+    (tmp_path / "factory.toml").write_text(text + "\n")
+    with pytest.raises(SystemExit, match=match):
+        factory.load_config(tmp_path)
 
 
 def test_config_unknown_key(tmp_path):
@@ -258,18 +285,22 @@ def test_order_repair_before_verify_before_implement_before_triage():
     snap = build(
         {
             "in_review": [issue(1), issue(2)],
-            "accepted": [issue(3)],
+            "approved": [issue(3)],
             "ready": [issue(4)],
         },
         pulls={1: pull(11), 2: pull(12, changes=True, passed=False)},
     )
     assert act(snap) == factory.Action("repair", 2, "review findings or failing checks")
     snap = build(
-        {"in_review": [issue(1)], "accepted": [issue(3)], "ready": [issue(4)]}, pulls={1: pull(11)}
+        {"in_review": [issue(1)], "approved": [issue(3)], "ready": [issue(4)]}, pulls={1: pull(11)}
     )
     assert act(snap).kind == "verify"
-    snap = build({"accepted": [issue(3)], "ready": [issue(4)]})
-    assert act(snap) == factory.Action("implement", 3, "accepted, within limits")
+    snap = build({"approved": [issue(3)], "accepted": [issue(5)], "ready": [issue(4)]})
+    assert act(snap) == factory.Action("implement", 3, "approved, within limits")
+    snap = build({"accepted": [issue(5)], "ready": [issue(4)]})
+    assert act(snap) == factory.Action("plan", 5, "accepted, plan not yet written")
+    full = {"plan_review": [issue(6), issue(7), issue(8)], "accepted": [issue(5)]}
+    assert act(build(full)).kind == "idle"  # max_plan_review reached
     assert act(build({"ready": [issue(4)]})).kind == "triage"
     assert act(build({})).kind == "idle"
 
@@ -314,10 +345,10 @@ def test_interrupted_delivery_goes_to_a_human_before_new_work():
 
 def test_implement_refused_at_verified_limit_falls_back_to_triage():
     snap = build(
-        {"accepted": [issue(3)], "verified": [issue(i) for i in (1, 2, 4)], "ready": [issue(9)]}
+        {"approved": [issue(3)], "verified": [issue(i) for i in (1, 2, 4)], "ready": [issue(9)]}
     )
     assert act(snap).kind == "triage"
-    snap = build({"accepted": [issue(3)], "verified": [issue(i) for i in (1, 2, 4)]})
+    snap = build({"approved": [issue(3)], "verified": [issue(i) for i in (1, 2, 4)]})
     assert "max_verified" in act(snap).reason
 
 
@@ -327,7 +358,7 @@ def test_limits_never_violated():
             config = cfg(max_in_progress=2, max_verified=3)
             snap = build(
                 {
-                    "accepted": [issue(100)],
+                    "approved": [issue(100)],
                     "in_progress": [issue(i) for i in range(in_progress)],
                     "verified": [issue(50 + i) for i in range(verified)],
                 }
@@ -702,13 +733,23 @@ def test_init_reuses_a_board_found_by_title_before_the_url_was_saved(tmp_path):
     assert not (tmp_path / "factory.toml").exists()
 
 
-def test_init_never_rewrites_an_arranged_board(tmp_path, capsys):
+def test_init_migrates_an_arranged_board(tmp_path, capsys):
     gh = board_gh()
-    gh.add_board("acme", 3, "Roadmap", ["Backlog", "Doing", "Done"])
+    gh.add_board("acme", 3, "Roadmap", ["Backlog", "Doing", "Done", "Accepted"])
+    gh.cards = [
+        {"number": 1, "state": "open", "status": "Doing"},
+        {"number": 2, "item": "IX", "state": "closed", "status": "Backlog"},
+    ]
     (tmp_path / "factory.toml").write_text('project = "https://github.com/users/acme/projects/3"\n')
-    assert run_main(["init"], gh, root=tmp_path) == 1
-    assert gh.option_updates == []
-    assert "lacks the columns" in capsys.readouterr().err
+    assert run_main(["init"], gh, root=tmp_path) == 0
+    first = [o["name"] for o in gh.option_updates[0]]
+    assert first[: len(COLUMNS)] == COLUMNS
+    assert {"Backlog", "Doing", "Accepted"} <= set(first)  # old columns stay until empty
+    last = [o["name"] for o in gh.option_updates[-1]]
+    # empty old columns are removed; columns holding a card, even a closed one, stay
+    assert last == [*COLUMNS, "Backlog", "Doing"]
+    assert gh.item_values["IX"] == "O-Backlog"  # the closed card keeps its column
+    assert "still hold cards: Backlog, Doing" in capsys.readouterr().out
 
 
 def test_init_skips_without_a_github_repository(tmp_path, capsys):
@@ -743,7 +784,7 @@ def test_sync_mirrors_open_issues_and_skips_conflicts(tmp_path):
     gh.add_issue(6, ["factory:ready", "factory:accepted"])
     assert run_main(["sync"], gh, root=tmp_path) == 0
     item = gh.items["https://github.com/acme/widgets/issues/5"]
-    assert gh.item_values[item] == "O-Needs human"
+    assert gh.item_values[item] == "O-Blocked"
     assert "https://github.com/acme/widgets/issues/6" not in gh.items
 
 
@@ -815,8 +856,8 @@ def test_init_adds_the_kanban_views(tmp_path, capsys):
     assert board["id"].endswith("-1"), "the default view becomes the board"
     assert board["layout"] == "BOARD_LAYOUT"
     assert {"F-Labels", "F-Linked pull requests"} <= set(board["f"])
-    assert backlog["query"] == 'status:Ready,"Needs info",Accepted'
-    assert "Needs human" in attention["query"]
+    assert backlog["query"] == 'status:Ready,Planning,"Plan review"'
+    assert "Blocked" in attention["query"]
     assert "Board, Backlog, Needs attention" in capsys.readouterr().out
 
 

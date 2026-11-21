@@ -185,6 +185,9 @@ class FakeGitHub:
                 if comment["id"] == comment_id:
                     comment["body"] = body
 
+    def update_issue_body(self, number: int, body: str) -> None:
+        self.issues[number]["body"] = body
+
     def create_issue(self, title: str, body: str, labels: list[str]) -> dict[str, Any]:
         number = 1 + max(self.issues, default=0)
         self.add_issue(number, list(labels), title=title, body=body)

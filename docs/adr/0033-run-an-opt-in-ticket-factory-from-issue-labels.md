@@ -93,15 +93,21 @@ stateDiagram-v2
   Ready --> Accepted: triage
   Ready --> NeedsInfo: triage
   NeedsInfo --> Ready: maintainer relabels or moves card
-  Accepted --> InProgress: claim
+  Accepted --> PlanReview: plan gated
+  Accepted --> Approved: plan not gated
+  PlanReview --> Approved: maintainer approves
+  PlanReview --> Accepted: open questions answered
+  PlanReview --> Ready: maintainer re-releases
+  Approved --> PlanReview: branch changed
+  Approved --> InProgress: claim
   InProgress --> InReview: PR published
   InProgress --> NeedsHuman: budget or gate
   InReview --> InReview: fix-pr cycle
   InReview --> Verified: all checks pass
   InReview --> NeedsHuman: limit reached
   Verified --> [*]: human merges
-  class Ready,Verified blue
-  class Accepted,InProgress,InReview base
+  class Ready,Verified,PlanReview blue
+  class Accepted,Approved,InProgress,InReview base
   class NeedsInfo,NeedsHuman red
 ```
 
@@ -214,6 +220,28 @@ Blue states need a human action. Red states stop the factory for that ticket.
   - **Retrospective:** after every `retro_every` merged tickets (default 10), runs the
     `agents-md` skill on the findings since the last one and opens a PR with proposed rule
     changes. It touches protected paths, so a human reviews it.
+
+### Amendment: lit and dark modes (2026-11-22)
+
+- **Modes.** `mode = "dark" | "lit"` in `factory.toml`, default `dark`. A planner role writes
+  the plan after triage. A plan is gated (waits in `factory:plan-review`) in lit mode, when
+  triage rates the ticket `risk: high` (a missing or unknown risk counts as high), when a
+  maintainer adds `factory:lit`, or when the plan has an open question. Escalation only: no
+  label removes the gate in lit mode. Ungated plans go to `factory:approved`.
+- **Approval.** A `factory:approved` label, or a move from Plan review to Building on the
+  factory board, by a user with write access. The latest signal wins; automated moves and the
+  controller's mirror writes do not count. Approval binds to the plan commit: when the branch
+  head differs, the ticket returns to Plan review.
+- **Open questions.** The planner records routine rulings and lists open design questions
+  separately. Any open question gates the plan in both modes. After answers (comments from
+  writers, passed as quoted data) and approval, the planner revises the plan.
+- **Board.** Eight columns by owner: Ready, Planning, Plan review, Building, In review, Ready
+  to merge, Blocked, Done. Labels keep every state.
+- **Reviews.** Factory deliveries run without `--cross-review final`: the GitHub Codex review
+  and the independent verification remain.
+- **Parallelism.** Deliveries run one at a time: a tick runs `implement` to its end.
+  `max_in_progress` above 1 has no effect. Parallel deliveries need a follow-up ADR.
+- **Models.** One model per stage in `[models]`: triage, plan, implement, verify.
 
 ## Alternatives considered
 

@@ -417,6 +417,7 @@ def test_mirror_runs_once_per_label_change_and_tolerates_errors(tmp_path):
         raise RuntimeError("gh exploded")
 
     e = env(gh, root=tmp_path, mirror=broken)
+    factory.move(e, 4, State.APPROVED)
     factory.move(e, 4, State.IN_PROGRESS)
     assert gh.issues[4]["labels"] == ["factory:in-progress"]
     assert "gh exploded" in (tmp_path / ".factory/run.log").read_text()
@@ -427,7 +428,7 @@ def test_make_mirror_syncs_one_issue():
     gh.add_board("acme", 1, "widgets factory", options=[n for n, *_ in factory.BOARD_COLUMNS])
     gh.add_issue(4, ["factory:verified"])
     factory.make_mirror(gh, factory.Config())(4)
-    assert list(gh.item_values.values()) == ["O-Verified"]
+    assert list(gh.item_values.values()) == ["O-Ready to merge"]
 
 
 # --- board intake ---
