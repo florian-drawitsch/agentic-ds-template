@@ -79,7 +79,7 @@ def test_only_read_only_github_commands_skip_approval(project: Path) -> None:
 def test_worktrees_never_receive_credentials(project: Path) -> None:
     assert deliver.worktreeinclude_credentials(project) == []
     sandbox = tomllib.loads((project / "deliver.toml").read_text())["sandbox"]
-    assert sandbox == {"extra_hosts": [], "gate": "env-scrub"}
+    assert sandbox == {"extra_hosts": [], "gate": "env-scrub", "srt_version": "0.0.83"}
 
 
 def test_hook_configs_have_no_machine_specific_paths(project: Path) -> None:
@@ -295,6 +295,12 @@ def test_factory_workflow_uses_only_the_configured_vendors(tmp_path: Path, harne
         assert tick["env"]["GEMINI_CLI_TRUST_WORKSPACE"] == "true"
     install = next(s["run"] for s in steps if s["name"] == "Install agent CLIs")
     assert ("@google/gemini-cli@" in install) == ("gemini" in pair)
+    assert ("@anthropic-ai/sandbox-runtime@0.0.83" in install) == ("gemini" in pair)
+    prepare = [s for s in steps if s["name"] == "Prepare the sandbox"]
+    assert bool(prepare) == ("gemini" in pair)
+    if prepare:
+        assert "bubblewrap socat ripgrep" in prepare[0]["run"]
+        assert "apparmor_restrict_unprivileged_userns=0" in prepare[0]["run"]
     factory = tomllib.loads((root / "factory.toml").read_text())["deliver"]
     assert (factory["harness"], factory["reviewer"]) == pair
     if "gemini" in harnesses:
