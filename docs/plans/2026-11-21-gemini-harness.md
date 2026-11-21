@@ -1,6 +1,6 @@
 # Gemini as a third harness
 
-Status: Proposed; not approved for implementation.
+Status: Approved for implementation on 2026-11-21.
 
 Resolves #19.
 
@@ -84,8 +84,8 @@ returned `OK` from `gemini-3.5-flash-lite`.
 
   Never use the CLI aliases. `prices.toml` carries Carbon's price from 1 December 2026, so
   cost caps err on the high side.
-- **Approval:** pending. Record the user's approval of this named plan and whether delivery
-  may publish a pull request.
+- **Approval:** the user approved this named plan with D1 to D4 on 2026-11-21. Delivery may
+  publish a pull request. It never merges.
 
 ## Implementation sequence
 
