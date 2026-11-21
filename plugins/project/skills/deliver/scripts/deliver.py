@@ -96,6 +96,11 @@ CREDENTIAL_PATHS = [
     "~/.docker/config.json",
     "~/.codex/auth.json",
     "~/.claude/.credentials.json",
+    # Gemini CLI loads its key from ~/.gemini/.env and keeps Google logins next to it.
+    "~/.gemini/.env",
+    "~/.gemini/oauth_creds.json",
+    "~/.gemini/google_accounts.json",
+    "~/.gemini/gemini-credentials.json",
 ]
 CREDENTIAL_ENV = [
     "GH_TOKEN",
@@ -1819,6 +1824,26 @@ def gemini_srt_settings(
     return rules
 
 
+def gemini_key_from_dotenv(path: Path | None = None) -> dict[str, str]:
+    """Return the Gemini key from `~/.gemini/.env` when the environment has none.
+
+    The sandbox denies that file, because an agent command could otherwise read the key from it.
+    The controller reads it outside the sandbox and hands only the key to the `gemini` process.
+    """
+    if any(os.environ.get(name) for name in VENDOR_ENV["gemini"]):
+        return {}
+    path = path or Path.home() / ".gemini" / ".env"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    for line in lines:
+        name, sep, value = line.strip().removeprefix("export ").partition("=")
+        if sep and name.strip() in VENDOR_ENV["gemini"] and value.strip():
+            return {name.strip(): value.strip().strip("'\"")}
+    return {}
+
+
 def gemini_environment(run: Run, root: Path, writable: list[str] | None = None) -> dict[str, str]:
     """Prepare the sandbox files for one Gemini round and return its environment.
 
@@ -1846,7 +1871,7 @@ def gemini_environment(run: Run, root: Path, writable: list[str] | None = None) 
         ),
         encoding="utf-8",
     )
-    return sandbox_environment("gemini") | {
+    return sandbox_environment("gemini") | gemini_key_from_dotenv() | {
         "GEMINI_CLI_SYSTEM_SETTINGS_PATH": str(settings),
         "GEMINI_CLI_TRUST_WORKSPACE": "true",
         NESTED_ENV: "1",

@@ -1988,6 +1988,7 @@ def test_gemini_environment_writes_srt_settings_and_keeps_only_its_login(
     assert "GH_TOKEN" in withheld
     assert "GEMINI_API_KEY" not in withheld
     assert any(entry["path"].endswith("/.ssh") for entry in srt["credentials"]["files"])
+    assert any(entry["path"].endswith("/.gemini/.env") for entry in srt["credentials"]["files"])
     settings = json.loads(Path(env["GEMINI_CLI_SYSTEM_SETTINGS_PATH"]).read_text())
     blocked = settings["security"]["environmentVariableRedaction"]["blocked"]
     assert {"GEMINI_API_KEY", "GH_TOKEN"} <= set(blocked)
@@ -2060,3 +2061,26 @@ def test_gemini_round_timeout_stops_the_process_group(tmp_path, monkeypatch) -> 
     result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {}, timeout=1)
     assert len(stopped) == 1
     assert result.subtype == "wall_clock_limit"
+
+
+@pytest.mark.parametrize(
+    ("env", "dotenv", "expected"),
+    [
+        ({"GEMINI_API_KEY": "from-env"}, "GEMINI_API_KEY=from-file\n", {}),
+        ({}, "export GEMINI_API_KEY='from-file'\n", {"GEMINI_API_KEY": "from-file"}),
+        ({}, "# comment\nGOOGLE_API_KEY=\"g\"\n", {"GOOGLE_API_KEY": "g"}),
+        ({}, "OTHER=x\n", {}),
+        ({}, None, {}),
+    ],
+)
+def test_gemini_key_comes_from_dotenv_outside_the_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env, dotenv, expected
+) -> None:
+    for name in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    path = tmp_path / ".env"
+    if dotenv is not None:
+        path.write_text(dotenv)
+    assert deliver.gemini_key_from_dotenv(path) == expected
