@@ -149,8 +149,8 @@ Blue states need a human action. Red states stop the factory for that ticket.
   forks get their own board; `project` in `factory.toml` overrides the lookup. It never
   rewrites the columns or views of a board someone arranged. The board has no sprint or
   estimate fields: tickets flow continuously under the work-in-progress limits. The
-  controller mirrors each label into the Status field (`factory.py sync`), and each scheduled
-  tick runs a full mirror after intake. Labels stay the source of truth.
+  controller mirrors each label into the Status field (`factory.py sync`), and each tick runs
+  a full mirror after intake. Labels stay the source of truth.
 - **Setup.** In generated projects, `copier copy` and `task setup` run `init` and skip it with a
   note while the GitHub repository, the `project` token scope or write access is missing.
 
