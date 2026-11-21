@@ -53,7 +53,8 @@ tasks:
         cmd: claude plugin validate {{.ITEM}}
     vars:
       PLUGINS:
-        sh: find plugins -mindepth 1 -maxdepth 1 -type d
+        # Hidden folders, such as an agent harness's `.claude/`, are not plugins.
+        sh: find plugins -mindepth 1 -maxdepth 1 -type d -not -name '.*'
 
   eval:
     desc: Score a plugin's skills against a no-plugin baseline (spends model tokens)
