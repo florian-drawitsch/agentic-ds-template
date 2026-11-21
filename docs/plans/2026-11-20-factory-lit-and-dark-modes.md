@@ -144,8 +144,8 @@ Non-goals:
     card moved from Plan review into Building approves its plan. Every other move goes back
     to the column of the card's label at the next mirror.
 - Approval: the user approved this named plan with D1 to D3 on 2026-11-21, D5 on the same day,
-  D6 and D7 on the same day, and D8 on 2026-11-22. Delivery may not publish a pull request until the user says
-  so.
+  D6 and D7 on the same day, and D8 on 2026-11-22. On 2026-11-22 the user authorized delivery
+  with a pull request. It never merges.
 
 ## Implementation sequence
 
