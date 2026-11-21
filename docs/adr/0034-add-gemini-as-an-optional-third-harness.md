@@ -97,7 +97,10 @@ Run on 2026-11-21 on macOS with Gemini CLI 0.70.0, `gemini-4-hydrogen`, and the 
    or `-r <session_id>` for later rounds.
 
 On Linux, and when the installed CLI lacks Seatbelt, delivery refuses Gemini as implementer.
-Reviewing works everywhere, because plan mode cannot edit or run commands.
+Reviewing works everywhere. Plan mode alone is not read-only, because Gemini CLI 0.70.0 approves
+`exit_plan_mode` in headless runs and switches to YOLO. Reviews and triage therefore also load an
+admin policy that denies mode changes, writes, shell commands and network tools. The review
+inputs go on standard input, since the file tools cannot read the Git directory.
 
 ## Consequences
 

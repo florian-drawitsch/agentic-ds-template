@@ -1748,7 +1748,7 @@ def run_round(command: list[str], cwd: Path, log: Path, timeout: float = 5400) -
 # --- Gemini rounds (ADR-0034) ----------------------------------------------------------------
 
 GEMINI_PROXY = """\
-import os, select, socket, sys, threading
+import os, select, socket, sys, threading, time
 ALLOW = set(filter(None, os.environ.get("GEMINI_PROXY_ALLOW", "").split(",")))
 def pipe(a, b):
     try:
@@ -1783,6 +1783,11 @@ def handle(client):
         pipe(client, upstream)
     except Exception:
         client.close()
+def watch(parent):
+    while os.getppid() == parent:
+        time.sleep(2)
+    os._exit(0)
+threading.Thread(target=watch, args=(os.getppid(),), daemon=True).start()
 server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
@@ -1817,6 +1822,28 @@ def require_gemini_implementer() -> None:
         )
 
 
+def seatbelt_quote(value: str) -> str:
+    """Quote a path for a Seatbelt profile, refusing characters that cannot be escaped safely."""
+    if any(char in value for char in '"\\\n'):
+        raise SystemExit(
+            f"Gemini cannot deny the path {value!r}; rename it or use another implementer"
+        )
+    return value
+
+
+def gemini_denials(root: Path, deny: Sequence[str]) -> str:
+    """Return Seatbelt rules that deny the run's denied paths and the controller's credentials."""
+    rules = []
+    for path in [*(str((root / d).resolve()) for d in deny), *credential_file_paths(root)]:
+        quoted = seatbelt_quote(path)
+        if any(char in quoted for char in "*?["):  # a glob such as `<root>/.env*`
+            regex = re.escape(quoted).replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
+            rules.append(f'(deny file-read* file-write* (regex #"^{regex}$"))')
+        else:
+            rules.append(f'(deny file-read* file-write* (subpath "{quoted}"))')
+    return "\n".join(rules) + "\n"
+
+
 def gemini_environment(run: Run, root: Path) -> dict[str, str]:
     """Prepare the sandbox files for one Gemini round and return its environment.
 
@@ -1831,6 +1858,8 @@ def gemini_environment(run: Run, root: Path) -> dict[str, str]:
     directory.mkdir(parents=True, exist_ok=True)
     git_dir = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir"))
     extra = f'\n(allow file-read* file-write* (subpath "{git_dir}"))\n'
+    # Later rules win in Seatbelt, so these denials follow the allowance above.
+    extra += gemini_denials(root, run.deny_paths)
     profile = root / ".gemini" / "sandbox-macos-deliver.sb"
     profile.parent.mkdir(exist_ok=True)
     profile.write_text(bundle.read_text(encoding="utf-8") + extra, encoding="utf-8")
@@ -1899,21 +1928,29 @@ def run_gemini_round(
     started_at = time.monotonic()
     started_iso = now()
     result = RoundResult(code=0)
-    try:
-        done = subprocess.run(
-            command,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            check=False,
-            start_new_session=True,
-        )
-        result.code, out, err = done.returncode, done.stdout, done.stderr
-    except subprocess.TimeoutExpired as exc:
-        result.code, out, err = 1, str(exc.stdout or ""), str(exc.stderr or "")
-        result.subtype = "wall_clock_limit"
+    with subprocess.Popen(
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+        start_new_session=True,
+    ) as process:
+        try:
+            out, err = process.communicate(timeout=timeout)
+            result.code = process.returncode
+        except subprocess.TimeoutExpired:
+            result.subtype = "wall_clock_limit"
+            result.code = 1
+            stop_process_group(process)
+            out, err = process.communicate()
+        except BaseException:
+            stop_process_group(process)
+            raise
+        # The sandbox and its proxy are descendants; none may outlive the round.
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(process.pid, signal.SIGKILL)
     with log.open("a", encoding="utf-8") as sink:
         sink.write(out + err)
     if result.code != 0 and result.subtype != "wall_clock_limit":

@@ -502,5 +502,6 @@ def test_gemini_triage_is_read_only_cheap_and_parsed(tmp_path, monkeypatch):
     assert args[args.index("--approval-mode") + 1] == "plan"
     assert args[args.index("-m") + 1] == "gemini-4-hydrogen"
     assert "--skip-trust" in args
+    assert "--admin-policy" in args
     assert seen["env"]["GEMINI_API_KEY"] == "secret"
     assert not {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GH_TOKEN"} & set(seen["env"])

@@ -1115,6 +1115,18 @@ VENDOR_ENV = {
 VENDORS = ("codex", "claude", "gemini")
 # Triage is a short read-only classification: the cheapest model. Never use CLI aliases.
 GEMINI_TRIAGE_MODEL = "gemini-4-hydrogen"
+GEMINI_DENY_POLICY = "".join(
+    f'[[rule]]\ntoolName = "{tool}"\ndecision = "deny"\npriority = 999\n\n'
+    for tool in (
+        "exit_plan_mode",
+        "enter_plan_mode",
+        "write_file",
+        "replace",
+        "run_shell_command",
+        "web_fetch",
+        "google_web_search",
+    )
+)
 
 
 def agent_env(vendor: str | None = None) -> dict[str, str]:
@@ -1247,8 +1259,14 @@ def run_triage(config: Config, path: Path, run: Runner = run_command) -> TriageR
         command += ["--permission-mode", "dontAsk", "--max-budget-usd", "1"]
         command += ["--disallowedTools", *(f"Read({path}/**)" for path in DENIED_READS)]
     elif vendor == "gemini":
-        command = ["gemini", "--approval-mode", "plan", "--output-format", "json"]
-        command += ["--skip-trust", "-m", GEMINI_TRIAGE_MODEL, "-p", prompt]
+        # An admin policy denies mode changes, writes and shell commands: plan mode alone does
+        # not, because Gemini CLI approves exit_plan_mode in headless runs. It sits beside the
+        # issue file's directory so the agent's file tools never need it.
+        policy = Path(tempfile.mkdtemp(prefix="factory-policy-")) / "deny.toml"
+        policy.write_text(GEMINI_DENY_POLICY, encoding="utf-8")
+        command = ["gemini", "--admin-policy", str(policy), "--approval-mode", "plan"]
+        command += ["--output-format", "json", "--skip-trust", "-m", GEMINI_TRIAGE_MODEL]
+        command += ["-p", prompt]
     else:
         command = ["codex", "exec", "--json", "-c", 'sandbox_mode="read-only"']
         command += ["-c", 'approval_policy="never"', "--ephemeral", "--skip-git-repo-check"]

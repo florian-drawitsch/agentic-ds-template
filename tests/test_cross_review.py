@@ -476,3 +476,38 @@ def test_every_vendor_has_every_table_entry() -> None:
     assert set(deliver.REVIEW_MODELS) == set(deliver.VENDORS) == set(review.REVIEWERS)
     assert set(factory.VENDORS) == set(review.REVIEWERS)
     assert review.DEFAULT_MODELS["gemini"] == deliver.REVIEW_MODELS["gemini"][0]
+
+
+def test_gemini_review_denies_writes_and_mode_changes_and_gets_inputs(
+    tmp_path, monkeypatch
+) -> None:
+    seen: dict = {}
+
+    def fake_run(command, **kwargs):
+        policy = Path(command[command.index("--admin-policy") + 1])
+        seen["policy"] = policy.read_text()
+        seen["prompt"] = command[-1]
+        seen["input"] = kwargs["input"]
+        return subprocess.CompletedProcess(command, 0, _gemini_stdout(), "")
+
+    monkeypatch.setattr(review.subprocess, "run", fake_run)
+    review.run_review(tmp_path, "gemini", "Review", None, 60, stdin="diff here")
+    for tool in ("exit_plan_mode", "write_file", "replace", "run_shell_command"):
+        assert f'toolName = "{tool}"' in seen["policy"]
+    assert seen["policy"].count('decision = "deny"') >= 4
+    assert '"findings"' in seen["prompt"]  # the schema reaches the model
+    assert seen["input"] == "diff here"
+
+
+def test_gemini_inputs_go_on_stdin_with_acceptance(tmp_path) -> None:
+    (tmp_path / "context.md").write_text("ctx")
+    (tmp_path / "diff.patch").write_text("patch")
+    criteria = tmp_path / "acc.md"
+    criteria.write_text("1. works")
+    text = review.gemini_stdin(tmp_path, str(criteria))
+    assert "ctx" in text
+    assert "patch" in text
+    assert "1. works" in text
+    prompt = review.build_prompt("b", None, tmp_path, str(criteria), "gemini")
+    assert "standard input" in prompt
+    assert str(criteria) not in prompt

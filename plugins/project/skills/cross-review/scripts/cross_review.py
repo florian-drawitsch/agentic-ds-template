@@ -149,13 +149,30 @@ def build_prompt(
         )
     else:
         how = "with Read, Grep, and Glob. Do not run shell commands."
-    inputs = (
-        f"The controller prepared read-only review inputs at {input_dir}. Read `context.md` and "
-        "`diff.patch` there, then inspect every untracked file listed in the context and any "
-        f"referenced source files {how}"
-        if input_dir
-        else "The controller supplies the change through read-only input files."
-    )
+    if reviewer == "gemini":
+        # Gemini's file tools cannot read the Git directory or a temporary directory, so the
+        # controller sends the inputs on standard input.
+        inputs = (
+            "The controller sends `context.md`, `diff.patch`"
+            f"{' and the acceptance criteria' if acceptance else ''} on standard input. Read them "
+            f"there, then inspect every untracked file listed in the context and any referenced "
+            f"source files {how}"
+        )
+        if acceptance:
+            spec = (
+                "There is no plan. The acceptance criteria are on standard input. Judge only "
+                "whether the diff meets every criterion with tests that prove it. Reject with "
+                'verdict "changes_requested" when you are unsure.'
+            )
+    else:
+        inputs = (
+            f"The controller prepared read-only review inputs at {input_dir}. Read `context.md` "
+            "and "
+            "`diff.patch` there, then inspect every untracked file listed in the context and any "
+            f"referenced source files {how}"
+            if input_dir
+            else "The controller supplies the change through read-only input files."
+        )
     return f"""You are reviewing a change written by another coding agent. You are read-only:
 do not modify files and do not run commands that change anything.
 
@@ -269,10 +286,31 @@ def codex_command(
     return [*command, prompt]
 
 
-def gemini_command(prompt: str, model: str | None, binary: str = "gemini") -> list[str]:
-    """Return a Gemini review invocation in read-only plan mode."""
+# Plan mode alone is not read-only: Gemini CLI 0.70.0 approves exit_plan_mode in headless runs,
+# which switches to YOLO. An admin policy (the highest tier) denies mode changes, writes,
+# shell commands and network tools whatever the approval mode.
+GEMINI_DENY_POLICY = "".join(
+    f'[[rule]]\ntoolName = "{tool}"\ndecision = "deny"\npriority = 999\n\n'
+    for tool in (
+        "exit_plan_mode",
+        "enter_plan_mode",
+        "write_file",
+        "replace",
+        "run_shell_command",
+        "web_fetch",
+        "google_web_search",
+    )
+)
+
+
+def gemini_command(
+    prompt: str, model: str | None, binary: str = "gemini", policy: Path | str = "policy.toml"
+) -> list[str]:
+    """Return a Gemini review invocation in plan mode with a deny policy."""
     command = [
         binary,
+        "--admin-policy",
+        str(policy),
         "--approval-mode",
         "plan",
         "--output-format",
@@ -281,6 +319,17 @@ def gemini_command(prompt: str, model: str | None, binary: str = "gemini") -> li
     ]
     command += ["-m", model] if model else []
     return [*command, "-p", prompt]
+
+
+def gemini_stdin(input_dir: Path, acceptance: str | None) -> str:
+    """Return the review inputs as text, since Gemini's file tools cannot reach them."""
+    parts = {
+        name: (input_dir / name).read_text(encoding="utf-8", errors="replace")
+        for name in ("context.md", "diff.patch")
+    }
+    if acceptance:
+        parts["acceptance criteria"] = Path(acceptance).read_text(encoding="utf-8")
+    return "".join(f"===== {name} =====\n{text}\n" for name, text in parts.items())
 
 
 def parse_gemini_output(stdout: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -375,6 +424,7 @@ def run_review(
     timeout: int,
     codex_bin: str | None = None,
     budget: float = 2.0,
+    stdin: str | None = None,
 ) -> dict[str, Any]:
     """Run the reviewer CLI and return its normalized review."""
     env = reviewer_env(reviewer)
@@ -402,15 +452,21 @@ def run_review(
     if reviewer == "gemini":
         model_name = model or DEFAULT_GEMINI_MODEL
         binary = os.environ.get("GEMINI_BIN") or shutil.which("gemini") or "gemini"
-        result = subprocess.run(
-            gemini_command(prompt, model_name, binary),
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = Path(tmp) / "deny.toml"
+            policy.write_text(GEMINI_DENY_POLICY, encoding="utf-8")
+            schema_note = f"\n\nThe JSON schema of your answer:\n{json.dumps(SCHEMA)}"
+            command = gemini_command(prompt + schema_note, model_name, binary, policy)
+            result = subprocess.run(
+                command,
+                input=stdin,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
+                check=False,
+            )
         if result.returncode != 0:
             raise RuntimeError(f"gemini exited with {result.returncode}: {result.stderr[-2000:]}")
         raw_review, usage = parse_gemini_output(result.stdout)
@@ -637,7 +693,14 @@ def main(argv: list[str] | None = None) -> int:
     review_started_at = datetime.now(UTC).isoformat(timespec="seconds")
     try:
         review = run_review(
-            root, args.reviewer, prompt, args.model, args.timeout, args.codex_bin, review_budget
+            root,
+            args.reviewer,
+            prompt,
+            args.model,
+            args.timeout,
+            args.codex_bin,
+            review_budget,
+            stdin=gemini_stdin(input_dir, args.acceptance) if args.reviewer == "gemini" else None,
         )
     except (
         OSError,

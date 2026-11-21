@@ -1964,18 +1964,32 @@ def test_gemini_environment_keeps_only_its_login_and_writes_profile(tmp_path, mo
     assert {"GEMINI_API_KEY", "GH_TOKEN"} <= set(blocked)
 
 
+class FakeProcess:
+    """Stands in for Popen: communicate returns the scripted output or times out once."""
+
+    def __init__(self, out: str, err: str = "", code: int = 0, hang: bool = False) -> None:
+        self.out, self.err, self.returncode, self.hang = out, err, code, hang
+        self.pid = 999_999_999
+        self.calls = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def communicate(self, timeout=None):
+        self.calls += 1
+        if self.hang and self.calls == 1:
+            raise subprocess.TimeoutExpired("gemini", timeout or 0)
+        return self.out, self.err
+
+
 def test_gemini_round_parses_session_usage_and_cost(tmp_path, monkeypatch) -> None:
     tokens = {"input": 1_000_000, "cached": 400_000, "candidates": 100_000, "thoughts": 100_000}
-    out = json.dumps(
-        {
-            "session_id": "s9",
-            "response": "ok",
-            "stats": {"models": {"gemini-4-neon": {"tokens": tokens}}},
-        }
-    )
-    monkeypatch.setattr(
-        deliver.subprocess, "run", lambda c, **k: subprocess.CompletedProcess(c, 0, out, "")
-    )
+    stats = {"models": {"gemini-4-neon": {"tokens": tokens}}}
+    out = json.dumps({"session_id": "s9", "response": "ok", "stats": stats})
+    monkeypatch.setattr(deliver.subprocess, "Popen", lambda *a, **k: FakeProcess(out))
     result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {})
     deliver.price_codex(result)
     assert (result.thread, result.started, result.model) == ("s9", True, "gemini-4-neon")
@@ -1983,11 +1997,28 @@ def test_gemini_round_parses_session_usage_and_cost(tmp_path, monkeypatch) -> No
 
 
 def test_gemini_round_failure_and_rate_limit(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(
-        deliver.subprocess,
-        "run",
-        lambda c, **k: subprocess.CompletedProcess(c, 1, "", "429 RESOURCE_EXHAUSTED"),
-    )
+    process = FakeProcess("", "429 RESOURCE_EXHAUSTED", 1)
+    monkeypatch.setattr(deliver.subprocess, "Popen", lambda *a, **k: process)
     result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {})
     assert result.failed
     assert result.rejected
+
+
+def test_gemini_round_timeout_stops_the_process_group(tmp_path, monkeypatch) -> None:
+    stopped = []
+    monkeypatch.setattr(deliver.subprocess, "Popen", lambda *a, **k: FakeProcess("", hang=True))
+    monkeypatch.setattr(deliver, "stop_process_group", stopped.append)
+    result = deliver.run_gemini_round(["gemini"], tmp_path, tmp_path / "log", {}, timeout=1)
+    assert len(stopped) == 1
+    assert result.subtype == "wall_clock_limit"
+
+
+def test_gemini_profile_denies_holdout_and_credentials(tmp_path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "holdout").mkdir()
+    rules = deliver.gemini_denials(tmp_path, ["holdout"])
+    assert f'(subpath "{(tmp_path / "holdout").resolve()}")' in rules
+    assert "/.ssh" in rules
+    assert '(regex #"^' in rules  # the `.env*` glob
+    with pytest.raises(SystemExit, match="cannot deny"):
+        deliver.gemini_denials(tmp_path, ['bad"name'])
