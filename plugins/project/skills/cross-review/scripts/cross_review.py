@@ -692,6 +692,9 @@ def main(argv: list[str] | None = None) -> int:
     review_started = time.monotonic()
     review_started_at = datetime.now(UTC).isoformat(timespec="seconds")
     try:
+        extra = (
+            {"stdin": gemini_stdin(input_dir, args.acceptance)} if args.reviewer == "gemini" else {}
+        )
         review = run_review(
             root,
             args.reviewer,
@@ -700,7 +703,7 @@ def main(argv: list[str] | None = None) -> int:
             args.timeout,
             args.codex_bin,
             review_budget,
-            stdin=gemini_stdin(input_dir, args.acceptance) if args.reviewer == "gemini" else None,
+            **extra,
         )
     except (
         OSError,

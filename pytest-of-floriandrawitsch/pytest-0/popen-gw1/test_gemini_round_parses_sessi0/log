@@ -1,0 +1,1 @@
+{"session_id": "s9", "response": "ok", "stats": {"models": {"gemini-4-neon": {"tokens": {"input": 1000000, "cached": 400000, "candidates": 100000, "thoughts": 100000}}}}}
