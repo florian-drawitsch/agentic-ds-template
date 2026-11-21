@@ -1,3 +1,4 @@
+{%- set vendors = (['claude', 'codex', 'gemini'] | select('in', agent_harnesses) | list)[:2] -%}
 # Ticket factory controller (ADR-0033 of agentic-ds-template). Omitted keys use the defaults
 # shown in comments. Changes to this file always need a human merge (protected path).
 
@@ -28,6 +29,6 @@ required_checks = ["Lint, types, contracts, tests and docs"]
 
 [deliver]
 # The implementer; the verifier is always the other vendor.
-harness = "claude"
-reviewer = "codex"
+harness = "{{ vendors[0] }}"
+reviewer = "{{ vendors[1] }}"
 max_cost = 10.0

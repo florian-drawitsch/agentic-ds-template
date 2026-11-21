@@ -251,9 +251,11 @@ def test_factory_workflow_skips_until_secrets_exist_and_accepts_both_claude_logi
             assert step["env"]["CODEX_API_KEY"] == "${{ secrets.OPENAI_API_KEY }}"
 
 
-def test_this_repository_runs_the_same_factory_workflow() -> None:
-    source = (ROOT / "template/.github/workflows/factory.yml").read_text()
+def test_this_repository_runs_the_same_factory_workflow(tmp_path: Path) -> None:
+    pair = render(tmp_path / "pair", factory=True, agent_harnesses=["claude", "gemini"])
+    source = (pair / ".github/workflows/factory.yml").read_text()
     assert (ROOT / ".github/workflows/factory.yml").read_text() == source
+    assert 'reviewer = "gemini"' in (pair / "factory.toml").read_text()
     workflow = yaml.safe_load(source)
     commands = [s.get("run", "") for j in workflow["jobs"].values() for s in j["steps"]]
     tasks = set(yaml.safe_load((ROOT / "Taskfile.yml").read_text())["tasks"])
@@ -267,3 +269,40 @@ def test_secrets_task_exists_in_both_taskfiles(factory_project: Path) -> None:
     root = yaml.safe_load((ROOT / "Taskfile.yml").read_text())["tasks"]
     assert {"factory:secrets", "factory:loop", "factory:report", "factory:tick"} <= set(root)
     assert "--dry-run" not in str(root["factory:tick"]["cmds"])
+
+
+PAIRS = {
+    ("claude", "codex"): ({"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}, {"GEMINI_API_KEY"}),
+    ("claude", "gemini"): ({"GEMINI_API_KEY", "ANTHROPIC_API_KEY"}, {"OPENAI_API_KEY"}),
+    ("codex", "gemini"): ({"GEMINI_API_KEY", "OPENAI_API_KEY"}, {"ANTHROPIC_API_KEY"}),
+}
+
+
+@pytest.mark.parametrize(
+    "harnesses", [["claude", "codex"], ["claude", "gemini"], ["codex", "gemini"], ["gemini", "codex", "claude"]]
+)
+def test_factory_workflow_uses_only_the_configured_vendors(tmp_path: Path, harnesses) -> None:
+    root = render(tmp_path / "p", factory=True, agent_harnesses=harnesses)
+    pair = tuple(v for v in ("claude", "codex", "gemini") if v in harnesses)[:2]
+    used, unused = PAIRS[pair]
+    text = (root / ".github/workflows/factory.yml").read_text()
+    workflow = yaml.safe_load(text)
+    steps = [s for job in workflow["jobs"].values() for s in job["steps"]]
+    tick = next(s for s in steps if s["name"] == "Tick")
+    assert used <= set(tick["env"])
+    assert not any(name in str(workflow["jobs"]) for name in unused)
+    if "gemini" in pair:
+        assert tick["env"]["GEMINI_CLI_TRUST_WORKSPACE"] == "true"
+    install = next(s["run"] for s in steps if s["name"] == "Install agent CLIs")
+    assert ("@google/gemini-cli@" in install) == ("gemini" in pair)
+    factory = tomllib.loads((root / "factory.toml").read_text())["deliver"]
+    assert (factory["harness"], factory["reviewer"]) == pair
+    if "gemini" in harnesses:
+        settings = json.loads((root / ".gemini/settings.json").read_text())
+        assert settings["context"]["fileName"] == ["AGENTS.md"]
+        assert settings["security"]["folderTrust"]["enabled"] is True
+
+
+def test_gemini_files_follow_the_harness(project: Path, tmp_path: Path) -> None:
+    assert not (project / ".gemini").exists()
+    assert (render(tmp_path / "g", agent_harnesses=["gemini"]) / ".gemini/settings.json").is_file()

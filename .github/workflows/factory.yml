@@ -5,6 +5,7 @@ name: Factory
 # workflow's own token stays read-only. `task factory:secrets` sets the secrets. A board
 # owned by a personal account needs a classic token with the repo, project and read:org scopes.
 # Claude signs in with ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`).
+# Only the CLIs and secrets of the two configured vendors are used: claude and gemini.
 
 on:
   schedule:
@@ -42,9 +43,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
           CLAUDE: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          CODEX: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$CODEX" ]; then
+          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$GEMINI" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::Factory secrets are missing; run task factory:secrets. Skipped."
@@ -75,7 +76,7 @@ jobs:
       - name: Install agent CLIs
         if: steps.ready.outputs.ok == 'true'
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
-        run: npm install --global @anthropic-ai/claude-code@2.1.329 @openai/codex@0.171.0 # zizmor: ignore[adhoc-packages]
+        run: npm install --global @anthropic-ai/claude-code@2.1.329 @google/gemini-cli@0.70.0 # zizmor: ignore[adhoc-packages]
 
       - name: Tick
         if: steps.ready.outputs.ok == 'true'
@@ -83,9 +84,9 @@ jobs:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # `codex exec` reads only CODEX_API_KEY; OPENAI_API_KEY alone sends no credentials.
-          CODEX_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Headless runs exit with code 55 in an untrusted folder.
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
           SCHEDULED: ${{ github.event_name == 'schedule' && '--scheduled' || '' }}
         run: task factory:tick -- $SCHEDULED
 
@@ -101,9 +102,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
           CLAUDE: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          CODEX: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$CODEX" ]; then
+          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$GEMINI" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::Factory secrets are missing; run task factory:secrets. Skipped."
@@ -134,7 +135,7 @@ jobs:
       - name: Install agent CLIs
         if: steps.ready.outputs.ok == 'true'
         # The CLIs have no lockfile here, so the versions are pinned exactly. Bump them by hand.
-        run: npm install --global @anthropic-ai/claude-code@2.1.329 @openai/codex@0.171.0 # zizmor: ignore[adhoc-packages]
+        run: npm install --global @anthropic-ai/claude-code@2.1.329 @google/gemini-cli@0.70.0 # zizmor: ignore[adhoc-packages]
 
       - name: Daily report
         if: steps.ready.outputs.ok == 'true'
@@ -150,9 +151,9 @@ jobs:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          # `codex exec` reads only CODEX_API_KEY; OPENAI_API_KEY alone sends no credentials.
-          CODEX_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Headless runs exit with code 55 in an untrusted folder.
+          GEMINI_CLI_TRUST_WORKSPACE: 'true'
         run: task factory:report -- retro
 
   report-weekly:
@@ -167,9 +168,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.FACTORY_GH_TOKEN }}
           CLAUDE: set
-          CODEX: set
+          GEMINI: set
         run: |
-          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$CODEX" ]; then
+          if [ -n "$GH_TOKEN" ] && [ -n "$CLAUDE" ] && [ -n "$GEMINI" ]; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::Factory secrets are missing; run task factory:secrets. Skipped."
